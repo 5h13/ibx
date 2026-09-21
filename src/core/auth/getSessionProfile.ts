@@ -15,18 +15,21 @@ export async function getSessionProfile(): Promise<SessionProfile | null> {
 
   if (!authUser) return null;
 
-  const { data: userRow, error: userErr } = await supabase
-    .from('users')
-    .select('id, email, full_name, role, section_id, is_active')
-    .eq('id', authUser.id)
-    .single();
+  // These two queries don't depend on each other, so fire them together
+  // instead of waiting on one before starting the next.
+  const [{ data: userRow, error: userErr }, { data: accessRows }] = await Promise.all([
+    supabase
+      .from('users')
+      .select('id, email, full_name, role, section_id, is_active')
+      .eq('id', authUser.id)
+      .single(),
+    supabase
+      .from('user_access')
+      .select('section_id, workflow_role')
+      .eq('user_id', authUser.id),
+  ]);
 
   if (userErr || !userRow) return null;
-
-  const { data: accessRows } = await supabase
-    .from('user_access')
-    .select('section_id, workflow_role')
-    .eq('user_id', authUser.id);
 
   return {
     user: userRow,

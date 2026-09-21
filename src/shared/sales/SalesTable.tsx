@@ -43,18 +43,18 @@ export function SalesTable({ rows, profile }: { rows: SalesRow[]; profile: Sessi
               <td className="py-2 pr-4"><StatusBadge status={row.status} /></td>
               <td className="py-2 pr-4 space-x-2">
                 {canSubmit && (
-                  <button disabled={isPending} onClick={() => startTransition(() => submitSalesForReviewAction(row.id))} className="text-xs font-semibold text-blue-600 hover:underline">
-                    Submit for review
+                  <button disabled={isPending} onClick={() => startTransition(() => submitSalesForReviewAction(row.id))} className="text-xs font-semibold text-blue-600 hover:underline disabled:opacity-50 disabled:no-underline">
+                    {isPending ? 'Submitting…' : 'Submit for review'}
                   </button>
                 )}
                 {canReview && (
-                  <button disabled={isPending} onClick={() => startTransition(() => markSalesReviewedAction(row.id))} className="text-xs font-semibold text-blue-600 hover:underline">
-                    Mark reviewed
+                  <button disabled={isPending} onClick={() => startTransition(() => markSalesReviewedAction(row.id))} className="text-xs font-semibold text-blue-600 hover:underline disabled:opacity-50 disabled:no-underline">
+                    {isPending ? 'Saving…' : 'Mark reviewed'}
                   </button>
                 )}
                 {canApprove && (
-                  <button disabled={isPending} onClick={() => startTransition(() => markSalesApprovedAction(row.id))} className="text-xs font-semibold text-green-600 hover:underline">
-                    Approve
+                  <button disabled={isPending} onClick={() => startTransition(() => markSalesApprovedAction(row.id))} className="text-xs font-semibold text-green-600 hover:underline disabled:opacity-50 disabled:no-underline">
+                    {isPending ? 'Saving…' : 'Approve'}
                   </button>
                 )}
               </td>

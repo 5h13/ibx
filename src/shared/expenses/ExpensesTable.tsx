@@ -40,27 +40,27 @@ export function ExpensesTable({ rows, profile }: { rows: ExpenseRow[]; profile: 
                   <button
                     disabled={isPending}
                     onClick={() => startTransition(() => submitForReviewAction(row.id))}
-                    className="text-xs font-semibold text-blue-600 hover:underline"
+                    className="text-xs font-semibold text-blue-600 hover:underline disabled:opacity-50 disabled:no-underline"
                   >
-                    Submit for review
+                    {isPending ? 'Submitting…' : 'Submit for review'}
                   </button>
                 )}
                 {canReview && (
                   <button
                     disabled={isPending}
                     onClick={() => startTransition(() => markReviewedAction(row.id))}
-                    className="text-xs font-semibold text-blue-600 hover:underline"
+                    className="text-xs font-semibold text-blue-600 hover:underline disabled:opacity-50 disabled:no-underline"
                   >
-                    Mark reviewed
+                    {isPending ? 'Saving…' : 'Mark reviewed'}
                   </button>
                 )}
                 {canApprove && (
                   <button
                     disabled={isPending}
                     onClick={() => startTransition(() => markApprovedAction(row.id))}
-                    className="text-xs font-semibold text-green-600 hover:underline"
+                    className="text-xs font-semibold text-green-600 hover:underline disabled:opacity-50 disabled:no-underline"
                   >
-                    Approve
+                    {isPending ? 'Saving…' : 'Approve'}
                   </button>
                 )}
               </td>
