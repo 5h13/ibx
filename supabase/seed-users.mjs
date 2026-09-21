@@ -5,14 +5,25 @@
 // the Supabase Auth Admin API (this script) rather than a raw SQL insert.
 //
 // Usage:
-//   1. npm install @supabase/supabase-js
-//   2. Set env vars (see .env.example): SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+//   1. npm install
+//   2. Put your keys in supabase/.env (see .env.example)
 //   3. node supabase/seed-users.mjs
 //
 // All test accounts share the password below. Change TEST_PASSWORD (and
 // re-run against a fresh project) before this ever touches production data.
 
 import { createClient } from '@supabase/supabase-js';
+import { fileURLToPath } from 'url';
+import path from 'path';
+import dotenv from 'dotenv';
+
+// Load supabase/.env explicitly (relative to this file), rather than relying
+// on an external .env loader that may look in the project root instead.
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const envPath = path.join(__dirname, '.env');
+const result = dotenv.config({ path: envPath });
+console.log(`Looking for env file at: ${envPath}`);
+console.log(result.error ? `  -> not found / unreadable: ${result.error.message}` : `  -> loaded ${Object.keys(result.parsed ?? {}).length} variable(s)`);
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -27,37 +38,11 @@ const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
 
-// Test accounts: one super admin (bypasses RLS, no single section),
-// and one of each workflow role scoped to the Sales section for testing.
 const TEST_USERS = [
-  {
-    email: 'super.admin@ibx.test',
-    full_name: 'Super Admin (Test)',
-    role: 'super_admin',
-    section_code: null,
-    workflow_roles: [], // super admin doesn't need workflow grants; RLS bypass covers it
-  },
-  {
-    email: 'preparer.sales@ibx.test',
-    full_name: 'Preparer (Sales, Test)',
-    role: 'sales',
-    section_code: 'sales',
-    workflow_roles: ['preparer'],
-  },
-  {
-    email: 'reviewer.sales@ibx.test',
-    full_name: 'Reviewer (Sales, Test)',
-    role: 'sales',
-    section_code: 'sales',
-    workflow_roles: ['reviewer'],
-  },
-  {
-    email: 'approver.sales@ibx.test',
-    full_name: 'Approver (Sales, Test)',
-    role: 'sales',
-    section_code: 'sales',
-    workflow_roles: ['approver'],
-  },
+  { email: 'super.admin@ibx.test', full_name: 'Super Admin (Test)', role: 'super_admin', section_code: null, workflow_roles: [] },
+  { email: 'preparer.sales@ibx.test', full_name: 'Preparer (Sales, Test)', role: 'sales', section_code: 'sales', workflow_roles: ['preparer'] },
+  { email: 'reviewer.sales@ibx.test', full_name: 'Reviewer (Sales, Test)', role: 'sales', section_code: 'sales', workflow_roles: ['reviewer'] },
+  { email: 'approver.sales@ibx.test', full_name: 'Approver (Sales, Test)', role: 'sales', section_code: 'sales', workflow_roles: ['approver'] },
 ];
 
 async function getSectionMap() {
@@ -67,7 +52,6 @@ async function getSectionMap() {
 }
 
 async function upsertAuthUser(email, password, fullName) {
-  // Try to find an existing auth user with this email first (idempotent re-runs).
   const { data: list, error: listErr } = await supabase.auth.admin.listUsers();
   if (listErr) throw listErr;
   const existing = list.users.find((u) => u.email === email);
@@ -75,12 +59,8 @@ async function upsertAuthUser(email, password, fullName) {
     console.log(`  auth user already exists: ${email}`);
     return existing;
   }
-
   const { data, error } = await supabase.auth.admin.createUser({
-    email,
-    password,
-    email_confirm: true,
-    user_metadata: { full_name: fullName },
+    email, password, email_confirm: true, user_metadata: { full_name: fullName },
   });
   if (error) throw error;
   console.log(`  created auth user: ${email}`);
@@ -96,14 +76,7 @@ async function main() {
     const sectionId = u.section_code ? sections[u.section_code] : null;
 
     const { error: userErr } = await supabase.from('users').upsert(
-      {
-        id: authUser.id,
-        email: u.email,
-        full_name: u.full_name,
-        role: u.role,
-        section_id: sectionId,
-        is_active: true,
-      },
+      { id: authUser.id, email: u.email, full_name: u.full_name, role: u.role, section_id: sectionId, is_active: true },
       { onConflict: 'id' }
     );
     if (userErr) throw userErr;
@@ -115,7 +88,6 @@ async function main() {
       );
       if (accessErr) throw accessErr;
     }
-
     console.log(`  linked public.users + user_access for ${u.email} (${u.role}${u.workflow_roles.length ? ', ' + u.workflow_roles.join('/') : ''})`);
   }
 
