@@ -1,36 +1,47 @@
 // middleware.ts
-//
-// Refreshes the Supabase auth session cookie on every request so server
-// components always see an up-to-date session. Standard @supabase/ssr
-// pattern — see https://supabase.com/docs/guides/auth/server-side/nextjs
-
-import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
+import { createServerClient, type CookieOptions } from '@supabase/ssr';
 
 export async function middleware(request: NextRequest) {
   let response = NextResponse.next({ request: { headers: request.headers } });
 
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        get(name: string) {
-          return request.cookies.get(name)?.value;
+  try {
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          get(name: string) {
+            return request.cookies.get(name)?.value;
+          },
+          set(name: string, value: string, options: CookieOptions) {
+            response.cookies.set({ name, value, ...options });
+          },
+          remove(name: string, options: CookieOptions) {
+            response.cookies.set({ name, value: '', ...options });
+          },
         },
-        set(name: string, value: string, options: CookieOptions) {
-          response.cookies.set({ name, value, ...options });
-        },
-        remove(name: string, options: CookieOptions) {
-          response.cookies.set({ name, value: '', ...options });
-        },
-      },
+      }
+    );
+
+    const { data: { user } } = await supabase.auth.getUser();
+
+    // Allow login page always
+    if (request.nextUrl.pathname === '/login') {
+      return response;
     }
-  );
 
-  await supabase.auth.getUser();
+    // If no user, redirect to login
+    if (!user) {
+      return NextResponse.redirect(new URL('/login', request.url));
+    }
 
-  return response;
+    return response;
+  } catch (err) {
+    console.error('Middleware error:', err);
+    // Fail open instead of crashing
+    return response;
+  }
 }
 
 export const config = {
