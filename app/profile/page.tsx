@@ -1,4 +1,4 @@
-import { redirect, notFound } from 'next/navigation';
+import { redirect } from 'next/navigation';
 import { createAdminClient } from '@/core/auth/supabaseAdmin';
 import { getSessionProfile } from '@/core/auth/getSessionProfile';
 import { AuthedShell } from '@/core/layout/AuthedShell';
@@ -16,6 +16,10 @@ const PROFILE_COLUMNS = [
   'work_location_ref:work_locations(id,name)',
   'supervisor:employees!supervisor_employee_id(id,employee_no,first_name,last_name,preferred_name)',
 ].join(',');
+
+const ROLE_LABEL: Record<string, string> = {
+  super_admin: 'Global Super Admin', business_admin: 'Business Admin', admin: 'Admin', finance: 'Finance', logistics: 'Logistics', marketing: 'Marketing', sales: 'Sales',
+};
 
 export default async function MyProfilePage() {
   const profile = await getSessionProfile();
@@ -47,19 +51,28 @@ export default async function MyProfilePage() {
   // was actually guarding against: a non-super-admin user whose employee link
   // is missing/broken, which is a real data problem worth surfacing as 404.
   if (!employee) {
-    if (profile.user.role !== 'super_admin') notFound();
+    // Build 72 (U064): an account with no linked employee record gets the
+    // account-level view (not a 404).
     const { data: userRow, error: userError } = await db
       .from('users')
       .select('created_at')
       .eq('id', profile.user.id)
       .single();
     if (userError) throw new Error(userError.message);
+    let businessName: string | null = null;
+    if (profile.user.role !== 'super_admin' && profile.user.business_id) {
+      const { data: biz } = await db.from('businesses').select('legal_name,trade_name').eq('id', profile.user.business_id).maybeSingle();
+      businessName = (biz as any)?.trade_name || (biz as any)?.legal_name || null;
+    }
     return (
       <AuthedShell profile={profile}>
         <SuperAdminAccountProfile
           fullName={profile.user.full_name}
           email={profile.user.email}
           createdAt={(userRow as any).created_at}
+          superAdmin={profile.user.role === 'super_admin'}
+          roleLabel={ROLE_LABEL[profile.user.role] ?? profile.user.role}
+          businessName={businessName}
         />
       </AuthedShell>
     );
@@ -87,6 +100,7 @@ export default async function MyProfilePage() {
 
   return (
     <AuthedShell profile={profile}>
+      <div className="mb-3 flex justify-end"><a href="/account/change-password" className="rounded border bg-white px-3 py-2 text-sm">Change password</a></div>
       <EmployeeProfile
         employee={{ ...(employee as any), notes: null }}
         emergencyContacts={emergencyContacts ?? []}

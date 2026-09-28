@@ -1,4 +1,5 @@
 // src/core/layout/AuthedShell.tsx
+import { redirect } from 'next/navigation';
 import type { ReactNode } from 'react';
 import type { SessionProfile } from '@/core/auth/types';
 import { createClient } from '@/core/auth/supabaseServer';
@@ -18,6 +19,10 @@ export async function AuthedShell({ profile, children }: { profile: SessionProfi
   // visible, not only when the Global Super Admin is acting as one, so this
   // now fetches for every role — RLS ("businesses read own or global admin")
   // scopes a non-super-admin's read to exactly their own business row.
+  // Build 72 (U065): an account whose password was set or reset by an admin
+  // must choose its own before using the app.
+  if (profile.user.must_change_password) redirect('/account/change-password');
+
   const db = createClient();
   const { data } = await db.from('businesses').select('id,code,legal_name,trade_name,branding').eq('is_active', true).order('trade_name');
   const businesses = data ?? [];

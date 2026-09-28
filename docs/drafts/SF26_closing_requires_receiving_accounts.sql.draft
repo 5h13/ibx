@@ -1,0 +1,116 @@
+-- ============================================================================
+-- Build 71d — a payment without a receiving account was left out of Bank/Cash
+-- (user, 2026-09-28: PILI's GCash ₱1,000 sale, made before PILI had a GCash
+-- account, reached the journal but produced no Bank/Cash transaction).
+-- Approving a closing now assigns the store's only account of that method to
+-- such payments, or stops with a clear message when there is none / several.
+-- ============================================================================
+create or replace function public.storefront_post_closing(p_closing uuid)
+returns uuid language plpgsql security definer set search_path = public as $$
+declare c record; b uuid; v_code text; gl jsonb := '{}'; bank jsonb := '{}'; p record; x record; v_je uuid; v_jno text;
+        v_rev_net numeric; v_vat numeric; v_ret_net numeric; v_ret_vat numeric; v_ar_charged numeric; v_ar_credit numeric; v_ar_coll numeric;
+        v_cogs numeric; v_ret_cost numeric; v_drawer uuid; v_drawer_gl uuid; d numeric; cr numeric; v_section uuid; v_tno text; v_n int; v_acc uuid;
+begin
+  select * into c from public.storefront_closings where id = p_closing for update;
+  if c.journal_entry_id is not null then return c.journal_entry_id; end if;
+  b := c.business_id;
+  select code into v_code from public.businesses where id = b;
+  select id into v_section from public.sections where code = 'sales';
+  select id, coalesce(gl_account_id, public.sf_gl(b, '1000')) into v_drawer, v_drawer_gl
+    from public.finance_bank_accounts where business_id = b and payment_method = 'cash' and status = 'active' order by (account_code = 'SF-CASH') desc limit 1;
+  if v_drawer_gl is null then v_drawer_gl := public.sf_gl(b, '1000'); end if;
+
+  -- Build 71d: every payment must name the account that received it before
+  -- the day goes to Finance. Payments recorded before receiving accounts
+  -- existed get the store's only account for their method; with none (or
+  -- several) the approval stops and says what to set up.
+  for p in select sp.id, sp.payment_number, sp.method, sp.amount from public.storefront_payments sp
+            where sp.closing_id = c.id and sp.bank_account_id is null loop
+    select count(*), min(id::text)::uuid into v_n, v_acc from public.finance_bank_accounts
+     where business_id = b and payment_method = p.method and status = 'active';
+    if v_n = 1 then
+      update public.storefront_payments set bank_account_id = v_acc where id = p.id;
+    elsif v_n = 0 then
+      raise exception 'Payment % (% ₱%) has no receiving account and this store has no % account yet: a Business Admin adds it in Storefront → Store settings → Receiving accounts, then approve again.',
+        p.payment_number, p.method, p.amount, case p.method when 'gcash' then 'GCash' when 'maya' then 'Maya' when 'card' then 'card' when 'cash' then 'cash drawer' else 'bank' end;
+    else
+      raise exception 'Payment % (% ₱%) has no receiving account and this store has several % accounts; ask Finance / a Business Admin to set which one received it, then approve again.',
+        p.payment_number, p.method, p.amount, p.method;
+    end if;
+  end loop;
+
+  -- money in / out by receiving account
+  for p in select sp.*, a.gl_account_id from public.storefront_payments sp left join public.finance_bank_accounts a on a.id = sp.bank_account_id
+            where sp.closing_id = c.id loop
+    gl := public.sf_jadd(gl, coalesce(p.gl_account_id, public.sf_default_gl(b, p.method)), case when p.kind = 'refund' then -p.amount else p.amount end);
+    bank := public.sf_badd(bank, p.bank_account_id, case when p.kind = 'refund' then -p.amount else p.amount end);
+  end loop;
+
+  -- sales, VAT, AR
+  select coalesce(sum(total - vat_amount), 0), coalesce(sum(vat_amount), 0), coalesce(sum(balance), 0), coalesce(sum(cost_total), 0)
+    into v_rev_net, v_vat, v_ar_charged, v_cogs from public.storefront_sales where closing_id = c.id and status = 'completed';
+  select coalesce(sum(total - vat_amount), 0), coalesce(sum(vat_amount), 0), coalesce(sum(credit_to_ar), 0), coalesce(sum(cost_total), 0)
+    into v_ret_net, v_ret_vat, v_ar_credit, v_ret_cost from public.storefront_returns where closing_id = c.id;
+  select coalesce(sum(amount), 0) into v_ar_coll from public.storefront_payments where closing_id = c.id and kind = 'ar_collection';
+
+  gl := public.sf_jadd(gl, public.sf_gl(b, '4000'), -v_rev_net);          -- Cr sales (net of VAT)
+  gl := public.sf_jadd(gl, public.sf_gl(b, '2210'), -v_vat);              -- Cr output VAT
+  gl := public.sf_jadd(gl, public.sf_gl(b, '4010'), v_ret_net);           -- Dr sales returns
+  gl := public.sf_jadd(gl, public.sf_gl(b, '2210'), v_ret_vat);           -- Dr output VAT on returns
+  gl := public.sf_jadd(gl, public.sf_gl(b, '1100'), v_ar_charged - v_ar_coll - v_ar_credit); -- AR: charged − collected − credited by returns
+  gl := public.sf_jadd(gl, public.sf_gl(b, '5000'), v_cogs - v_ret_cost); -- Dr cost of sales
+  gl := public.sf_jadd(gl, public.sf_gl(b, '1200'), v_ret_cost - v_cogs); -- Cr inventory
+
+  -- cash taken out of the drawer
+  for x in select * from public.storefront_cash_movements where closing_id = c.id and kind = 'cash_out' loop
+    gl := public.sf_jadd(gl, v_drawer_gl, -x.amount);
+    bank := public.sf_badd(bank, v_drawer, -x.amount);
+    if x.category = 'bank_deposit' then
+      gl := public.sf_jadd(gl, coalesce((select gl_account_id from public.finance_bank_accounts where id = x.bank_account_id), public.sf_gl(b, '1010')), x.amount);
+      bank := public.sf_badd(bank, x.bank_account_id, x.amount);
+    elsif x.category = 'petty_cash' then gl := public.sf_jadd(gl, public.sf_gl(b, '1005'), x.amount);
+    else gl := public.sf_jadd(gl, public.sf_gl(b, '1090'), x.amount);
+    end if;
+  end loop;
+
+  -- cash short / over
+  gl := public.sf_jadd(gl, v_drawer_gl, c.variance);
+  gl := public.sf_jadd(gl, public.sf_gl(b, '5010'), -c.variance);
+  bank := public.sf_badd(bank, v_drawer, c.variance);
+
+  select coalesce(sum(greatest(value::numeric, 0)), 0), coalesce(sum(greatest(-value::numeric, 0)), 0) into d, cr
+    from jsonb_each_text(gl) where round(value::numeric, 2) <> 0;
+  if round(d, 2) <> round(cr, 2) then raise exception 'Closing % does not balance (debit % / credit %).', c.closing_number, d, cr; end if;
+
+  if d > 0 then
+    v_jno := public.storefront_next_number(v_code || '-SFJ', 'finance_journal_entries', 'journal_number');
+    insert into public.finance_journal_entries(business_id, journal_number, entry_date, description, source_module, source_record_id, section_id, status,
+                                               total_debit, total_credit, prepared_by, prepared_at, created_by, notes)
+    values (b, v_jno, c.closing_date, 'Storefront daily closing ' || c.closing_number || ' (' || c.closing_date || ')', 'storefront', c.id, v_section, 'prepared',
+            round(d, 2), round(cr, 2), auth.uid(), now(), auth.uid(),
+            'Created when the daily closing was approved. Sales ₱' || c.sales_total || ' (VAT ₱' || c.vat_total || '), returns ₱' || c.returns_total || ', cash variance ₱' || c.variance || '.')
+    returning id into v_je;
+    insert into public.finance_journal_lines(business_id, journal_entry_id, account_id, line_description, debit, credit, department)
+    select b, v_je, key::uuid, coa.account_name || ' — ' || c.closing_number,
+           case when round(value::numeric, 2) > 0 then round(value::numeric, 2) else 0 end,
+           case when round(value::numeric, 2) < 0 then round(-value::numeric, 2) else 0 end, 'Storefront'
+      from jsonb_each_text(gl) join public.finance_chart_of_accounts coa on coa.id = key::uuid
+     where round(value::numeric, 2) <> 0;
+  end if;
+
+  -- one Bank/Cash transaction per account (net), for Finance to review and post
+  for x in select key::uuid as account_id, round(value::numeric, 2) as amount from jsonb_each_text(bank) where round(value::numeric, 2) <> 0 loop
+    v_tno := public.storefront_next_number(v_code || '-SFT', 'finance_cash_transactions', 'transaction_number');
+    insert into public.finance_cash_transactions(business_id, transaction_number, bank_account_id, transaction_date, transaction_type, amount, direction, description,
+                                                 reference_number, source_module, source_record_id, status, prepared_by, prepared_at, created_by)
+    values (b, v_tno, x.account_id, c.closing_date, case when x.amount > 0 then 'deposit' else 'withdrawal' end::public.cash_transaction_type, abs(x.amount),
+            case when x.amount > 0 then 'in' else 'out' end, 'Storefront daily closing ' || c.closing_number || ' (net for the day)',
+            c.closing_number, 'storefront', c.id, 'prepared', auth.uid(), now(), auth.uid());
+  end loop;
+
+  update public.storefront_closings set journal_entry_id = v_je, posted_at = now() where id = c.id;
+  insert into public.audit_log(actor_id, entity_table, entity_id, action, detail)
+  values (auth.uid(), 'storefront_closings', c.id, 'storefront_closing_sent_to_finance', jsonb_build_object('journal', v_jno, 'total', d));
+  return v_je;
+end $$;
+revoke all on function public.storefront_post_closing(uuid) from public, authenticated;

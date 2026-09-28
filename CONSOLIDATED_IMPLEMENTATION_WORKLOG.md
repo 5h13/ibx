@@ -1032,3 +1032,14 @@ User request: a Business Admin (and the Super Admin) must be able to shift into 
 
 ## Build 71c — fix: Settings → Users crashed ("Cannot read properties of undefined (reading 'map')") (2026-09-28)
 - The Users page loaded each user's grants under the name `user_access`, while the screen reads `access`; the list crashed on the first user. The query now names it `access` (app/settings/users/page.tsx).
+
+## Build 72 — user onboarding: email invitations, forced password change, account profile (U064, U065) (2026-09-28)
+- Email via the Supabase project's custom SMTP (Gmail 5h13biz@gmail.com, set up by the user). Migration `20261123_user_onboarding_password.sql`: users.must_change_password.
+- **Add user** (Settings → Users): "Email an invitation" (default — Supabase invitation; the link opens /auth/accept where the user sets their own password) or "Set a temporary password" (shown once; the account must change it at first sign-in).
+- **Users list**: "Email password link" (re-sends the invitation if the user never signed in, otherwise a password-reset email) and "Temporary password" (the old Reset password; now also forces a change at the next sign-in).
+- **/auth/accept** (public): opens the one-time sign-in from an invitation / reset link (fragment tokens, ?code or ?token_hash), clears the tokens from the address bar, then "Set your password". Expired / used links show a clear message.
+- **Forced change**: any page in the app sends an account with must_change_password to /account/change-password until a new password is set (at least 8 characters, letters and a number); the flag is cleared server-side for the user's own row only.
+- **My profile (U064)**: an account with no linked employee record now sees an account page (name, email, role, business, note that an admin can link an employee record) instead of a 404; "Change password" on every profile page.
+- Links point at the site the admin is using (so the live site sends live links), falling back to NEXT_PUBLIC_SITE_URL.
+- The untested SF-26 draft migration was moved out of supabase/migrations to docs/drafts (not part of this build).
+- Verified: migration replays on the local database (60 migrations); typecheck + production build pass. Not verified: a browser pass over the new screens and a live invitation email (needs the real Supabase + Gmail set-up).

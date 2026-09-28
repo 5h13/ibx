@@ -22,6 +22,8 @@ export interface AppUser {
    * Admin, who bypasses business-scoping RLS entirely). Every other role is
    * scoped to exactly one business. */
   business_id: string | null;
+  /** Build 72: set after an admin sets / resets the password; the user must choose a new one before using the app. */
+  must_change_password?: boolean;
 }
 
 export interface UserAccessGrant {

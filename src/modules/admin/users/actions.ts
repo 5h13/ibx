@@ -2,6 +2,7 @@
 import { appError } from '@/core/errors/appError';
 
 import { revalidatePath } from 'next/cache';
+import { headers } from 'next/headers';
 import { createAdminClient } from '@/core/auth/supabaseAdmin';
 import { createClient } from '@/core/auth/supabaseServer';
 import { getSessionProfile } from '@/core/auth/getSessionProfile';
@@ -10,6 +11,20 @@ import { isAdminTier, type AppRole, type WorkflowRole, type SessionProfile } fro
 const ROLES: AppRole[] = ['super_admin', 'business_admin', 'admin', 'finance', 'logistics', 'marketing', 'sales'];
 const ADMIN_TIER_ROLES: AppRole[] = ['super_admin', 'business_admin'];
 const WORKFLOW_ROLES: WorkflowRole[] = ['preparer', 'reviewer', 'approver'];
+
+// Build 72 (U065): where invitation / reset links should land — the site the
+// admin is using (so the live site sends live links), else NEXT_PUBLIC_SITE_URL.
+function siteUrl() {
+  const h = headers();
+  const host = h.get('x-forwarded-host') || h.get('host');
+  if (host) return `${h.get('x-forwarded-proto') || (host.startsWith('localhost') ? 'http' : 'https')}://${host}`;
+  return process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+}
+const friendlyAuthError = (m: string) =>
+  /already been registered|already exists/i.test(m) ? 'A user with this email already exists.'
+  : /rate limit/i.test(m) ? 'Too many emails were sent just now; wait a few minutes and try again (Supabase email rate limit).'
+  : /smtp|sending|mail/i.test(m) ? `The invitation email could not be sent (${m}). Check the SMTP settings in Supabase → Authentication → Emails, or create the user with a temporary password instead.`
+  : m;
 
 function requiredString(value: FormDataEntryValue | null, name: string) {
   const text = String(value ?? '').trim();
@@ -141,14 +156,16 @@ export async function createUserAction(formData: FormData) {
     newUserBusinessId = business.id;
   }
 
-  const temporaryPassword = String(formData.get('password') ?? '').trim() || crypto.randomUUID().slice(0, 8) + 'Aa1!';
-  const { data: authData, error: authError } = await admin.auth.admin.createUser({
-    email,
-    password: temporaryPassword,
-    email_confirm: true,
-    user_metadata: { full_name: fullName },
-  });
-  if (authError || !authData.user) throw appError(authError?.message ?? 'Unable to create auth user.');
+  // Build 72 (U065): invite by email (the user sets their own password from
+  // the link), or set a temporary password that must be changed at first sign-in.
+  const invite = String(formData.get('onboarding') ?? 'invite') === 'invite';
+  const typedPassword = String(formData.get('password') ?? '').trim();
+  if (!invite && typedPassword && typedPassword.length < 8) throw appError('A temporary password needs at least 8 characters.');
+  const temporaryPassword = invite ? null : typedPassword || crypto.randomUUID().slice(0, 8) + 'Aa1!';
+  const { data: authData, error: authError } = invite
+    ? await admin.auth.admin.inviteUserByEmail(email, { data: { full_name: fullName }, redirectTo: `${siteUrl()}/auth/accept` })
+    : await admin.auth.admin.createUser({ email, password: temporaryPassword!, email_confirm: true, user_metadata: { full_name: fullName } });
+  if (authError || !authData.user) throw appError(friendlyAuthError(authError?.message ?? 'Unable to create auth user.'));
 
   const homeSectionId = sectionIds[0] ?? null;
   const { error: userError } = await db.from('users').insert({
@@ -159,6 +176,7 @@ export async function createUserAction(formData: FormData) {
     section_id: homeSectionId,
     business_id: newUserBusinessId,
     is_active: true,
+    must_change_password: !invite,
   });
   if (userError) {
     await admin.auth.admin.deleteUser(authData.user.id);
@@ -181,9 +199,9 @@ export async function createUserAction(formData: FormData) {
     }
   }
 
-  await writeAudit(actor.user.id, authData.user.id, 'created', { email, role, section_ids: sectionIds });
+  await writeAudit(actor.user.id, authData.user.id, 'created', { email, role, section_ids: sectionIds, onboarding: invite ? 'email_invitation' : 'temporary_password' });
   revalidatePath('/settings/users');
-  return { ok: true, temporaryPassword };
+  return invite ? { ok: true, invited: email } : { ok: true, temporaryPassword };
 }
 
 export async function updateUserAction(formData: FormData) {
@@ -293,8 +311,31 @@ export async function resetUserPasswordAction(formData: FormData) {
   const temporaryPassword = crypto.randomUUID().slice(0, 8) + 'Aa1!';
   const { error } = await admin.auth.admin.updateUserById(userId, { password: temporaryPassword });
   if (error) throw appError(error.message);
+  // Build 72: the user must replace this temporary password at the next sign-in
+  const { error: fe } = await admin.from('users').update({ must_change_password: true }).eq('id', userId);
+  if (fe) throw appError(fe.message);
   await writeAudit(actor.user.id, userId, 'edited', { action: 'password_reset' });
   return { ok: true, temporaryPassword };
+}
+
+// Build 72 (U065): email the user a link to set a new password themselves
+// (nothing is shown to the admin). Uses the project's SMTP.
+export async function sendPasswordLinkAction(formData: FormData) {
+  const actor = await requireAdminTier();
+  const userId = requiredString(formData.get('user_id'), 'User');
+  const db = createClient();
+  await assertManageableTarget(actor, db, userId);
+  const admin = createAdminClient();
+  const { data: target, error: te } = await admin.auth.admin.getUserById(userId);
+  if (te || !target.user?.email) throw appError(te?.message ?? 'User not found.');
+  const redirectTo = `${siteUrl()}/auth/accept`;
+  // never signed in yet → send the invitation again; otherwise a password-reset email
+  const { error } = target.user.last_sign_in_at
+    ? await createClient().auth.resetPasswordForEmail(target.user.email, { redirectTo })
+    : await admin.auth.admin.inviteUserByEmail(target.user.email, { redirectTo });
+  if (error) throw appError(friendlyAuthError(error.message));
+  await writeAudit(actor.user.id, userId, 'edited', { action: target.user.last_sign_in_at ? 'password_link_emailed' : 'invitation_resent' });
+  return { ok: true, emailed: target.user.email };
 }
 
 export async function deactivateUserAction(formData: FormData) {

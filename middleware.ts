@@ -27,8 +27,8 @@ export async function middleware(request: NextRequest) {
     const { data: { user } } = await supabase.auth.getUser();
 
     // Allow login page always
-    if (request.nextUrl.pathname === '/login') {
-      return response;
+    if (request.nextUrl.pathname === '/login' || request.nextUrl.pathname.startsWith('/auth/')) {
+      return response; // /auth/accept: invitation / reset links, before the user has a session
     }
 
     // If no user, redirect to login
