@@ -1,0 +1,5 @@
+import {requireSection} from '@/core/auth/requireSection';
+import {createClient} from '@/core/auth/supabaseServer';
+import {AuthedShell} from '@/core/layout/AuthedShell';
+import {AccountingManagement} from '@/modules/finance/accounting/AccountingManagement';
+export default async function AccountingPage(){const profile=await requireSection('finance');const db=createClient();const [{data:accounts,error:e1},{data:journals,error:e2},{data:lines,error:e3},{data:periods,error:e4}]=await Promise.all([db.from('finance_chart_of_accounts').select('*').order('account_code'),db.from('finance_journal_entries').select('*').order('entry_date',{ascending:false}).order('created_at',{ascending:false}),db.from('finance_journal_lines').select('*,account:finance_chart_of_accounts(account_code,account_name)').order('created_at'),db.from('finance_accounting_periods').select('*').order('year',{ascending:false}).order('month',{ascending:false})]);const err=e1||e2||e3||e4;if(err)throw new Error(err.message);return <AuthedShell profile={profile}><AccountingManagement accounts={accounts??[]} journals={journals??[]} lines={lines??[]} periods={periods??[]}/></AuthedShell>}

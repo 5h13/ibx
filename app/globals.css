@@ -1,0 +1,43 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Build 63 — theme variables ("R G B"); defaults = original look. Keep in sync with VAR_DEFAULTS in src/core/theme/brandTheme.ts. */
+  --bg-surface: 255 255 255;
+  --bg-subtle: 248 250 252;
+  --bg-subtle2: 241 245 249;
+  --bg-subtle3: 226 232 240;
+  --bg-strong: 15 23 42;
+  --bg-strong2: 30 41 59;
+  --bg-strong3: 51 65 85;
+  --bg-accent-soft: 239 246 255;
+  --tx-on-strong: 255 255 255;
+  --tx-on-strong-muted: 203 213 225;
+  --tx-on-strong-muted2: 226 232 240;
+  --tx-muted2: 148 163 184;
+  --tx-muted: 100 116 139;
+  --tx-text2: 71 85 105;
+  --tx-text2b: 51 65 85;
+  --tx-text: 30 41 59;
+  --tx-strong: 15 23 42;
+  --tx-accent: 37 99 235;
+  --tx-accent2: 29 78 216;
+  --bd: 226 232 240;
+  --bd-input: 203 213 225;
+  --bd-strong: 148 163 184;
+  --bd-strong-dark: 71 85 105;
+  --btn: 15 23 42;
+  --on-btn: 255 255 255;
+  --link: 37 99 235;
+}
+body { background: rgb(var(--bg-subtle)); }
+.label { display:block; font-size:0.75rem; color:rgb(var(--tx-muted)); margin-bottom:0.25rem; }
+.input { width:100%; border:1px solid rgb(var(--bd-input)); border-radius:0.5rem; padding:0.45rem 0.6rem; font-size:0.875rem; background:rgb(var(--bg-surface)); color:rgb(var(--tx-text)); }
+.input::placeholder { color:rgb(var(--tx-muted2)); }
+.button { background:rgb(var(--btn)); color:rgb(var(--on-btn)); border-radius:0.5rem; padding:0.5rem 0.8rem; font-size:0.875rem; font-weight:600; }
+.button:disabled { opacity:.5; }
+.button-secondary { border:1px solid rgb(var(--bd-input)); border-radius:0.5rem; padding:0.5rem 0.8rem; font-size:0.875rem; }
+.button-danger { background:#b91c1c; color:white; border-radius:0.5rem; padding:0.5rem 0.8rem; font-size:0.875rem; font-weight:600; }
+.button-danger:disabled { opacity:.5; }
+.link { color:rgb(var(--link)); font-size:0.75rem; font-weight:600; }

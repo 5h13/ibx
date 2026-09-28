@@ -1,0 +1,5 @@
+import { requireSection } from '@/core/auth/requireSection';
+import { createClient } from '@/core/auth/supabaseServer';
+import { AuthedShell } from '@/core/layout/AuthedShell';
+import { AccountsReceivableManagement } from '@/modules/finance/accounts-receivable/AccountsReceivableManagement';
+export default async function AccountsReceivablePage(){const profile=await requireSection('finance');const db=createClient();const [{data:customers,error:ce},{data:invoices,error:ie},{data:receipts,error:re}]=await Promise.all([db.from('finance_customers').select('*').order('legal_name'),db.from('finance_customer_invoices').select('*,customer:finance_customers(legal_name,customer_code)').order('invoice_date',{ascending:false}),db.from('finance_customer_receipts').select('*,invoice:finance_customer_invoices(invoice_number)').order('receipt_date',{ascending:false})]);const err=ce||ie||re;if(err)throw new Error(err.message);return <AuthedShell profile={profile}><AccountsReceivableManagement profile={profile} customers={customers??[]} invoices={invoices??[]} receipts={receipts??[]}/></AuthedShell>}
