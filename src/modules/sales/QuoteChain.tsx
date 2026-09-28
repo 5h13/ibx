@@ -57,6 +57,7 @@ export function QuoteView({ quotationId, onRevised }: { quotationId: string; onR
           {Number(q.tax_amount) > 0 && <tr><td colSpan={3} className="p-2 text-right text-slate-500">Tax</td><td className="p-2 text-right">{money(q.tax_amount)}</td></tr>}
           {Number(q.other_charges) > 0 && <tr><td colSpan={3} className="p-2 text-right text-slate-500">Other charges</td><td className="p-2 text-right">{money(q.other_charges)}</td></tr>}
           <tr><td colSpan={3} className="p-2 text-right font-semibold">Total</td><td className="p-2 text-right font-semibold">{money(q.total_amount)}</td></tr>
+          {q.vat_applied && <tr><td colSpan={3} className="p-2 text-right text-slate-500">VAT 12% (included)</td><td className="p-2 text-right">{money(q.vat_amount)}</td></tr>}
         </tfoot>
       </table>
       {d.history.length > 1 && (
@@ -188,7 +189,8 @@ export function OrderView({ orderId }: { orderId: string }) {
       <table className="w-full">
         <thead><tr className="border-b text-left text-xs uppercase text-slate-500"><th className="p-2">Item</th><th className="p-2 text-right">Qty</th><th className="p-2 text-right">Amount</th><th className="p-2">Fulfil</th></tr></thead>
         <tbody>{(o.items ?? []).map((i: any) => <tr key={i.id} className="border-b"><td className="p-2">{i.description}</td><td className="p-2 text-right">{Number(i.quantity)} {i.unit}</td><td className="p-2 text-right">{money(i.amount)}</td><td className="p-2">{FUL[i.fulfilment] ?? i.fulfilment}</td></tr>)}</tbody>
-        <tfoot><tr><td colSpan={2} className="p-2 text-right font-semibold">Total</td><td className="p-2 text-right font-semibold">{money(o.total_amount)}</td><td /></tr></tfoot>
+        <tfoot><tr><td colSpan={2} className="p-2 text-right font-semibold">Total</td><td className="p-2 text-right font-semibold">{money(o.total_amount)}</td><td /></tr>
+          <tr><td colSpan={4} className="p-2 text-right text-xs text-slate-500">{o.vat_applied ? `With VAT (from the quotation): VAT 12% included ${money(o.vat_amount)}` : 'Without VAT (from the quotation)'}{o.payment_terms ? ` · terms ${o.payment_terms}` : ''} · DRs are issued at the Storefront (Orders tab)</td></tr></tfoot>
       </table>
       {o.notes && <p className="text-slate-600">Notes: {o.notes}</p>}
     </div>

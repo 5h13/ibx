@@ -13,8 +13,10 @@ import { PopupAction } from '@/core/ui/PopupAction';
 import {
   cashMovementAction, closeDayAction, closingPreviewAction, collectArAction, decideClosingAction, openInvoicesAction, refundableAction, returnAction, saleForReturnAction,
 } from './actions';
-import { METHODS, methodLabel, num, paysToInput, paysTotal, peso, pesoSigned, r2, type Pay } from './storefrontShared';
-import { AccountPicker, useStoreAccounts } from './accountsContext';
+import { CONDITION_LABEL, METHODS, changeDue, methodLabel, num, paysToInput, paysTotal, peso, pesoSigned, r2, type Pay } from './storefrontShared';
+import { useStoreAccounts } from './accountsContext';
+import { PayRow } from './PayRow';
+import type { ReturnCondition } from './actions';
 
 type Customer = { id: string; customer_code: string; legal_name: string; phone: string | null };
 
@@ -27,15 +29,8 @@ function PayRows({ pays, setPays, fillLabel, fillAmount, refund = false }: { pay
   const set = (i: number, patch: Partial<Pay>) => setPays(pays.map((p, j) => (j === i ? { ...p, ...patch } : p)));
   return (
     <div className="space-y-2">
-      {pays.map((p, i) => (
-        <div key={i} className="grid grid-cols-12 gap-2">
-          <select className="input col-span-3" value={p.method} onChange={(e) => set(i, { method: e.target.value as Pay['method'], account: undefined })}>{METHODS.map((m) => <option key={m.v} value={m.v}>{m.l}</option>)}</select>
-          <input className="input col-span-3" type="number" min="0" step="0.01" placeholder="Amount" value={p.amount} onChange={(e) => set(i, { amount: e.target.value })} />
-          <input className="input col-span-5" placeholder={p.method === 'cash' ? 'Reference (optional)' : 'Reference no. (required)'} value={p.reference} onChange={(e) => set(i, { reference: e.target.value })} />
-          <button type="button" className="button-secondary col-span-1" onClick={() => setPays(pays.filter((_, j) => j !== i))} aria-label="Remove">✕</button>
-          <AccountPicker method={p.method} value={p.account} onChange={(id) => set(i, { account: id || undefined })} refund={refund} />
-        </div>
-      ))}
+      {pays.map((p, i) => <PayRow key={i} p={p} set={(patch) => set(i, patch)} remove={() => setPays(pays.filter((_, j) => j !== i))} refund={refund}
+        due={refund ? undefined : r2(fillAmount - pays.reduce((s, x, j) => s + (j !== i && Number.isFinite(num(x.amount)) ? num(x.amount) : 0), 0))} />)}
       <div className="flex flex-wrap gap-2">
         <button type="button" className="button-secondary" onClick={() => setPays([...pays, { method: 'cash', amount: '', reference: '' }])}>+ Add line</button>
         <button type="button" className="button-secondary" disabled={!(fillAmount > 0)} onClick={() => setPays([{ method: 'cash', amount: String(r2(fillAmount)), reference: '' }])}>{fillLabel}</button>
@@ -103,7 +98,7 @@ export function ArCollectionForm({ customers, walkInId, onDone }: { customers: C
         <>
           <PayRows pays={pays} setPays={setPays} fillLabel="Pay full balance in cash" fillAmount={Number(inv.balance_due)} />
           <div className="grid gap-2 rounded bg-slate-50 p-3 sm:grid-cols-3">
-            <div>Balance <b>{peso(inv.balance_due)}</b></div><div>Paying <b>{peso(paying)}</b></div>
+            <div>Balance <b>{peso(inv.balance_due)}</b></div><div>Paying <b>{peso(paying)}</b>{changeDue(pays) > 0 && <> · change <b className="text-emerald-700">{peso(changeDue(pays))}</b></>}</div>
             <div>{paying > Number(inv.balance_due) ? <b className="text-red-700">More than the balance</b> : <>Remaining <b>{peso(r2(Number(inv.balance_due) - paying))}</b></>}</div>
           </div>
           <p className="text-xs text-slate-500">Each line is posted as an AR receipt on the invoice; Finance sees it at once.</p>
@@ -120,6 +115,7 @@ export function ReturnForm({ saleNumber = '', onDone }: { saleNumber?: string; o
   const [no, setNo] = useState(saleNumber);
   const [sale, setSale] = useState<Awaited<ReturnType<typeof saleForReturnAction>> | null>(null);
   const [qty, setQty] = useState<Record<string, string>>({});
+  const [cond, setCond] = useState<Record<string, ReturnCondition>>({});
   const [reason, setReason] = useState('');
   const [pays, setPays] = useState<Pay[]>([{ method: 'cash', amount: '', reference: '' }]);
   const [refundable, setRefundable] = useState<Awaited<ReturnType<typeof refundableAction>>>([]);
@@ -145,10 +141,10 @@ export function ReturnForm({ saleNumber = '', onDone }: { saleNumber?: string; o
       try {
         const r = await returnAction({
           sale_id: sale.id, reason,
-          lines: sale.lines.map((l) => ({ sale_item_id: l.sale_item_id, quantity: num(qty[l.sale_item_id] ?? '') })).filter((l) => l.quantity > 0),
+          lines: sale.lines.map((l) => ({ sale_item_id: l.sale_item_id, quantity: num(qty[l.sale_item_id] ?? ''), condition: cond[l.sale_item_id] ?? 'back_to_stock' })).filter((l) => l.quantity > 0),
           refunds: refund > 0 ? paysToInput(pays) : [],
         });
-        onDone(`${r.return_number} recorded: ${peso(r.total)} returned${Number(r.credit_to_ar) > 0 ? `, ${peso(r.credit_to_ar)} taken off the unpaid balance` : ''}${Number(r.refund) > 0 ? `, ${peso(r.refund)} refunded` : ''}. Stock is back in the store.`);
+        onDone(`${r.return_number} recorded: ${peso(r.total)} returned${Number(r.credit_to_ar) > 0 ? `, ${peso(r.credit_to_ar)} taken off the unpaid balance` : ''}${Number(r.refund) > 0 ? `, ${peso(r.refund)} refunded` : ''}.${Number(r.damaged_cost) > 0 ? ' Damaged items are kept aside (not sellable); the rest is back in stock.' : ' Items are back in stock.'}`);
       } catch (e) { setError(errorText(e)); }
     });
   }
@@ -156,14 +152,14 @@ export function ReturnForm({ saleNumber = '', onDone }: { saleNumber?: string; o
   return (
     <div className="space-y-4 text-sm">
       <div className="flex flex-wrap items-center gap-2">
-        <input className="input max-w-xs" placeholder="Sale number, e.g. SF-2026-000012" value={no} onChange={(e) => setNo(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); find(); } }} />
+        <input className="input max-w-xs" placeholder="Sale, DR or SI number" value={no} onChange={(e) => setNo(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); find(); } }} />
         <button type="button" className="button-secondary" disabled={pending || !no.trim()} onClick={find}>Find sale</button>
       </div>
       {sale && (
         <>
-          <div className="text-slate-600">{sale.sale_number} · {sale.sale_date} · {sale.customer} · total {peso(sale.total)}{Number(sale.ar_balance) > 0 && <> · unpaid balance <b className="text-amber-700">{peso(sale.ar_balance)}</b></>}</div>
+          <div className="text-slate-600">{sale.sale_number}{sale.dr_number ? ` · ${sale.dr_number}` : ''}{sale.si_number ? ` · SI ${sale.si_number}` : ''} · {sale.sale_date} · {sale.customer} · total {peso(sale.total)}{Number(sale.ar_balance) > 0 && <> · unpaid balance <b className="text-amber-700">{peso(sale.ar_balance)}</b></>}</div>
           <table className="w-full">
-            <thead><tr className="border-b text-left text-xs uppercase text-slate-500"><th className="p-2">Item</th><th className="p-2 text-right">Sold</th><th className="p-2 text-right">Already returned</th><th className="p-2 text-right">Price</th><th className="p-2 w-28">Return qty</th></tr></thead>
+            <thead><tr className="border-b text-left text-xs uppercase text-slate-500"><th className="p-2">Item</th><th className="p-2 text-right">Sold</th><th className="p-2 text-right">Already returned</th><th className="p-2 text-right">Price</th><th className="p-2 w-28">Return qty</th><th className="p-2 w-44">Condition</th></tr></thead>
             <tbody>{sale.lines.map((l) => {
               const left = Number(l.sold) - Number(l.returned);
               return (
@@ -171,11 +167,17 @@ export function ReturnForm({ saleNumber = '', onDone }: { saleNumber?: string; o
                   <td className="p-2">{l.description}{l.item_type === 'service' && <span className="ml-1 text-xs text-slate-500">(service — no stock)</span>}</td>
                   <td className="p-2 text-right">{Number(l.sold)} {l.unit}</td><td className="p-2 text-right">{Number(l.returned) || '—'}</td><td className="p-2 text-right">{peso(l.unit_price)}</td>
                   <td className="p-2"><input className="input" type="number" min="0" max={left} step="any" disabled={left <= 0} placeholder={left > 0 ? `max ${left}` : 'none left'} value={qty[l.sale_item_id] ?? ''} onChange={(e) => setQty({ ...qty, [l.sale_item_id]: e.target.value })} /></td>
+                  <td className="p-2">{l.item_type === 'service' ? <span className="text-xs text-slate-500">—</span> : (
+                    <select className="input" value={cond[l.sale_item_id] ?? 'back_to_stock'} disabled={left <= 0} onChange={(e) => setCond({ ...cond, [l.sale_item_id]: e.target.value as ReturnCondition })}>
+                      {Object.entries(CONDITION_LABEL).map(([v, t]) => <option key={v} value={v}>{t}</option>)}
+                    </select>)}
+                    {sale.order_dr && !l.released && <div className="text-xs text-slate-500">Not yet released by the Warehouse</div>}</td>
                 </tr>
               );
             })}</tbody>
           </table>
           <input className="input" placeholder="Reason for the return *" value={reason} onChange={(e) => setReason(e.target.value)} />
+          <p className="text-xs text-slate-500">Back to stock: resellable. Damaged: kept aside, not sellable (for supplier return). Wrong item: back to stock — for an exchange, refund here and ring up the right item as a new sale.</p>
           <div className="grid gap-2 rounded bg-slate-50 p-3 sm:grid-cols-3">
             <div>Returned value <b>{peso(value)}</b></div>
             <div>Off the unpaid balance <b>{peso(credit)}</b></div>
@@ -216,7 +218,7 @@ export function ReturnsTab({ returns, payments }: { returns: any[]; payments: an
           {returns.map((r) => (
             <tr key={r.id} className="border-b align-top">
               <td className="p-2 font-medium">{r.return_number}</td><td className="p-2">{r.sale?.sale_number}</td><td className="p-2">{r.sale?.customer?.legal_name}</td>
-              <td className="p-2">{r.reason}</td><td className="p-2 text-right">{peso(r.total)}</td><td className="p-2 text-right">{Number(r.credit_to_ar) > 0 ? peso(r.credit_to_ar) : '—'}</td>
+              <td className="p-2">{r.reason}{Number(r.damaged_cost) > 0 && <div className="text-xs text-amber-700">Damaged goods kept aside (cost {peso(r.damaged_cost)})</div>}</td><td className="p-2 text-right">{peso(r.total)}</td><td className="p-2 text-right">{Number(r.credit_to_ar) > 0 ? peso(r.credit_to_ar) : '—'}</td>
               <td className="p-2 text-xs">{payments.filter((p) => p.return_id === r.id).map((p) => `${methodLabel(p.method)} ${peso(p.amount)}${p.reference_number ? ` (${p.reference_number})` : ''}`).join(', ') || '—'}</td>
             </tr>
           ))}
@@ -276,6 +278,12 @@ export function ClosingForm({ date, today, onDone }: { date: string; today: stri
               {METHODS.filter((m) => pv.by_method[m.v] !== undefined).map((m) => <tr key={m.v} className="border-b"><td className="p-2">{m.l}</td><td className="p-2 text-right">{peso(pv.by_method[m.v])}</td></tr>)}
             </tbody>
           </table>
+          {pv.checks?.length > 0 && (
+            <div className="rounded border p-2 text-xs">
+              <div className="mb-1 font-medium text-sm">Checks received (not cash — held in Checks on hand)</div>
+              {pv.checks.map((c) => <div key={c.payment} className="flex justify-between"><span>{c.number} · {c.bank} · dated {c.date}{c.pdc && <b className="ml-1 text-amber-700">post-dated — not yet depositable</b>}</span><span>{peso(c.amount)}</span></div>)}
+            </div>
+          )}
           <div className="rounded bg-slate-50 p-3 text-sm">
             {Number(pv.vat_total) !== 0 && <div className="mb-1">Output VAT (on SIs from a VAT-registered booklet, net of returns): <b>{peso(pv.vat_total)}</b></div>}
             Expected cash = opening float <b>{peso(pv.float_total)}</b> + net cash received <b>{peso(pv.by_method.cash ?? 0)}</b> − cash taken out <b>{peso(pv.cash_out_total)}</b>

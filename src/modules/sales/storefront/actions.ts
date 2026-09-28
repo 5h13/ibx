@@ -22,9 +22,11 @@ async function rpc<T = any>(fn: string, args?: Record<string, unknown>): Promise
   return data as T;
 }
 const refresh = () => revalidatePath('/sales/storefront');
+const REASON_TEXT: Record<string, string> = { below_floor: 'a price is below the 7% floor', no_cost: 'an item has no cost on record', late_entry: 'it is entered late (earlier sale date)' };
 
 export type SaleLineInput = { item_id: string; quantity: number; unit_price?: number | null };
-export type PaymentInput = { method: 'cash' | 'gcash' | 'maya' | 'card' | 'bank_transfer'; amount: number; reference?: string; account?: string };
+export type PaymentInput = { method: 'cash' | 'gcash' | 'maya' | 'card' | 'bank_transfer' | 'check'; amount: number; reference?: string; account?: string;
+  tendered?: number; check_bank?: string; check_date?: string; issuer?: string };
 
 export async function priceLinesAction(itemIds: string[]) {
   await signedIn();
@@ -45,14 +47,14 @@ export async function setStoreLocationAction(locationId: string) {
   refresh();
 }
 
-export async function submitSaleAction(input: { customer_id?: string | null; lines: SaleLineInput[]; payments: PaymentInput[]; si_number?: string; issue_dr: boolean; notes?: string }) {
+export async function submitSaleAction(input: { customer_id?: string | null; lines: SaleLineInput[]; payments: PaymentInput[]; si_number?: string; issue_dr: boolean; notes?: string; sale_date?: string; late_reason?: string }) {
   const p = await signedIn();
-  const r = await rpc<{ id: string; sale_number: string; status: string; total: number }>('storefront_submit_sale', { p: input });
+  const r = await rpc<{ id: string; sale_number: string; status: string; total: number; reasons: string[] }>('storefront_submit_sale', { p: input });
   if (r.status === 'pending_approval') {
     await notifyWorkflowRole(p.user.business_id, 'sales', 'approver', {
       entity_table: 'storefront_sales', entity_id: r.id,
-      title: `Price approval needed: ${r.sale_number}`,
-      message: 'A counter sale has a price below the 7% markup floor and needs your sign-off.',
+      title: `Sale to approve: ${r.sale_number}`,
+      message: `A counter sale needs your sign-off: ${(r.reasons ?? []).map((x) => REASON_TEXT[x] ?? x).join('; ')}.`,
       action_url: '/sales/storefront?tab=approval',
     }).catch(() => undefined);
   }
@@ -96,16 +98,17 @@ export async function collectArAction(invoiceId: string, payments: PaymentInput[
   return r;
 }
 
+export type ReturnCondition = 'back_to_stock' | 'damaged' | 'wrong_item';
 export async function saleForReturnAction(saleNumber: string) {
   await signedIn();
-  return rpc<{ id: string; sale_number: string; sale_date: string; customer: string; total: number; ar_balance: number;
-    lines: { sale_item_id: string; description: string; unit: string | null; item_type: string; sold: number; unit_price: number; returned: number }[] }>(
+  return rpc<{ id: string; sale_number: string; dr_number: string | null; si_number: string | null; sale_date: string; customer: string; total: number; ar_balance: number; order_dr: boolean;
+    lines: { sale_item_id: string; description: string; unit: string | null; item_type: string; sold: number; unit_price: number; returned: number; released: boolean }[] }>(
     'storefront_sale_for_return', { p_sale_number: saleNumber });
 }
 
-export async function returnAction(input: { sale_id: string; reason: string; lines: { sale_item_id: string; quantity: number }[]; refunds: PaymentInput[] }) {
+export async function returnAction(input: { sale_id: string; reason: string; lines: { sale_item_id: string; quantity: number; condition?: ReturnCondition }[]; refunds: PaymentInput[] }) {
   await signedIn();
-  const r = await rpc<{ return_number: string; total: number; credit_to_ar: number; refund: number }>('storefront_return', { p: input });
+  const r = await rpc<{ return_number: string; total: number; credit_to_ar: number; refund: number; damaged_cost: number }>('storefront_return', { p: input });
   refresh();
   return r;
 }
@@ -114,6 +117,7 @@ export async function closingPreviewAction(date: string) {
   await signedIn();
   return rpc<{ by_method: Record<string, number>; expected_cash: number; sales_count: number; sales_total: number; charged_to_ar: number; returns_total: number;
     ar_collected: number; already_closed: boolean; awaiting_approval: number; float_total: number; cash_out_total: number; vat_total: number;
+    checks: { number: string; bank: string; date: string; amount: number; pdc: boolean; payment: string }[];
     cash_movements: { number: string; date: string; kind: 'float' | 'cash_out'; category: string | null; amount: number; note: string | null }[] }>('storefront_closing_preview', { p_date: date });
 }
 
@@ -189,4 +193,62 @@ export async function setVatRegisteredAction(registered: boolean) {
   await signedIn();
   await rpc('storefront_set_vat_registered', { p_registered: registered });
   refresh();
+}
+
+// ---------------------------------------------------------------------------
+// Build 74 (migration 20261126): cancellation of a completed sale (SF-17),
+// customer checks (SF-27), DRs from sales orders and the Warehouse release (SF-01).
+
+export async function requestCancelAction(saleId: string, reason: string) {
+  const p = await signedIn();
+  await rpc('storefront_request_cancel', { p_sale: saleId, p_reason: reason });
+  await notifyWorkflowRole(p.user.business_id, 'sales', 'approver', {
+    entity_table: 'storefront_sales', entity_id: saleId,
+    title: 'Sale cancellation to approve',
+    message: `A completed counter sale is to be cancelled: ${reason}`,
+    action_url: '/sales/storefront?tab=approval',
+  }).catch(() => undefined);
+  refresh();
+}
+export async function decideCancelAction(saleId: string, approve: boolean, note?: string) {
+  await signedIn();
+  const r = await rpc<{ status: string; return_number?: string; refund?: number; credit_to_ar?: number }>('storefront_decide_cancel', { p_sale: saleId, p_approve: approve, p_note: note ?? null });
+  refresh();
+  return r;
+}
+
+export async function checkAction(checkId: string, action: 'deposit' | 'clear' | 'bounce', input: Record<string, string | null | undefined> = {}) {
+  await signedIn();
+  const r = await rpc<{ status: string; invoice_number: string | null }>('storefront_check_action', { p_check: checkId, p_action: action, p: input });
+  refresh();
+  return r;
+}
+
+export type OrderLine = { id: string; description: string; unit: string | null; ordered: number; unit_price: number; fulfilment: string; catalog_item_id: string | null;
+  delivered: number; released: number; received: number | null; on_hand: number | null };
+export type OrderDr = { sale_id: string; sale_number: string; dr_number: string; si_number: string | null; sale_date: string; total: number; release_status: string | null;
+  released_at: string | null; invoice_number: string | null; invoice_status: string | null; balance_due: number | null; due_date: string | null };
+export type StoreOrder = { id: string; order_number: string; order_date: string; status: string; quotation_number: string | null; customer_id: string; customer: string;
+  client_po: string | null; payment_terms: string | null; vat_applied: boolean; total: number; delivery_address: string | null; requested_delivery_date: string | null;
+  pr_number: string | null; po_numbers: string[]; lines: OrderLine[]; drs: OrderDr[] };
+
+export async function orderDrAction(input: { order_id: string; lines: { sales_order_item_id: string; quantity: number }[]; payments: PaymentInput[]; si_number?: string; notes?: string }) {
+  const p = await signedIn();
+  const r = await rpc<{ id: string; sale_number: string; dr_number: string; total: number; balance: number }>('storefront_order_dr', { p: input });
+  await notifyWorkflowRole(p.user.business_id, 'logistics', 'preparer', {
+    entity_table: 'storefront_sales', entity_id: r.id,
+    title: `DR to release: ${r.dr_number}`,
+    message: `DR ${r.dr_number} was issued from a sales order; confirm the physical release of the items.`,
+    action_url: '/logistics/warehouse-delivery',
+  }).catch(() => undefined);
+  refresh();
+  return r;
+}
+
+export async function releaseDrAction(saleId: string, locationId?: string | null) {
+  await signedIn();
+  const r = await rpc<{ dr_number: string; order_complete: boolean }>('storefront_release_dr', { p_sale: saleId, p_location: locationId ?? null });
+  refresh();
+  revalidatePath('/logistics/warehouse-delivery');
+  return r;
 }

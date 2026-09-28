@@ -653,8 +653,10 @@ function QuotationForm({
         <Field l="Discount">
           <input className="input" name="discount_amount" type="number" step="0.01" defaultValue="0" />
         </Field>
-        <Field l="Tax">
-          <input className="input" name="tax_amount" type="number" step="0.01" defaultValue="0" />
+        <Field l="VAT (SF-03d)">
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" name="vat_applied" value="1" /> With VAT — prices include 12% VAT (the sales order follows)
+          </label>
         </Field>
         <Field l="Other charges">
           <input className="input" name="other_charges" type="number" step="0.01" defaultValue="0" />

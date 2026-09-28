@@ -31,6 +31,23 @@ async function requireSuperAdmin() {
 }
 
 const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
+const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+const CONTACT_LIMITS = { address: 300, phone: 80, email: 120 } as const;
+
+// SF-08 — address / phone / email (businesses columns, migration 20261125c).
+// Same rules as the DB check constraints so the admin gets a clear message.
+function readContact(formData: FormData) {
+  const out: { address?: string | null; phone?: string | null; email?: string | null } = {};
+  for (const key of Object.keys(CONTACT_LIMITS) as (keyof typeof CONTACT_LIMITS)[]) {
+    if (!formData.has(key)) continue;
+    const raw = String(formData.get(key) ?? '');
+    const v = (key === 'address' ? raw.replace(/\r\n/g, '\n').split('\n').map((l) => l.trim()).filter(Boolean).join('\n') : raw.trim());
+    if (v.length > CONTACT_LIMITS[key]) throw appError(`${key[0].toUpperCase()}${key.slice(1)} must be ${CONTACT_LIMITS[key]} characters or fewer.`);
+    if (key === 'email' && v && !EMAIL.test(v)) throw appError('Email must be a valid address, e.g. sales@store.ph.');
+    out[key] = v || null;
+  }
+  return out;
+}
 const LOGO_BUCKET = 'business-logos';
 const LOGO_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml'];
 
@@ -55,6 +72,9 @@ export async function updateBusinessBrandingAction(formData: FormData) {
     if (file.size > 2 * 1024 * 1024) throw appError('Logo must be 2 MB or smaller.');
     if (file.type && !LOGO_TYPES.includes(file.type)) throw appError('Logo must be PNG, JPG, WebP or SVG.');
   }
+
+  // SF-08 — validated before any logo upload so a bad value never orphans a file.
+  const contact = readContact(formData);
 
   const db = createClient();
   const { data: current, error: ce } = await db.from('businesses').select('branding').eq('id', businessId).single();
@@ -90,7 +110,11 @@ export async function updateBusinessBrandingAction(formData: FormData) {
     branding.logo_path = uploadedPath;
   }
 
-  const { error } = await db.from('businesses').update({ branding }).eq('id', businessId);
+  // SF-08 — store contact details printed on documents (DR, quotation).
+  // Only fields present in the form are changed; blank clears the value.
+  const patch: Record<string, any> = { branding, ...contact };
+
+  const { error } = await db.from('businesses').update(patch).eq('id', businessId);
   if (error) {
     if (uploadedPath) await admin.storage.from(LOGO_BUCKET).remove([uploadedPath]);
     throw appError(error.message);

@@ -15,7 +15,7 @@ export default async function BusinessesPage() {
   const db = createClient();
   const { data, error } = await db
     .from('businesses')
-    .select('id,code,legal_name,trade_name,branding')
+    .select('id,code,legal_name,trade_name,branding,address,phone,email')
     .order('trade_name');
   if (error) throw new Error(error.message);
 

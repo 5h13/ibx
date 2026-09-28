@@ -38,6 +38,7 @@ const NAV_GROUPS: NavGroup[] = [
       { label: 'Supplier Quotes', href: '/finance/procurement/supplier-quotes' },
       { label: 'Accounts Payable', href: '/finance/accounts-payable' },
       { label: 'Accounts Receivable', href: '/finance/accounts-receivable' },
+      { label: 'Storefront (view)', href: '/sales/storefront' },
       { label: 'Payroll', href: '/finance/payroll' },
       { label: 'Bank / Cash & Reconciliation', href: '/finance/bank-cash' },
       { label: 'Budgets & Forecasting', href: '/finance/budgets' },

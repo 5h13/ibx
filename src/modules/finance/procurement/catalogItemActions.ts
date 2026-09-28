@@ -174,6 +174,8 @@ function parseCsv(text: string) {
   return rows.filter((r) => r.some(Boolean));
 }
 
+const normKey = (v: unknown) => String(v ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+const keyOf = (x: { item_name: string; category: string; unit: string }) => `${normKey(x.item_name)}|${normKey(x.category)}|${normKey(x.unit)}`;
 const chunk = <T,>(xs: T[], n: number) => { const out: T[][] = []; for (let i = 0; i < xs.length; i += n) out.push(xs.slice(i, i + n)); return out; };
 
 /** Excel on Windows saves "CSV" as Windows-1252 (e.g. the ° sign); "CSV UTF-8" as UTF-8. Accept both. */
@@ -182,17 +184,39 @@ function decodeCsv(buf: ArrayBuffer) {
   catch { return new TextDecoder('windows-1252').decode(buf); }
 }
 
+/** CAT-33 / SF-06 — businesses the importer may apply the file's prices to.
+ *  Super Admin: every active business; everybody else: their own business only
+ *  (the database function catalog_import_pricing enforces the same rule). */
+export async function getCatalogImportTargetsAction() {
+  const p = await financeUser();
+  const isSuper = p.user.role === 'super_admin';
+  const { data, error } = await createClient().from('businesses').select('id,code,legal_name,trade_name').eq('is_active', true).order('code');
+  if (error) throw appError(error.message);
+  const businesses = ((data ?? []) as any[])
+    .filter((b) => isSuper || b.id === p.user.business_id)
+    .map((b) => ({ id: b.id as string, code: b.code as string, name: (b.trade_name || b.legal_name) as string }));
+  const defaultIds = p.user.business_id && businesses.some((b) => b.id === p.user.business_id) ? [p.user.business_id] : [];
+  return { businesses, defaultIds, canChooseOthers: isSuper };
+}
+
 /**
- * Build 60a — catalog CSV import, sized for a full catalog (thousands of rows):
+ * Build 60a / 66 — catalog CSV import, sized for a full catalog (thousands of rows):
  *  - new items are created; items that already exist (same name, category,
- *    unit) are not changed, but their %Mark up IS set for the importing
- *    business — so each business can import the same file for its own prices;
+ *    unit) keep their details, EXCEPT their Supplier Cost, which is updated
+ *    when the file has a different non-zero cost (CAT-33; recorded in the
+ *    item cost history as "CSV import");
+ *  - prices (category add-ons, item markups) are applied to every business
+ *    ticked on the import screen (SF-06; default = the current business;
+ *    only the Super Admin may tick other businesses — enforced by
+ *    catalog_import_pricing in the database);
  *  - STORE PRICE, when given, is kept exactly: the markup is derived from it
- *    (STORE PRICE ÷ Acquisition Cost − 1). Otherwise %Mark up is used;
- *  - Add on: a category with no add-on yet for this business gets the most
+ *    per business (STORE PRICE ÷ that business's Acquisition Cost − 1).
+ *    Otherwise %Mark up is used;
+ *  - Add on: a category with no add-on yet for a business gets the most
  *    common Add on value in the file; items whose Add on differs are listed;
  *  - rows identical in every column are imported once.
- * Validation is all-or-nothing; writes are batched.
+ * Validation is all-or-nothing (a dry run of the pricing runs before anything
+ * is written); writes are batched.
  */
 export async function importCatalogCsvAction(fd: FormData) {
   const p = await financeUser(); const db = createClient();
@@ -206,7 +230,10 @@ export async function importCatalogCsvAction(fd: FormData) {
     if (!headers.includes(h)) throw appError(`Missing required column: ${label}.`);
   }
   const col = (r: string[], h: string) => { const i = headers.indexOf(h); return i >= 0 ? String(r[i] ?? '').trim().replace(/\s+/g, ' ') : ''; };
-  const businessId = p.user.business_id;
+  // businesses to apply the prices to (checkboxes); older forms without the
+  // field fall back to the current business
+  const picked = fd.getAll('target_business_ids').map((v) => String(v).trim()).filter(Boolean);
+  const targets = [...new Set(fd.has('target_business_ids_sent') ? picked : (p.user.business_id ? [p.user.business_id] : []))];
 
   const [{ data: cats }, { data: units }, { data: sups }] = await Promise.all([
     db.from('finance_catalog_categories').select('id,name').eq('active', true),
@@ -218,14 +245,6 @@ export async function importCatalogCsvAction(fd: FormData) {
   const supMap = new Map<string, any>();
   for (const s of sups || []) for (const k of [s.supplier_code, s.legal_name, s.trade_name]) if (k) supMap.set(String(k).toLowerCase().trim(), s);
   const defaultUnit = unitMap.get('unit') ?? unitMap.get('pc') ?? unitMap.get('pcs') ?? null;
-
-  // existing add-ons for this business
-  const addonByCat = new Map<string, number>();
-  if (businessId) {
-    const { data: ex, error } = await db.from('finance_catalog_category_pricing').select('category_id,addon_percent').eq('business_id', businessId).eq('active', true);
-    if (error) throw appError(error.message);
-    for (const x of ex || []) addonByCat.set(x.category_id, Number(x.addon_percent) || 0);
-  }
 
   type Row = { line: number; item_name: string; category: string; category_id: string; unit: string; generic_item: string | null; brand: string | null; description: string | null; default_supplier_id: string | null; standard_cost: number; supplier_item_code: string | null; addon: number | null; store: number | null; markup: number | null };
   const errors: string[] = []; const prepared: Row[] = []; const seen = new Map<string, string>();
@@ -260,36 +279,25 @@ export async function importCatalogCsvAction(fd: FormData) {
     prepared.push({ line: n + 1, item_name: name, category: cat.name, category_id: cat.id, unit, generic_item: col(r, 'generic_item') || null, brand: col(r, 'brand') || null, description: col(r, 'description') || null, default_supplier_id: supplier?.id ?? null, standard_cost: cost ?? 0, supplier_item_code: col(r, 'supplier_item_code') || null, addon, store, markup });
   }
   const hasPricing = prepared.some((x) => x.store !== null || x.markup !== null);
-  if (hasPricing && !businessId) errors.push('The file has STORE PRICE / %Mark up values: select a business in "Acting as" first — prices are set per business.');
+  const hasAddons = prepared.some((x) => x.addon !== null);
+  if (hasPricing && !targets.length) errors.push('The file has STORE PRICE / %Mark up values: tick at least one business to apply the prices to (select a business in "Acting as" to have it ticked by default) — prices are set per business.');
 
-  // Add on: categories with no add-on for this business take the file's most common value
-  const newAddons = new Map<string, { category: string; addon: number }>();
-  if (businessId) {
-    const counts = new Map<string, Map<number, number>>();
-    for (const x of prepared) if (x.addon !== null) { const m = counts.get(x.category_id) ?? new Map(); m.set(x.addon, (m.get(x.addon) ?? 0) + 1); counts.set(x.category_id, m); }
-    for (const [catId, m] of counts) if (!addonByCat.has(catId)) {
-      const top = [...m.entries()].sort((a, b) => b[1] - a[1])[0][0];
-      addonByCat.set(catId, top); newAddons.set(catId, { category: prepared.find((x) => x.category_id === catId)!.category, addon: top });
-    }
-  }
-  const addonExceptions: string[] = [];
-  for (const x of prepared) {
-    const catAddon = addonByCat.get(x.category_id) ?? 0;
-    if (x.addon !== null && businessId && x.addon !== catAddon) addonExceptions.push(`row ${x.line} ${x.item_name} (${x.addon}% vs category ${catAddon}%)`);
-    if (x.store !== null) {
-      const acq = x.standard_cost * (1 + catAddon / 100);
-      const m = (x.store / acq - 1) * 100;
-      if (m < 0) errors.push(`Row ${x.line}: STORE PRICE ₱${x.store} is below the Acquisition Cost ₱${acq.toFixed(2)}.`);
-      else if (m > 1000) errors.push(`Row ${x.line}: STORE PRICE is more than 11× the Acquisition Cost (markup above 1000%).`);
-      else x.markup = Math.round(m * 1e8) / 1e8;
-    }
+  // prices: validated per business by the database (dry run, nothing written).
+  // This also refuses a business the importer may not set prices for.
+  const doPricing = targets.length > 0 && (hasPricing || hasAddons);
+  const pricingRows = (ids: Map<string, string> | null) => prepared.map((x) => ({
+    line: x.line, item_id: ids ? ids.get(keyOf(x)) ?? null : null, item_name: x.item_name, category_id: x.category_id,
+    cost: x.standard_cost, addon: x.addon, store: x.store, markup: x.markup,
+  }));
+  if (doPricing && !errors.length) {
+    const { data, error } = await db.rpc('catalog_import_pricing', { p_business_ids: targets, p_rows: pricingRows(null), p_apply: false });
+    if (error) throw appError(error.message);
+    errors.push(...(((data as any)?.errors ?? []) as string[]));
   }
   if (errors.length) throw appError(`Catalog import failed — nothing was imported (${errors.length} issue${errors.length === 1 ? '' : 's'}). ${errors.slice(0, 10).join(' ')}${errors.length > 10 ? ` … and ${errors.length - 10} more.` : ''}`);
   if (!prepared.length) throw appError('The file has no item rows.');
 
   // existing items, matched by the database's identity rule (catalog_norm)
-  const norm = (v: unknown) => String(v ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
-  const keyOf = (x: { item_name: string; category: string; unit: string }) => `${norm(x.item_name)}|${norm(x.category)}|${norm(x.unit)}`;
   const idByKey = new Map<string, string>();
   const lookup = async (rows: { item_name: string; category: string; unit: string }[]) => {
     for (const part of chunk(rows.map((x) => ({ item_name: x.item_name, category: x.category, unit: x.unit })), 500)) {
@@ -299,6 +307,7 @@ export async function importCatalogCsvAction(fd: FormData) {
     }
   };
   await lookup(prepared);
+  const existing = prepared.filter((x) => idByKey.has(keyOf(x)));
   const fresh = prepared.filter((x) => !idByKey.has(keyOf(x)));
 
   const auditRows: any[] = [];
@@ -317,6 +326,16 @@ export async function importCatalogCsvAction(fd: FormData) {
   const missing = fresh.filter((x) => !idByKey.has(keyOf(x)));
   if (missing.length) await lookup(missing);
 
+  // CAT-33: Supplier Cost of items that already existed, when the file has a
+  // different non-zero cost (cost history source "CSV import")
+  let costsUpdated = 0;
+  const costRows = existing.filter((x) => x.standard_cost > 0).map((x) => ({ id: idByKey.get(keyOf(x))!, cost: x.standard_cost }));
+  for (const part of chunk(costRows, 500)) {
+    const { data, error } = await db.rpc('catalog_import_update_costs', { p_rows: part });
+    if (error) throw appError(`${error.message} (items were saved; re-run the same file to finish the costs)`);
+    costsUpdated += ((data ?? []) as any[]).length;
+  }
+
   // supplier item codes
   const supRows = prepared.filter((x) => x.default_supplier_id && x.supplier_item_code && idByKey.get(keyOf(x)))
     .map((x) => ({ item_id: idByKey.get(keyOf(x))!, supplier_id: x.default_supplier_id!, supplier_item_code: x.supplier_item_code, active: true, updated_at: new Date().toISOString() }));
@@ -325,28 +344,31 @@ export async function importCatalogCsvAction(fd: FormData) {
     if (error) throw appError(error.message);
   }
 
-  // category add-ons, then item markups, for this business
-  if (businessId && newAddons.size) {
-    const { error } = await db.from('finance_catalog_category_pricing').upsert([...newAddons.keys()].map((catId) => ({ business_id: businessId, category_id: catId, addon_percent: newAddons.get(catId)!.addon, active: true, updated_at: new Date().toISOString(), created_by: p.user.id })), { onConflict: 'business_id,category_id', ignoreDuplicates: true });
-    if (error) throw appError(error.message);
-  }
-  const markupRows = businessId ? prepared.filter((x) => x.markup !== null && idByKey.get(keyOf(x)))
-    .map((x) => ({ business_id: businessId, item_id: idByKey.get(keyOf(x))!, markup_percent: x.markup, active: true, updated_at: new Date().toISOString(), created_by: p.user.id })) : [];
-  for (const part of chunk(markupRows, 500)) {
-    const { error } = await db.from('finance_catalog_item_pricing').upsert(part, { onConflict: 'business_id,item_id' });
+  // category add-ons, then item markups, for every chosen business (one
+  // all-or-nothing database call)
+  type BizResult = { business_id: string; code: string; name: string; markups: number; new_addons: { category: string; addon: number }[]; addon_exceptions: string[] };
+  let priced: BizResult[] = [];
+  if (doPricing) {
+    const { data, error } = await db.rpc('catalog_import_pricing', { p_business_ids: targets, p_rows: pricingRows(idByKey), p_apply: true });
     if (error) throw appError(`${error.message} (items were saved; re-run the same file to finish the prices)`);
+    priced = (((data as any)?.businesses ?? []) as BizResult[]);
   }
-  auditRows.push({ actor_id: p.user.id, entity_table: 'finance_procurement_items', entity_id: p.user.id, action: 'catalog_imported', detail: { file: file.name, rows: prepared.length, created: insertedCount, existing: prepared.length - insertedCount, markups: markupRows.length, business_id: businessId, new_addons: [...newAddons.values()] } });
+  const markupCount = priced.reduce((s, b) => s + Number(b.markups || 0), 0);
+  auditRows.push({ actor_id: p.user.id, entity_table: 'finance_procurement_items', entity_id: p.user.id, action: 'catalog_imported', detail: { file: file.name, rows: prepared.length, created: insertedCount, existing: prepared.length - insertedCount, costs_updated: costsUpdated, markups: markupCount, business_ids: doPricing ? targets : [], new_addons: priced.map((b) => ({ business: b.code, addons: b.new_addons })) } });
   for (const part of chunk(auditRows, 500)) {
     const { error } = await createClient().from('audit_log').insert(part);
     if (error) throw appError(error.message);
   }
   revalidatePath('/finance/procurement');
 
-  const msg = [`Imported ${insertedCount} new catalog item(s); ${prepared.length - insertedCount} already existed and were left unchanged.`];
-  if (markupRows.length) msg.push(`Prices set for ${markupRows.length} item(s) for this business.`);
+  const multi = priced.length > 1;
+  const msg = [`Imported ${insertedCount} new catalog item(s); ${prepared.length - insertedCount} already existed${costsUpdated ? ` (Supplier Cost updated for ${costsUpdated})` : ' and were left unchanged'}.`];
+  for (const b of priced) {
+    const who = multi ? `${b.name}: ` : '';
+    if (b.markups) msg.push(`${who}prices set for ${b.markups} item(s)${multi ? '' : ' for this business'}.`);
+    if (b.new_addons.length) msg.push(`${who}category add-ons set: ${b.new_addons.map((a) => `${a.category} ${a.addon}%`).join(', ')}.`);
+    if (b.addon_exceptions.length) msg.push(`${who}${b.addon_exceptions.length} item(s) have an Add on different from their category (their STORE PRICE is kept exactly; only the Add on / Acquisition Cost shown follow the category): ${b.addon_exceptions.slice(0, 5).join('; ')}${b.addon_exceptions.length > 5 ? ' …' : ''}.`);
+  }
   if (identicalDuplicates) msg.push(`${identicalDuplicates} repeated row(s) imported once.`);
-  if (newAddons.size) msg.push(`Category add-ons set: ${[...newAddons.values()].map((a) => `${a.category} ${a.addon}%`).join(', ')}.`);
-  if (addonExceptions.length) msg.push(`${addonExceptions.length} item(s) have an Add on different from their category (their STORE PRICE is kept exactly; only the Add on / Acquisition Cost shown follow the category): ${addonExceptions.slice(0, 5).join('; ')}${addonExceptions.length > 5 ? ' …' : ''}.`);
-  return { imported: insertedCount, skipped: prepared.length - insertedCount, message: msg.join(' ') };
+  return { imported: insertedCount, skipped: prepared.length - insertedCount, costsUpdated, message: msg.join(' ') };
 }

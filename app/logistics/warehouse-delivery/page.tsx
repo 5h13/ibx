@@ -6,6 +6,7 @@ import {createAdminClient} from '@/core/auth/supabaseAdmin';
 import {selectByScopedIds} from '@/core/auth/businessScope';
 import {AuthedShell} from '@/core/layout/AuthedShell';
 import {WarehouseDeliveryManagement} from '@/modules/logistics/warehouse-delivery/WarehouseDeliveryManagement';
+import {DrReleasePanel} from '@/modules/sales/storefront/DrReleasePanel';
 
 export default async function Page(){
  const profile=await getSessionProfile(); if(!profile?.user.is_active) redirect('/login');
@@ -39,5 +40,7 @@ export default async function Page(){
  const byId=new Map(people.map((p:any)=>[p.id,p]));
  const drivers=(driverRows??[]).map((d:any)=>({...d,employee:byId.get(d.employee_id)??null}));
  const dispatches=(dispatchRows??[]).map((d:any)=>({...d,driver:d.driver?{...d.driver,employee:byId.get(d.driver.employee_id)??null}:null}));
- return <AuthedShell profile={profile}><WarehouseDeliveryManagement profile={profile} locations={locations??[]} items={items??[]} customers={customers??[]} orders={orders??[]} dispatches={dispatches} vehicles={vehicles??[]} drivers={drivers}/></AuthedShell>
+ /* Build 74 (SF-01): Storefront DRs from sales orders waiting for the physical release */
+ const {data:drs}=await db.rpc('storefront_drs_awaiting_release');
+ return <AuthedShell profile={profile}><div className="mb-6"><DrReleasePanel drs={(drs??[]) as any} locations={locations??[]}/></div><WarehouseDeliveryManagement profile={profile} locations={locations??[]} items={items??[]} customers={customers??[]} orders={orders??[]} dispatches={dispatches} vehicles={vehicles??[]} drivers={drivers}/></AuthedShell>
 }

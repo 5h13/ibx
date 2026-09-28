@@ -2,6 +2,7 @@
 import { errorText } from '@/core/errors/appError';
 
 // U033 — Business Branding admin UI. Global Super Admin only (see actions.ts).
+// SF-08: store address / phone / email for printed documents.
 // Build 62: logo upload. Build 63: store theme (whole-app colours, light or
 // dark), tagline, presets and a live preview.
 
@@ -11,7 +12,7 @@ import { updateBusinessBrandingAction } from './actions';
 import { THEME_FIELDS, THEME_PRESETS, parseTheme, headerBackground, onAccentHex, type BrandTheme } from '@/core/theme/brandTheme';
 
 type Branding = { primary_color?: string; logo_url?: string; tagline?: string; theme?: unknown };
-type Business = { id: string; code: string; legal_name: string; trade_name: string | null; branding: Branding | null };
+type Business = { id: string; code: string; legal_name: string; trade_name: string | null; branding: Branding | null; address?: string | null; phone?: string | null; email?: string | null };
 
 const DEFAULT_THEME: BrandTheme = THEME_PRESETS.sky.theme;
 
@@ -84,13 +85,13 @@ export default function BusinessBrandingManagement({ businesses }: { businesses:
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold">Business Branding</h1>
-        <p className="text-sm text-slate-500">Logo, tagline and colour theme for each store. The theme colours the whole app for everyone in that business (and for the Super Admin while acting as it).</p>
+        <p className="text-sm text-slate-500">Logo, tagline, contact details (printed on DRs and quotations) and colour theme for each store. The theme colours the whole app for everyone in that business (and for the Super Admin while acting as it).</p>
       </div>
 
       <div className="overflow-x-auto rounded bg-white shadow-sm">
         <table className="min-w-full text-sm">
           <thead className="bg-slate-50">
-            <tr>{['Business', 'Logo', 'Theme', 'Tagline', 'Actions'].map((h) => <th key={h} className="px-4 py-3 text-left font-medium">{h}</th>)}</tr>
+            <tr>{['Business', 'Logo', 'Theme', 'Tagline', 'Contact', 'Actions'].map((h) => <th key={h} className="px-4 py-3 text-left font-medium">{h}</th>)}</tr>
           </thead>
           <tbody>
             {businesses.map((b) => {
@@ -113,6 +114,14 @@ export default function BusinessBrandingManagement({ businesses }: { businesses:
                     ) : <span className="text-slate-400">Default</span>}
                   </td>
                   <td className="px-4 py-3 text-slate-600">{b.branding?.tagline || <span className="text-slate-400">—</span>}</td>
+                  <td className="px-4 py-3 text-xs text-slate-600">
+                    {b.address || b.phone || b.email ? (
+                      <div className="max-w-xs space-y-0.5">
+                        {b.address && <div className="whitespace-pre-line">{b.address}</div>}
+                        {[b.phone, b.email].filter(Boolean).join(' · ') && <div>{[b.phone, b.email].filter(Boolean).join(' · ')}</div>}
+                      </div>
+                    ) : <span className="text-slate-400">Not set</span>}
+                  </td>
                   <td className="px-4 py-3"><button onClick={() => openEditor(b)} className="rounded border px-2 py-1 text-xs">Edit</button></td>
                 </tr>
               );
@@ -150,6 +159,21 @@ export default function BusinessBrandingManagement({ businesses }: { businesses:
                 <label className="block text-sm">Tagline <span className="text-xs text-slate-500">(under the store name, e.g. &quot;Aircon &amp; Refrigeration Parts Trading&quot;)</span>
                   <input name="tagline" value={tagline} onChange={(e) => setTagline(e.target.value)} maxLength={60} className="input mt-1" />
                 </label>
+
+                <fieldset className="space-y-2 rounded border p-3">
+                  <legend className="px-1 text-sm font-medium">Contact details <span className="text-xs font-normal text-slate-500">(printed on DRs and quotations)</span></legend>
+                  <label className="block text-sm">Address
+                    <textarea name="address" defaultValue={editing.address ?? ''} maxLength={300} rows={2} className="input mt-1" placeholder="Street, barangay, city, province" />
+                  </label>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <label className="block text-sm">Phone
+                      <input name="phone" defaultValue={editing.phone ?? ''} maxLength={80} className="input mt-1" placeholder="e.g. (054) 123 4567 / 0917 123 4567" />
+                    </label>
+                    <label className="block text-sm">Email
+                      <input name="email" type="email" defaultValue={editing.email ?? ''} maxLength={120} className="input mt-1" placeholder="sales@store.ph" />
+                    </label>
+                  </div>
+                </fieldset>
 
                 <label className="flex items-center gap-2 text-sm font-medium">
                   <input type="checkbox" checked={themeOn} onChange={(e) => setThemeOn(e.target.checked)} /> Use a colour theme for this store

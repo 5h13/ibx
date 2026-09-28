@@ -39,7 +39,7 @@ export function ItemCostHistory({ itemId }: { itemId: string }) {
                   <td className="p-2 whitespace-nowrap">{new Date(r.set_at).toLocaleDateString()}</td>
                   <td className="p-2 text-right">{peso(r.previous_cost)}</td>
                   <td className="p-2 text-right font-medium">{peso(r.new_cost)}</td>
-                  <td className="p-2">{r.source === 'supplier_quote' ? 'Supplier quote' : 'Manual edit'}</td>
+                  <td className="p-2">{r.source === 'supplier_quote' ? 'Supplier quote' : r.source === 'csv_import' ? 'CSV import' : 'Manual edit'}</td>
                   <td className="p-2">{r.supplier?.legal_name ?? '—'}</td>
                   <td className="p-2">{r.business?.code ?? '—'}</td>
                 </tr>

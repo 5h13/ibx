@@ -14,7 +14,7 @@ export const useStoreAccounts = () => useContext(StoreAccountsContext);
 export function AccountPicker({ method, value, onChange, refund = false }: { method: PaymentInput['method']; value?: string; onChange: (id: string) => void; refund?: boolean }) {
   const list = useStoreAccounts().filter((a) => a.method === method);
   if (list.length === 0 && method !== 'cash') {
-    return <div className="col-span-12 text-xs text-amber-700">No {method === 'bank_transfer' ? 'bank' : method === 'card' ? 'card' : method === 'gcash' ? 'GCash' : 'Maya'} account is set up for this store — a Business Admin adds it in Store settings.</div>;
+    return <div className="col-span-12 text-xs text-amber-700">No {method === 'bank_transfer' ? 'bank' : method === 'card' ? 'card' : method === 'gcash' ? 'GCash' : method === 'check' ? 'checks-on-hand' : 'Maya'} account is set up for this store — a Business Admin adds it in Store settings.</div>;
   }
   if (list.length <= 1) return null;
   const label = method === 'gcash' ? 'GCash number' : method === 'maya' ? 'Maya number' : method === 'bank_transfer' ? 'Bank account' : 'Account';
