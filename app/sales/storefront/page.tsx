@@ -53,7 +53,7 @@ export default async function StorefrontPage({ searchParams }: { searchParams?: 
   const dayEnd = new Date(new Date(`${date}T00:00:00+08:00`).getTime() + 86400000).toISOString();
   const [{ data: dayPayments, error: dpe }, { data: returns, error: re }, { data: closings, error: cle }, { data: checks, error: cke }] = await Promise.all([
     db.from('storefront_payments').select('*').gte('received_at', dayStart).lt('received_at', dayEnd).order('received_at', { ascending: false }).limit(2000),
-    db.from('storefront_returns').select('*,sale:storefront_sales(sale_number,customer:finance_customers(legal_name))').eq('return_date', date).order('created_at', { ascending: false }).limit(500),
+    db.from('storefront_returns').select('*,sale:storefront_sales!storefront_returns_sale_id_fkey(sale_number,customer:finance_customers(legal_name))').eq('return_date', date).order('created_at', { ascending: false }).limit(500),
     db.from('storefront_closings').select('*').order('closing_date', { ascending: false }).order('submitted_at', { ascending: false }).limit(60),
     db.from('storefront_checks').select('*,customer:finance_customers(legal_name),payment:storefront_payments(payment_number)').order('check_date', { ascending: true }).limit(300),
   ]);

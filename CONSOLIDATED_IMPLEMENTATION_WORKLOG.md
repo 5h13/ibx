@@ -1066,3 +1066,4 @@ User request: a Business Admin (and the Super Admin) must be able to shift into 
 
 ## Build 74a — Supplier Quotes page fix (2026-09-28)
 - Supplier Quotes (Finance → Procurement → Supplier Quotes) failed with "Application error": the page embedded the item without naming the link, and since Build 56 items also link back to the quote log (cost_source_quote_id), so the lookup was ambiguous. The item, supplier and business links are now named (app/finance/procurement/supplier-quotes/page.tsx). No database change. Typecheck + build pass.
+- Build 74b (2026-09-28): Storefront page "Application error" after Build 74 — Build 74 added a second link between sales and returns (storefront_sales.cancel_return_id), which made the returns list's plain `sale:storefront_sales(...)` lookup ambiguous. The link is now named (`storefront_returns_sale_id_fkey`). No database change.
