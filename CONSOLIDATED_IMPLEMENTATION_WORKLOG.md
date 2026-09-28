@@ -1026,3 +1026,6 @@ User request: a Business Admin (and the Super Admin) must be able to shift into 
 
 ## Build 71a — fix: printable DR returned 404 (2026-09-28)
 - Cause: Build 71 added a second link from storefront_sales to businesses (the SI booklet), so the DR page's "business" lookup became ambiguous and returned nothing → 404. The DR page now names the link explicitly (storefront_sales_business_id_fkey). Checked every other lookup across tables that gained a second link in Builds 69–71: none affected.
+
+## Build 71b — login page rebrand (2026-09-28)
+- Login page: 5H13 logo (public/brand/5h13-logo.jpg, served without sign-in), "5H13 Business Solutions" / "Business Management System"; the test-account list is removed and replaced by a welcome line; email placeholder no longer shows a test account. Includes the 71a DR fix.

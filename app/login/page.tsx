@@ -32,9 +32,13 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-100">
       <form onSubmit={handleSubmit} className="bg-white shadow-md rounded-lg p-8 w-full max-w-sm space-y-4">
-        <div>
-          <h1 className="text-lg font-bold text-slate-900">ISHABELLA AIRCON &amp; REFRIGERATION</h1>
-          <p className="text-xs text-slate-500">Commission &amp; Sales Management System</p>
+        <div className="flex items-center gap-3">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/brand/5h13-logo.jpg" alt="5H13" className="h-14 w-14 rounded-xl object-cover" />
+          <div>
+            <h1 className="text-lg font-bold text-slate-900">5H13 Business Solutions</h1>
+            <p className="text-xs text-slate-500">Business Management System</p>
+          </div>
         </div>
 
         {error && <p className="text-sm text-red-600">{error}</p>}
@@ -47,7 +51,7 @@ export default function LoginPage() {
             onChange={(e) => setEmail(e.target.value)}
             required
             className="w-full border rounded px-3 py-2 text-sm"
-            placeholder="preparer.sales@ibx.test"
+            placeholder="you@company.com"
           />
         </div>
         <div>
@@ -68,9 +72,8 @@ export default function LoginPage() {
           {loading ? 'Signing in…' : 'Sign in'}
         </button>
 
-        <p className="text-xs text-slate-400 pt-2 border-t">
-          Test accounts (password shared across all): super.admin@ibx.test, preparer.sales@ibx.test,
-          reviewer.sales@ibx.test, approver.sales@ibx.test — see supabase/seed-users.mjs.
+        <p className="text-xs text-slate-500 pt-3 border-t text-center">
+          Welcome to 5H13 Business Solutions. Sign in with the account your administrator gave you.
         </p>
       </form>
     </div>
