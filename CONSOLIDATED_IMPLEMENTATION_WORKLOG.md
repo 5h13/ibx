@@ -1029,3 +1029,6 @@ User request: a Business Admin (and the Super Admin) must be able to shift into 
 
 ## Build 71b — login page rebrand (2026-09-28)
 - Login page: 5H13 logo (public/brand/5h13-logo.jpg, served without sign-in), "5H13 Business Solutions" / "Business Management System"; the test-account list is removed and replaced by a welcome line; email placeholder no longer shows a test account. Includes the 71a DR fix.
+
+## Build 71c — fix: Settings → Users crashed ("Cannot read properties of undefined (reading 'map')") (2026-09-28)
+- The Users page loaded each user's grants under the name `user_access`, while the screen reads `access`; the list crashed on the first user. The query now names it `access` (app/settings/users/page.tsx).
