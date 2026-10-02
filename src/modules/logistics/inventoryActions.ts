@@ -4,6 +4,7 @@ import {revalidatePath} from 'next/cache';
 import { createClient } from '@/core/auth/supabaseServer';
 import {getSessionProfile} from '@/core/auth/getSessionProfile';
 import { isAdminTier } from '@/core/auth/types';
+import { notifyWorkflowRole, notifyUsers } from '@/shared/notifications/service';
 function biz(p:{user:{business_id:string|null}}):{business_id?:string}{return p.user.business_id?{business_id:p.user.business_id}:{};}
 function req(fd:FormData,k:string){const v=String(fd.get(k)??'').trim();if(!v)throw appError(`${k.replaceAll('_',' ')} is required.`);return v}
 function opt(fd:FormData,k:string){const v=String(fd.get(k)??'').trim();return v||null}
@@ -37,15 +38,87 @@ export async function saveInventoryLocationSettingAction(fd:FormData){
  await audit(p.user.id,data.id,'logistics_inventory_location_settings','location_reorder_updated',{inventory_item_id:inventoryItemId,location_id:locationId,reorder_level:reorder});
  revalidatePath('/logistics/inventory')
 }
-export async function createReceiptAction(fd:FormData){const p=await logistics(),db=createClient();const purchaseOrderId=opt(fd,'purchase_order_id');const supplierId=opt(fd,'supplier_id');const locationId=req(fd,'location_id');const lines=JSON.parse(String(fd.get('lines')||'[]'));if(!Array.isArray(lines)||!lines.length)throw appError('At least one receipt line is required.');if(lines.some((l:any)=>!l.inventory_item_id||Number(l.quantity)<=0))throw appError('Every receipt line requires an active catalog-linked item and a positive quantity.');if(purchaseOrderId){const {data:po,error:poErr}=await db.from('purchase_orders').select('id,supplier_id,status,issuance_status').eq('id',purchaseOrderId).single();if(poErr||!po)throw appError('Selected purchase order was not found.');if(po.status!=='approved'||po.issuance_status!=='issued')throw appError('Only a purchase order that has been approved and issued to the supplier can be received.');if(supplierId&&supplierId!==po.supplier_id)throw appError('Supplier must match the selected purchase order.');const {data:poLines}=await db.from('purchase_order_items').select('item_id,quantity').eq('purchase_order_id',purchaseOrderId);const procurementIds=(poLines||[]).map((x:any)=>x.item_id).filter(Boolean);const {data:inventoryRows}=await db.from('logistics_inventory_items').select('id,procurement_item_id').in('procurement_item_id',procurementIds);const procurementByInventory=new Map((inventoryRows||[]).map((x:any)=>[x.id,x.procurement_item_id]));const {data:prior}=await db.from('logistics_receipt_items').select('inventory_item_id,quantity,receipt:logistics_receipts!inner(purchase_order_id,status)').eq('receipt.purchase_order_id',purchaseOrderId).eq('receipt.status','posted');for(const line of lines){const procurementId=procurementByInventory.get(line.inventory_item_id);const ordered=Number(poLines?.find((x:any)=>x.item_id===procurementId)?.quantity||0);const received=Number((prior||[]).filter((x:any)=>x.inventory_item_id===line.inventory_item_id).reduce((s:number,x:any)=>s+Number(x.quantity||0),0));if(!procurementId||ordered<=0)throw appError('Receipt line is not linked to an item on the selected purchase order.');if(Number(line.quantity)>ordered-received)throw appError('Receipt quantity exceeds the remaining ordered quantity.');}}const {data,error}=await db.from('logistics_receipts').insert({...biz(p),purchase_order_id:purchaseOrderId,supplier_id:supplierId,location_id:locationId,receipt_date:req(fd,'receipt_date'),delivery_reference:opt(fd,'delivery_reference'),received_by:p.user.id,notes:opt(fd,'notes')}).select('id').single();if(error||!data)throw appError(error?.message||'Unable to create receipt.');const {error:le}=await db.from('logistics_receipt_items').insert(lines.map((l:any)=>({...biz(p),receipt_id:data.id,inventory_item_id:l.inventory_item_id,description:l.description||null,quantity:Number(l.quantity),unit_cost:Number(l.unit_cost||0),lot_number:l.lot_number||null,expiry_date:l.expiry_date||null,notes:l.notes||null})));if(le){await db.from('logistics_receipts').delete().eq('id',data.id);throw appError(le.message);}await audit(p.user.id,data.id,'logistics_receipts','receipt_created',{purchase_order_id:purchaseOrderId});revalidatePath('/logistics/inventory')}
-async function transition(id:string,status:string,from:string,actorField:string,action:string){const p=await logistics(),db=createClient();const patch:any={status,updated_at:new Date().toISOString()};if(actorField){patch[actorField]=p.user.id;patch[actorField.replace('_by','_at')]=new Date().toISOString()}const {error}=await db.from('logistics_receipts').update(patch).eq('id',id).eq('status',from);if(error)throw appError(error.message);await audit(p.user.id,id,'logistics_receipts',action,{});revalidatePath('/logistics/inventory');revalidatePath('/approvals')}
+// LOG-10/13/39: receipt lines carry delivered (quantity) = accepted + damaged +
+// rejected. The database (logistics_receipt_item_guard) checks over-receipt
+// against the PO's outstanding quantity, takes unit cost from the PO line and
+// refuses a cost typed by a user who may not see cost; this action never sends
+// unit_cost for such a user. The DB's refusals (over-receipt with the
+// outstanding quantity, cost, split) are already worded for the user.
+const num=(v:unknown)=>{const n=Number(v??0);return Number.isFinite(n)?n:NaN};
+export async function createReceiptAction(fd:FormData){
+ const p=await logistics(),db=createClient();
+ const purchaseOrderId=opt(fd,'purchase_order_id');const supplierId=opt(fd,'supplier_id');const locationId=req(fd,'location_id');
+ const lines=JSON.parse(String(fd.get('lines')||'[]'));
+ if(!Array.isArray(lines)||!lines.length)throw appError('At least one receipt line is required.');
+ const clean=lines.map((l:any)=>{const delivered=num(l.quantity),damaged=num(l.damaged_qty||0),rejected=num(l.rejected_qty||0);const accepted=delivered-damaged-rejected;
+  if(!l.inventory_item_id||!(delivered>0))throw appError('Every receipt line requires an active catalog-linked item and a positive delivered quantity.');
+  if(!(damaged>=0)||!(rejected>=0)||accepted<0)throw appError('Damaged and rejected quantities must be zero or more and cannot exceed the delivered quantity.');
+  return {inventory_item_id:String(l.inventory_item_id),description:l.description||null,quantity:delivered,accepted_qty:accepted,damaged_qty:damaged,rejected_qty:rejected,unit_cost:num(l.unit_cost||0),lot_number:l.lot_number||null,expiry_date:l.expiry_date||null,notes:l.notes||null,over_receipt_approved:!!l.over_receipt_approved}});
+ if(purchaseOrderId){
+  const {data:po,error:poErr}=await db.from('purchase_orders').select('id,supplier_id,status,issuance_status').eq('id',purchaseOrderId).single();
+  if(poErr||!po)throw appError('Selected purchase order was not found.');
+  if(po.status!=='approved'||po.issuance_status!=='issued')throw appError('Only a purchase order that has been approved and issued to the supplier can be received.');
+  if(supplierId&&supplierId!==po.supplier_id)throw appError('Supplier must match the selected purchase order.');
+  const {data:status}=await db.rpc('logistics_po_receiving_status',{p_po:purchaseOrderId});
+  const onPo=new Set(((status??[]) as any[]).map(x=>x.inventory_item_id).filter(Boolean));
+  if(clean.some(l=>!onPo.has(l.inventory_item_id)))throw appError('Receipt line is not linked to an item on the selected purchase order.');
+ }
+ const {data:costOk}=await db.rpc('can_view_inventory_cost');
+ const {data,error}=await db.from('logistics_receipts').insert({...biz(p),purchase_order_id:purchaseOrderId,supplier_id:supplierId,location_id:locationId,receipt_date:req(fd,'receipt_date'),delivery_reference:opt(fd,'delivery_reference'),received_by:p.user.id,notes:opt(fd,'notes')}).select('id').single();
+ if(error||!data)throw appError(error?.message||'Unable to create receipt.');
+ const rows=clean.map(({unit_cost,...l})=>({...biz(p),receipt_id:data.id,...l,...(costOk&&unit_cost>0?{unit_cost}:{})}));
+ const {error:le}=await db.from('logistics_receipt_items').insert(rows);
+ if(le){await db.from('logistics_receipts').delete().eq('id',data.id);throw appError(le.message);}
+ await audit(p.user.id,data.id,'logistics_receipts','receipt_created',{purchase_order_id:purchaseOrderId,ad_hoc:!purchaseOrderId,damaged:clean.reduce((s,l)=>s+l.damaged_qty,0),rejected:clean.reduce((s,l)=>s+l.rejected_qty,0),over_receipt_lines:clean.filter(l=>l.over_receipt_approved).length});
+ revalidatePath('/logistics/inventory')
+}
+// LOG-17: each receiving transition notifies the next workflow role (U006),
+// a return notifies the preparer, approval tells the preparer it can be posted.
+async function transition(id:string,status:string,from:string,actorField:string,action:string){
+ const p=await logistics(),db=createClient();
+ const patch:any={status,updated_at:new Date().toISOString()};
+ if(actorField){patch[actorField]=p.user.id;patch[actorField.replace('_by','_at')]=new Date().toISOString()}
+ const {data,error}=await db.from('logistics_receipts').update(patch).eq('id',id).eq('status',from).select('id,receipt_number,business_id,prepared_by,received_by').maybeSingle();
+ if(error)throw appError(error.message);
+ if(!data)throw appError(`This receipt is no longer ${from}; refresh and try again.`);
+ await audit(p.user.id,id,'logistics_receipts',action,{});
+ await notifyReceipt(data,action);
+ revalidatePath('/logistics/inventory');revalidatePath('/approvals')
+}
+async function notifyReceipt(r:{id:string;receipt_number:string;business_id:string;prepared_by:string|null;received_by:string|null},action:string){
+ const url=`/logistics/inventory?tab=receipts&receipt=${r.id}`;const base={entity_table:'logistics_receipts',entity_id:r.id,action_url:url};
+ const owner=[r.prepared_by,r.received_by].filter(Boolean) as string[];
+ try{
+  if(action==='prepared')await notifyWorkflowRole(r.business_id,'logistics','reviewer',{...base,title:`Goods receipt ${r.receipt_number} needs review`,message:'A goods receipt was prepared and is awaiting your review.'});
+  else if(action==='reviewed')await notifyWorkflowRole(r.business_id,'logistics','approver',{...base,title:`Goods receipt ${r.receipt_number} needs approval`,message:'A goods receipt was reviewed and is awaiting your approval.'});
+  else if(action==='returned')await notifyUsers(owner,r.business_id,{...base,title:`Goods receipt ${r.receipt_number} returned`,message:'Returned by the reviewer for correction.'});
+  else if(action==='approved'){await notifyUsers(owner,r.business_id,{...base,title:`Goods receipt ${r.receipt_number} approved`,message:'Approved — it can now be posted to stock.'});}
+  else if(action==='posted')await notifyUsers(owner,r.business_id,{...base,title:`Goods receipt ${r.receipt_number} posted`,message:'The accepted quantities are now in stock.'});
+ }catch{/* notifications are best-effort; never fail the workflow over them */}
+}
 export async function prepareReceiptAction(id:string){return transition(id,'prepared','draft','prepared_by','prepared')}
 export async function reviewReceiptAction(id:string,accept:boolean){return transition(id,accept?'reviewed':'draft','prepared','reviewed_by',accept?'reviewed':'returned')}
 export async function approveReceiptAction(id:string){return transition(id,'approved','reviewed','approved_by','approved')}
-export async function postReceiptAction(id:string){const p=await logistics(),db=createClient();const {error}=await db.rpc('post_receipt_to_stock',{p_receipt_id:id,p_actor:p.user.id});if(error)throw appError(error.message);await audit(p.user.id,id,'logistics_receipts','posted',{});revalidatePath('/logistics/inventory');revalidatePath('/finance/accounting');revalidatePath('/approvals')}
+export async function postReceiptAction(id:string){
+ const p=await logistics(),db=createClient();
+ const {error}=await db.rpc('post_receipt_to_stock',{p_receipt_id:id,p_actor:p.user.id});
+ if(error)throw appError(error.message);
+ await audit(p.user.id,id,'logistics_receipts','posted',{});
+ const {data:r}=await db.from('logistics_receipts').select('id,receipt_number,business_id,prepared_by,received_by').eq('id',id).maybeSingle();
+ if(r)await notifyReceipt(r as any,'posted');
+ revalidatePath('/logistics/inventory');revalidatePath('/finance/accounting');revalidatePath('/approvals')
+}
 export async function createTransferAction(fd:FormData){const p=await logistics(),db=createClient();if(req(fd,'from_location_id')===req(fd,'to_location_id'))throw appError('Source and destination locations must differ.');const {data,error}=await db.from('logistics_stock_transfers').insert({...biz(p),from_location_id:req(fd,'from_location_id'),to_location_id:req(fd,'to_location_id'),transfer_date:req(fd,'transfer_date'),requested_by:p.user.id,notes:opt(fd,'notes')}).select('id').single();if(error||!data)throw appError(error?.message||'Unable to create transfer.');const lines=JSON.parse(String(fd.get('lines')||'[]'));if(!Array.isArray(lines)||!lines.length)throw appError('At least one transfer line is required.');const {error:le}=await db.from('logistics_stock_transfer_items').insert(lines.map((l:any)=>({...biz(p),transfer_id:data.id,inventory_item_id:l.inventory_item_id,quantity:Number(l.quantity),notes:l.notes||null})));if(le)throw appError(le.message);await audit(p.user.id,data.id,'logistics_stock_transfers','transfer_created',{});revalidatePath('/logistics/inventory')}
 async function transferTransition(id:string,status:string,from:string,actorField:string,action:string){const p=await logistics(),db=createClient();const patch:any={status,updated_at:new Date().toISOString()};if(actorField){patch[actorField]=p.user.id;patch[actorField.replace('_by','_at')]=new Date().toISOString()}const {error}=await db.from('logistics_stock_transfers').update(patch).eq('id',id).eq('status',from);if(error)throw appError(error.message);await audit(p.user.id,id,'logistics_stock_transfers',action,{});revalidatePath('/logistics/inventory');revalidatePath('/approvals')}
 export async function prepareTransferAction(id:string){return transferTransition(id,'prepared','draft','prepared_by','prepared')}
 export async function reviewTransferAction(id:string,accept:boolean){return transferTransition(id,accept?'reviewed':'draft','prepared','reviewed_by',accept?'reviewed':'returned')}
 export async function approveTransferAction(id:string){return transferTransition(id,'approved','reviewed','approved_by','approved')}
 export async function postTransferAction(id:string){const p=await logistics(),db=createClient();const {error}=await db.rpc('post_transfer_to_stock',{p_transfer_id:id,p_actor:p.user.id});if(error)throw appError(error.message);await audit(p.user.id,id,'logistics_stock_transfers','posted',{});revalidatePath('/logistics/inventory');revalidatePath('/approvals')}
+// LOG-13/15: ordered / already received (any receipt status) / outstanding per
+// PO line, from the database, for the receiving form.
+export async function poReceivingStatusAction(purchaseOrderId:string):Promise<{inventory_item_id:string|null;procurement_item_id:string;description:string|null;ordered:number;received:number;outstanding:number}[]>{
+ await logistics();const db=createClient();
+ const {data,error}=await db.rpc('logistics_po_receiving_status',{p_po:purchaseOrderId});
+ if(error)throw appError(error.message);
+ return ((data??[]) as any[]).map(r=>({inventory_item_id:r.inventory_item_id,procurement_item_id:r.procurement_item_id,description:r.description,ordered:Number(r.ordered),received:Number(r.received),outstanding:Number(r.outstanding)}));
+}

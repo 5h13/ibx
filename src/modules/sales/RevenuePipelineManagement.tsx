@@ -21,6 +21,7 @@ import {
   updateOpportunityStatusAction,
   createRevenueRecognitionDraftAction,
   refreshSalesMonthlySummaryAction,
+  quoteStockAction,
 } from "./revenueActions";
 import { GoSignalForm, ORDERABLE, OrderView, QuoteView } from "./QuoteChain";
 const money = (n: any) => `₱${Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -559,8 +560,12 @@ function QuotationForm({
   const close = usePopupClose();
   const [customerId, setCustomerId] = useState("");
   const [terms, setTerms] = useState("");
-  const [lines, setLines] = useState([{ catalog_item_id: "", description: "", quantity: 1, unit: "unit", unit_price: 0 }]);
+  // CAT-13: every line is a catalog item; "not in catalog" is an explicit escape that needs a reason (flagged on the quote).
+  const blankLine = () => ({ catalog_item_id: "", description: "", quantity: 1, unit: "unit", unit_price: 0, not_in_catalog: false, custom_reason: "" });
+  const [lines, setLines] = useState([blankLine()]);
   const [picked, setPicked] = useState<Record<string, any>>({});
+  // DOC-01: stock on hand per catalog item (quantities only, this business)
+  const [stock, setStock] = useState<Record<string, { store: number | null; all: number | null; type: string }>>({});
   const itemById = (id: string) => picked[id] ?? catalogItems.find((x) => x.id === id);
   const priceFor = (item: any, cust: string = customerId) => {
     if (!item) return 0;
@@ -582,10 +587,14 @@ function QuotationForm({
   };
   const choose = (i: number, item: any) => {
     if (item) setPicked((p) => ({ ...p, [item.id]: item }));
+    if (item && !stock[item.id])
+      quoteStockAction([item.id])
+        .then((rows) => setStock((st) => ({ ...st, ...Object.fromEntries(rows.map((r) => [r.item_id, { store: r.on_hand_store, all: r.on_hand_business, type: r.item_type }])) })))
+        .catch(() => undefined);
     setLines(
       lines.map((l, j) =>
         j === i
-          ? { ...l, catalog_item_id: item?.id || "", description: item?.item_name || "", unit: item?.unit || "unit", unit_price: item ? priceFor(item) : 0 }
+          ? { ...l, catalog_item_id: item?.id || "", description: item?.item_name || "", unit: item?.unit || "unit", unit_price: item ? priceFor(item) : 0, not_in_catalog: false, custom_reason: "" }
           : l,
       ),
     );
@@ -593,7 +602,12 @@ function QuotationForm({
   return (
     <form
       action={(fd) => {
-        fd.set("lines", JSON.stringify(lines));
+        fd.set(
+          "lines",
+          JSON.stringify(
+            lines.map(({ not_in_catalog, ...l }) => (not_in_catalog ? { ...l, catalog_item_id: "" } : { ...l, custom_reason: undefined })),
+          ),
+        );
         run(async () => {
           await createQuotationAction(fd);
           close();
@@ -670,15 +684,30 @@ function QuotationForm({
       </div>
       <div className="border rounded-lg p-3 space-y-2">
         <div className="font-medium">
-          Line items <span className="text-xs text-slate-500">Catalog items use the central pricing engine; custom items remain manually priced.</span>
+          Line items{" "}
+          <span className="text-xs text-slate-500">
+            Pick every item from the catalog (priced by the central pricing engine). An item that is not in the catalog needs a reason and is flagged on the quotation;
+            it cannot be ordered from a supplier until Procurement adds it to the catalog.
+          </span>
         </div>
         {lines.map((l, i) => (
           <div className="grid md:grid-cols-12 gap-2" key={i}>
-            <CatalogItemPicker className="md:col-span-4" value={l.catalog_item_id} allowCustom onSelect={(item) => choose(i, item)} />
+            {l.not_in_catalog ? (
+              <input
+                className="input md:col-span-4 border-amber-400"
+                placeholder="Why is this not in the catalog? (required)"
+                value={l.custom_reason}
+                required
+                onChange={(e) => setLines(lines.map((x, j) => (j === i ? { ...x, custom_reason: e.target.value } : x)))}
+              />
+            ) : (
+              <CatalogItemPicker className="md:col-span-4" value={l.catalog_item_id} onSelect={(item) => choose(i, item)} />
+            )}
             <input
               className="input md:col-span-3"
               placeholder="Description"
               value={l.description}
+              readOnly={!l.not_in_catalog && !l.catalog_item_id}
               onChange={(e) => setLines(lines.map((x, j) => (j === i ? { ...x, description: e.target.value } : x)))}
             />
             <input
@@ -700,12 +729,34 @@ function QuotationForm({
               type="number"
               step="0.01"
               value={l.unit_price}
-              readOnly={!!l.catalog_item_id}
+              readOnly={!l.not_in_catalog}
               onChange={(e) => setLines(lines.map((x, j) => (j === i ? { ...x, unit_price: Number(e.target.value) } : x)))}
             />
-            {l.catalog_item_id && itemById(l.catalog_item_id) && (
-              <div className="md:col-span-12 -mt-1 text-xs text-slate-500">{costAgeLabel(itemById(l.catalog_item_id)?.cost_updated_at)}</div>
-            )}
+            <div className="md:col-span-12 -mt-1 flex flex-wrap gap-x-4 text-xs text-slate-500">
+              {!l.not_in_catalog && l.catalog_item_id && itemById(l.catalog_item_id) && <span>{costAgeLabel(itemById(l.catalog_item_id)?.cost_updated_at)}</span>}
+              {!l.not_in_catalog && l.catalog_item_id && stock[l.catalog_item_id] && stock[l.catalog_item_id].type !== "service" && (
+                <span className={Number(stock[l.catalog_item_id].all ?? 0) < Number(l.quantity) ? "font-medium text-amber-700" : ""}>
+                  On hand: store {stock[l.catalog_item_id].store === null ? "—" : Number(stock[l.catalog_item_id].store).toLocaleString()} · all locations{" "}
+                  {Number(stock[l.catalog_item_id].all ?? 0).toLocaleString()}
+                  {Number(stock[l.catalog_item_id].all ?? 0) < Number(l.quantity) && " — not enough: after saving, open the quotation and ask Procurement for a supplier price"}
+                </span>
+              )}
+              {l.not_in_catalog && <span className="font-medium text-amber-700">Not in catalog — flagged; priced by hand</span>}
+              <label className="ml-auto flex items-center gap-1">
+                <input
+                  type="checkbox"
+                  checked={l.not_in_catalog}
+                  onChange={(e) =>
+                    setLines(
+                      lines.map((x, j) =>
+                        j === i ? { ...blankLine(), quantity: x.quantity, not_in_catalog: e.target.checked } : x,
+                      ),
+                    )
+                  }
+                />{" "}
+                Not in catalog
+              </label>
+            </div>
             {lines.length > 1 && (
               <button type="button" className="text-xs text-red-600" onClick={() => setLines(lines.filter((_, j) => j !== i))}>
                 Remove
@@ -716,7 +767,7 @@ function QuotationForm({
         <button
           type="button"
           className="button-sm"
-          onClick={() => setLines([...lines, { catalog_item_id: "", description: "", quantity: 1, unit: "unit", unit_price: 0 }])}
+          onClick={() => setLines([...lines, blankLine()])}
         >
           Add line
         </button>

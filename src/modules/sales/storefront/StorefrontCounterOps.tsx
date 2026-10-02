@@ -65,6 +65,7 @@ export function ArCollectionForm({ customers, walkInId, onDone }: { customers: C
     start(async () => {
       try {
         const r = await collectArAction(invoiceId, paysToInput(pays));
+        if (r.payment_id) window.open(`/sales/storefront/payments/${r.payment_id}/receipt`, '_blank');
         onDone(`${peso(r.amount)} received on ${r.invoice_number}. Remaining balance ${peso(r.balance)}.`);
       } catch (e) { setError(errorText(e)); }
     });
@@ -80,6 +81,7 @@ export function ArCollectionForm({ customers, walkInId, onDone }: { customers: C
         </select>
       </div>
       {pending && !invoices && customerId && <p className="text-slate-500">Loading open invoices…</p>}
+      {customerId && <a className="text-xs underline" href={`/finance/accounts-receivable/statement/${customerId}`} target="_blank" rel="noreferrer">Print statement of account</a>}
       {invoices && invoices.length === 0 && <p className="text-slate-500">This customer has no unpaid approved invoices.</p>}
       {invoices && invoices.length > 0 && (
         <table className="w-full">
@@ -217,7 +219,7 @@ export function ReturnsTab({ returns, payments }: { returns: any[]; payments: an
           {returns.length === 0 && <tr><td colSpan={7} className="p-4 text-center text-slate-500">No returns on this date.</td></tr>}
           {returns.map((r) => (
             <tr key={r.id} className="border-b align-top">
-              <td className="p-2 font-medium">{r.return_number}</td><td className="p-2">{r.sale?.sale_number}</td><td className="p-2">{r.sale?.customer?.legal_name}</td>
+              <td className="p-2 font-medium">{r.return_number}<div><a className="text-xs font-normal underline" href={`/sales/storefront/returns/${r.id}/slip`} target="_blank" rel="noreferrer">Return slip</a></div></td><td className="p-2">{r.sale?.sale_number}</td><td className="p-2">{r.sale?.customer?.legal_name}</td>
               <td className="p-2">{r.reason}{Number(r.damaged_cost) > 0 && <div className="text-xs text-amber-700">Damaged goods kept aside (cost {peso(r.damaged_cost)})</div>}</td><td className="p-2 text-right">{peso(r.total)}</td><td className="p-2 text-right">{Number(r.credit_to_ar) > 0 ? peso(r.credit_to_ar) : '—'}</td>
               <td className="p-2 text-xs">{payments.filter((p) => p.return_id === r.id).map((p) => `${methodLabel(p.method)} ${peso(p.amount)}${p.reference_number ? ` (${p.reference_number})` : ''}`).join(', ') || '—'}</td>
             </tr>

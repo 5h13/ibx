@@ -29,17 +29,24 @@ export async function GET(request: Request) {
   const db = createClient();
   let supplierQuery = db
     .from('finance_suppliers')
-    .select('id,supplier_code,legal_name,trade_name,active,contact_person,email,phone,address,billing_address,shipping_address,payment_terms,preferred_payment_method,credit_limit,credit_currency,tax_id,bank_details,payment_destination,created_at')
+    .select('id,supplier_code,legal_name,trade_name,active,contact_person,email,phone,address,billing_address,shipping_address,payment_terms,preferred_payment_method,credit_limit,credit_currency,created_at')
     .order('supplier_code');
   if (!includeInactive) supplierQuery = supplierQuery.eq('active', true);
 
-  const [{ data: suppliers, error: se }, { data: relationships, error: re }, { data: history, error: he }, { data: exposure, error: ee }] = await Promise.all([
+  // U052 (Build 77): tax ID / bank details / payment destination are read from
+  // finance_supplier_private (RLS: Finance / admin only), only when requested.
+  const privateQuery = wantSensitive
+    ? db.from('finance_supplier_private').select('supplier_id,tax_id,bank_details,payment_destination')
+    : Promise.resolve({ data: [] as any[], error: null });
+  const [{ data: suppliers, error: se }, { data: relationships, error: re }, { data: history, error: he }, { data: exposure, error: ee }, { data: privateRows, error: pe }] = await Promise.all([
     supplierQuery,
     db.from('finance_supplier_business_relationships').select('supplier_id,business_id,status,payment_terms_override,preferred'),
     db.from('finance_supplier_purchase_history').select('*'),
     db.from('finance_supplier_credit_exposure').select('supplier_id,outstanding_exposure'),
+    privateQuery,
   ]);
-  const err = se || re || he || ee;
+  const err = se || re || he || ee || pe;
+  const privateBySupplier = new Map(((privateRows ?? []) as any[]).map((x) => [x.supplier_id, x]));
   if (err) return new NextResponse(err.message, { status: 500 });
 
   // The acting/own business, if any. Relationship columns are only
@@ -84,7 +91,7 @@ export async function GET(request: Request) {
       Number(h?.ytd_purchase_value ?? 0), Number(h?.po_count_ytd ?? 0), h?.last_purchase_date ?? null,
       Number(h?.outstanding_balance ?? 0), Number(h?.overdue_invoice_count ?? 0), h?.last_payment_date ?? null,
       statusLabel[h?.payment_status ?? 'no_invoices'],
-      ...(wantSensitive ? [s.tax_id, s.bank_details, s.payment_destination] : []),
+      ...(wantSensitive ? [privateBySupplier.get(s.id)?.tax_id ?? null, privateBySupplier.get(s.id)?.bank_details ?? null, privateBySupplier.get(s.id)?.payment_destination ?? null] : []),
       s.created_at,
     ]);
   }

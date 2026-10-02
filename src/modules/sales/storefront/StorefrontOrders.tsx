@@ -15,7 +15,7 @@
 import { useState, useTransition } from 'react';
 import { errorText } from '@/core/errors/appError';
 import { PopupAction } from '@/core/ui/PopupAction';
-import { orderDrAction, releaseDrAction, type StoreOrder } from './actions';
+import { combinedSiAction, orderDrAction, releaseDrAction, type StoreOrder } from './actions';
 import { PaymentBlock } from './StorefrontManagement';
 import { num, paysToInput, peso, r2, type Pay } from './storefrontShared';
 
@@ -84,6 +84,42 @@ function IssueDrForm({ order, vatBooklet, onDone }: { order: StoreOrder; vatBook
   );
 }
 
+
+// Build 75 — one booklet SI across several DRs of the order (DOC-09 / DOC-10).
+function EnterSiForm({ order, onDone }: { order: StoreOrder; onDone: (m: string) => void }) {
+  const open = order.drs.filter((d) => !d.si_number);
+  const [picked, setPicked] = useState<string[]>(open.map((d) => d.sale_id));
+  const [si, setSi] = useState('');
+  const [date, setDate] = useState(new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila' }).format(new Date()));
+  const [error, setError] = useState('');
+  const [pending, start] = useTransition();
+  const total = open.filter((d) => picked.includes(d.sale_id)).reduce((s, d) => s + Number(d.total), 0);
+  return (
+    <div className="space-y-3 text-sm">
+      <p className="text-slate-600">Enter the SI number written in the BIR booklet once for the DRs it covers. AR then keeps one invoice for them; payments already received move with them, and a DR can't be put on another SI. {order.vat_applied ? 'This order is with VAT: the SI must come from a VAT-registered booklet.' : 'This order is without VAT: the SI must come from a non-VAT booklet.'}</p>
+      <div className="space-y-1">
+        {open.map((d) => (
+          <label key={d.sale_id} className="flex items-center gap-2 rounded border px-2 py-1">
+            <input type="checkbox" checked={picked.includes(d.sale_id)} onChange={(e) => setPicked(e.target.checked ? [...picked, d.sale_id] : picked.filter((x) => x !== d.sale_id))} />
+            <span className="flex-1">{d.dr_number} · {d.sale_date}</span><span>{peso(d.total)}</span>
+          </label>
+        ))}
+      </div>
+      <div className="grid gap-2 sm:grid-cols-2">
+        <label className="block">SI number *<input className="input mt-1" value={si} onChange={(e) => setSi(e.target.value)} placeholder="From the BIR booklet" /></label>
+        <label className="block">SI date<input className="input mt-1" type="date" value={date} onChange={(e) => setDate(e.target.value)} /></label>
+      </div>
+      <p>Invoice total <b>{peso(total)}</b> for {picked.length} DR(s)</p>
+      {error && <div className="rounded border border-red-200 bg-red-50 p-3 text-red-700">{error}</div>}
+      <div className="flex justify-end"><button type="button" className="button" disabled={pending || !si.trim() || picked.length === 0} onClick={() => start(async () => {
+        setError('');
+        try { const r = await combinedSiAction({ sale_ids: picked, si_number: si.trim(), si_date: date }); onDone(`SI ${si.trim()} recorded as ${r.invoice_number} covering ${r.drs} — ${peso(r.total)}, balance ${peso(r.balance)}.`); }
+        catch (e) { setError(errorText(e)); }
+      })}>{pending ? 'Saving…' : 'Record SI'}</button></div>
+    </div>
+  );
+}
+
 export function OrdersTab({ orders, readOnly, canRelease, vatBooklet, onMessage }: { orders: StoreOrder[]; readOnly: boolean; canRelease: boolean; vatBooklet: boolean; onMessage: (m: string) => void }) {
   const [pending, start] = useTransition();
   if (!orders.length) return <p className="text-sm text-slate-500">No approved sales orders to deliver. Orders come from quotations (Sales / Revenue Pipeline) once the client's go-signal is recorded and the order is approved.</p>;
@@ -108,6 +144,7 @@ export function OrdersTab({ orders, readOnly, canRelease, vatBooklet, onMessage 
                 <span className={`rounded px-2 py-0.5 ${payStatus(o).startsWith('Paid') ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>{payStatus(o)}</span>
                 <span className="rounded bg-slate-100 px-2 py-0.5 capitalize">{o.status}</span>
                 {!readOnly && open && <PopupAction label="Issue DR" title={`DR from ${o.order_number}`} wide>{(close) => <IssueDrForm order={o} vatBooklet={vatBooklet} onDone={(m) => { onMessage(m); close(); }} />}</PopupAction>}
+                {!readOnly && o.drs.some((d) => !d.si_number) && <PopupAction label="Enter SI" title={`SI for ${o.order_number}`} variant="secondary" wide>{(close) => <EnterSiForm order={o} onDone={(m) => { onMessage(m); close(); }} />}</PopupAction>}
               </div>
             </div>
             <table className="mt-2 w-full text-xs">

@@ -32,11 +32,13 @@ export default async function LogisticsReportsPage({searchParams}:{searchParams:
  // Kept, via service role with an explicit business filter
  // (core/auth/businessScope.ts pattern 1), rather than widening Admin RLS.
  const svc=createAdminClient();
- const [locationRes,itemRes,movementRes,receiptRes,deliveryRes,dispatchRes,stopRes,eventRes,vehicleRes,driverRes,tripRes,fleetExpenseRes,maintenanceRes,expenseRes]=await Promise.all([
+ const [locationRes,itemRes,summaryRes,receiptRes,deliveryRes,dispatchRes,stopRes,eventRes,vehicleRes,driverRes,tripRes,fleetExpenseRes,maintenanceRes,expenseRes]=await Promise.all([
   db.from('logistics_locations').select('id,location_code,location_name,location_type,active').order('location_code'),
   db.from('logistics_inventory_items').select('id,item_code,item_name,unit,reorder_level,active').order('item_code'),
-  db.from('logistics_stock_movements').select('id,inventory_item_id,location_id,movement_date,movement_type,quantity,unit_cost,reference_number').gte('movement_date',start).lte('movement_date',end),
-  db.from('logistics_receipts').select('id,receipt_number,receipt_date,status,location_id,supplier_id').gte('receipt_date',start).lte('receipt_date',end),
+  // LOG-40 class fix: movement totals are summed in the database (was: the
+  // first 1,000 movements of the month, summed in the browser)
+  db.rpc('logistics_period_summary',{p_from:start,p_to:end}),
+  db.from('logistics_receipts').select('id,receipt_number,receipt_date,status,location_id,supplier_id,purchase_order_id').gte('receipt_date',start).lte('receipt_date',end),
   db.from('logistics_delivery_orders').select('id,delivery_number,status,delivery_date,requested_delivery_date,source_location_id').gte('delivery_date',start).lte('delivery_date',end),
   db.from('logistics_dispatches').select('id,dispatch_number,delivery_order_id,dispatch_date,delivery_status,departure_time,actual_arrival,vehicle_id,driver_id').gte('dispatch_date',start).lte('dispatch_date',end),
   db.from('logistics_delivery_stops').select('id,dispatch_id,status,planned_arrival,actual_arrival,stop_type').gte('created_at',`${start}T00:00:00`).lte('created_at',`${end}T23:59:59`),
@@ -48,6 +50,11 @@ export default async function LogisticsReportsPage({searchParams}:{searchParams:
   scopeToBusiness(svc.from('fleet_maintenance').select('id,vehicle_id,service_date,cost,next_service_date,status'),profile).gte('service_date',start).lte('service_date',end),
   db.from('expenses').select('id,amount,status,created_at').eq('section_id',(await db.from('sections').select('id').eq('code','logistics').single()).data?.id ?? '').gte('created_at',`${start}T00:00:00`).lte('created_at',`${end}T23:59:59`),
  ]);
- const locations=locationRes.data??[], items=itemRes.data??[], movements=movementRes.data??[], receipts=receiptRes.data??[], deliveryOrders=deliveryRes.data??[], dispatches=dispatchRes.data??[], stops=stopRes.data??[], events=eventRes.data??[], vehicles=vehicleRes.data??[], drivers=driverRes.data??[], trips=tripRes.data??[], fleetExpenses=fleetExpenseRes.data??[], maintenance=maintenanceRes.data??[], expenses=expenseRes.data??[];
- return <AuthedShell profile={profile}><LogisticsReportsDashboard month={month} locations={locations??[]} items={items??[]} movements={movements??[]} receipts={receipts??[]} deliveryOrders={deliveryOrders??[]} dispatches={dispatches??[]} stops={stops??[]} events={events??[]} vehicles={vehicles??[]} drivers={drivers??[]} trips={trips??[]} fleetExpenses={fleetExpenses??[]} maintenance={maintenance??[]} expenses={expenses??[]}/></AuthedShell>;
+ // On-hand comes from logistics_stock_balance (all rows, paged), never from a
+ // period's movements; KPIs are per business (LOG-02).
+ const balances:{inventory_item_id:string;location_id:string;on_hand:number}[]=[];
+ for(let from=0;;from+=1000){const {data,error}=await db.from('logistics_stock_balance').select('inventory_item_id,location_id,on_hand').order('inventory_item_id').order('location_id').range(from,from+999);if(error)throw new Error(error.message);balances.push(...(data??[]));if(!data||data.length<1000)break;}
+ const [{data:settings},{data:kpis}]=await Promise.all([db.from('logistics_inventory_location_settings').select('inventory_item_id,location_id,reorder_level,active'),db.rpc('logistics_dashboard_kpis')]);
+ const locations=locationRes.data??[], items=itemRes.data??[], summary=(summaryRes.data??{}) as any, receipts=receiptRes.data??[], deliveryOrders=deliveryRes.data??[], dispatches=dispatchRes.data??[], stops=stopRes.data??[], events=eventRes.data??[], vehicles=vehicleRes.data??[], drivers=driverRes.data??[], trips=tripRes.data??[], fleetExpenses=fleetExpenseRes.data??[], maintenance=maintenanceRes.data??[], expenses=expenseRes.data??[];
+ return <AuthedShell profile={profile}><LogisticsReportsDashboard month={month} locations={locations??[]} items={items??[]} summary={summary} balances={balances} settings={settings??[]} kpis={(kpis??[]) as any[]} businessId={profile.user.business_id} receipts={receipts??[]} deliveryOrders={deliveryOrders??[]} dispatches={dispatches??[]} stops={stops??[]} events={events??[]} vehicles={vehicles??[]} drivers={drivers??[]} trips={trips??[]} fleetExpenses={fleetExpenses??[]} maintenance={maintenance??[]} expenses={expenses??[]}/></AuthedShell>;
 }

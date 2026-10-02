@@ -25,7 +25,6 @@ const NAV_GROUPS: NavGroup[] = [
       { label: 'Office Supplies', href: '/admin/supplies' },
       { label: 'Internal Requests', href: '/admin/requests' },
       { label: 'Fleet Management', href: '/admin/fleet' },
-      { label: 'Policies & Announcements', href: '/admin/policies' },
     ],
   },
   {
@@ -36,9 +35,11 @@ const NAV_GROUPS: NavGroup[] = [
       { label: 'Expenses', href: '/finance/expenses' },
       { label: 'Procurement', href: '/finance/procurement' },
       { label: 'Supplier Quotes', href: '/finance/procurement/supplier-quotes' },
+      { label: 'Price Requests', href: '/finance/price-requests' },
       { label: 'Accounts Payable', href: '/finance/accounts-payable' },
       { label: 'Accounts Receivable', href: '/finance/accounts-receivable' },
       { label: 'Storefront (view)', href: '/sales/storefront' },
+      { label: 'Opening Stock', href: '/finance/opening-stock' },
       { label: 'Payroll', href: '/finance/payroll' },
       { label: 'Bank / Cash & Reconciliation', href: '/finance/bank-cash' },
       { label: 'Budgets & Forecasting', href: '/finance/budgets' },
@@ -116,6 +117,15 @@ export function Sidebar({ profile }: { profile: SessionProfile }) {
         className={`block px-3 py-2 rounded hover:bg-slate-700 text-sm ${pathname === '/profile' ? 'bg-slate-700 text-white font-medium' : ''}`}
       >
         My Employee Profile
+      </Link>
+      {/* RA-05: every employee reads and acknowledges policies and announcements,
+          so the link sits outside the section groups (the page is open to any
+          signed-in user; creating and publishing stay with Admin). */}
+      <Link
+        href="/admin/policies"
+        className={`block px-3 py-2 rounded hover:bg-slate-700 text-sm ${pathname === '/admin/policies' || pathname.startsWith('/admin/policies/') ? 'bg-slate-700 text-white font-medium' : ''}`}
+      >
+        Policies & Announcements
       </Link>
       {canViewProductSearch(profile) && (
         <Link

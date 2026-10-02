@@ -91,7 +91,7 @@ export function ChecksTab({ checks, today, canHandle, customers, walkInId, onMes
               const pdc = k.check_date > today;
               return (
                 <tr key={k.id} className="border-b align-top">
-                  <td className="p-2 font-medium">{k.check_number}<div className="text-xs font-normal text-slate-500">{k.payment?.payment_number}</div></td>
+                  <td className="p-2 font-medium">{k.check_number}<div className="text-xs font-normal text-slate-500">{k.payment?.payment_number} · <a className="underline" href={`/sales/storefront/payments/${k.payment_id}/receipt`} target="_blank" rel="noreferrer">receipt</a></div></td>
                   <td className="p-2">{k.bank_name}</td>
                   <td className="p-2">{k.check_date}{k.status === 'on_hand' && (pdc ? <div className="text-xs text-amber-700">post-dated</div> : <div className="text-xs text-emerald-700">can be deposited</div>)}</td>
                   <td className="p-2">{k.customer?.legal_name ?? '—'}{k.issuer_name ? <div className="text-xs text-slate-500">issuer: {k.issuer_name}</div> : null}</td>

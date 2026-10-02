@@ -14,6 +14,7 @@ import { createClient } from '@/core/auth/supabaseServer';
 import { getSessionProfile } from '@/core/auth/getSessionProfile';
 import { isAdminTier, type SessionProfile } from '@/core/auth/types';
 import { CATALOG_PHOTO_BUCKET, normalizeCatalogHeader } from './catalogColumns';
+import { looksLikeXlsx, readXlsxRows } from './xlsxReader';
 
 type Db = ReturnType<typeof createClient>;
 
@@ -73,7 +74,8 @@ async function saveSupplierItemCode(db: Db, p: SessionProfile, itemId: string, s
   }
 }
 
-async function savePhoto(itemId: string, file: FormDataEntryValue | null, oldPath: string | null) {
+const PHOTO_SLOTS = [['photo', 'photo_path'], ['photo_2', 'photo_path_2'], ['photo_3', 'photo_path_3']] as const;
+async function savePhoto(itemId: string, file: FormDataEntryValue | null, oldPath: string | null, column: 'photo_path' | 'photo_path_2' | 'photo_path_3' = 'photo_path') {
   if (!(file instanceof File) || file.size === 0) return null;
   if (file.size > 5 * 1024 * 1024) throw appError('Product photos must be 5 MB or smaller.');
   if (file.type && !['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) throw appError('Product photo must be JPG, PNG or WebP.');
@@ -82,7 +84,7 @@ async function savePhoto(itemId: string, file: FormDataEntryValue | null, oldPat
   const path = `${itemId}/${crypto.randomUUID()}-${safe}`;
   const { error } = await admin.storage.from(CATALOG_PHOTO_BUCKET).upload(path, file, { contentType: file.type || 'image/jpeg', upsert: false });
   if (error) throw appError(error.message);
-  const { error: ue } = await createClient().from('finance_procurement_items').update({ photo_path: path, updated_at: new Date().toISOString() }).eq('id', itemId);
+  const { error: ue } = await createClient().from('finance_procurement_items').update({ [column]: path, updated_at: new Date().toISOString() }).eq('id', itemId);
   if (ue) { await admin.storage.from(CATALOG_PHOTO_BUCKET).remove([path]); throw appError(ue.message); }
   if (oldPath) await admin.storage.from(CATALOG_PHOTO_BUCKET).remove([oldPath]);
   return path;
@@ -98,6 +100,7 @@ function readItemForm(fd: FormData) {
     generic_item: txt(fd, 'generic_item'),
     brand: txt(fd, 'brand'),
     description: txt(fd, 'description'),
+    specification: txt(fd, 'specification'),
     default_supplier_id: txt(fd, 'default_supplier_id'),
     unit: need(fd, 'unit', 'Unit'),
     item_type: itemType,
@@ -114,7 +117,7 @@ export async function createCatalogItemAction(fd: FormData) {
   const { data: duplicate } = await db.from('finance_procurement_items').select('id,item_code,item_name').ilike('item_name', f.item_name).ilike('category', f.category).ilike('unit', f.unit).eq('active', true).limit(1).maybeSingle();
   if (duplicate) throw appError(`A matching active catalog item already exists: ${duplicate.item_code} — ${duplicate.item_name}. Select the existing item instead of creating a duplicate.`);
   const { data, error } = await db.from('finance_procurement_items').insert({
-    item_name: f.item_name, category: f.category, generic_item: f.generic_item, brand: f.brand, description: f.description,
+    item_name: f.item_name, category: f.category, generic_item: f.generic_item, brand: f.brand, description: f.description, specification: f.specification,
     default_supplier_id: f.default_supplier_id, unit: f.unit, item_type: f.item_type,
     standard_cost: f.standard_cost, service_cost_basis: f.service_cost_basis, created_by: p.user.id,
   }).select('id,item_code').single();
@@ -122,7 +125,7 @@ export async function createCatalogItemAction(fd: FormData) {
   if (error || !data) throw appError(error?.message || 'Unable to create catalog item.');
   await saveSupplierItemCode(db, p, data.id, f.default_supplier_id, f.supplier_item_code);
   await saveItemMarkup(db, p, data.id, f.markup);
-  await savePhoto(data.id, fd.get('photo'), null);
+  for (const [field, column] of PHOTO_SLOTS) await savePhoto(data.id, fd.get(field), null, column);
   await audit(p.user.id, data.id, 'finance_procurement_items', 'procurement_item_created', { item_code: data.item_code });
   revalidatePath('/finance/procurement');
   return { item_code: data.item_code as string };
@@ -132,12 +135,12 @@ export async function updateCatalogItemAction(fd: FormData) {
   const p = await financeUser(); const db = createClient();
   const id = need(fd, 'item_id', 'Item');
   const f = readItemForm(fd);
-  const { data: current, error: ce } = await db.from('finance_procurement_items').select('id,item_code,photo_path,standard_cost,service_cost_basis').eq('id', id).single();
+  const { data: current, error: ce } = await db.from('finance_procurement_items').select('id,item_code,photo_path,photo_path_2,photo_path_3,standard_cost,service_cost_basis').eq('id', id).single();
   if (ce || !current) throw appError(ce?.message || 'Catalog item not found.');
   const { data: duplicate } = await db.from('finance_procurement_items').select('id,item_code,item_name').ilike('item_name', f.item_name).ilike('category', f.category).ilike('unit', f.unit).eq('active', true).neq('id', id).limit(1).maybeSingle();
   if (duplicate) throw appError(`Another active catalog item already has this name, category and unit: ${duplicate.item_code} — ${duplicate.item_name}.`);
   const patch: Record<string, unknown> = {
-    item_name: f.item_name, category: f.category, generic_item: f.generic_item, brand: f.brand, description: f.description,
+    item_name: f.item_name, category: f.category, generic_item: f.generic_item, brand: f.brand, description: f.description, specification: f.specification,
     default_supplier_id: f.default_supplier_id, unit: f.unit, item_type: f.item_type, updated_at: new Date().toISOString(),
   };
   // only touch the cost when it actually changed, so the cost history (Build 56) stays accurate
@@ -148,11 +151,14 @@ export async function updateCatalogItemAction(fd: FormData) {
   if (error) throw appError(error.message);
   await saveSupplierItemCode(db, p, id, f.default_supplier_id, f.supplier_item_code);
   await saveItemMarkup(db, p, id, f.markup);
-  if (String(fd.get('remove_photo') || '') === 'true' && current.photo_path) {
-    await createAdminClient().storage.from(CATALOG_PHOTO_BUCKET).remove([current.photo_path]);
-    await db.from('finance_procurement_items').update({ photo_path: null }).eq('id', id);
-  } else {
-    await savePhoto(id, fd.get('photo'), current.photo_path);
+  for (const [field, column] of PHOTO_SLOTS) {
+    const old = (current as any)[column] as string | null;
+    if (String(fd.get(`remove_${field}`) || '') === 'true' && old) {
+      await createAdminClient().storage.from(CATALOG_PHOTO_BUCKET).remove([old]);
+      await db.from('finance_procurement_items').update({ [column]: null }).eq('id', id);
+    } else {
+      await savePhoto(id, fd.get(field), old, column);
+    }
   }
   await audit(p.user.id, id, 'finance_procurement_items', 'procurement_item_updated', { item_code: current.item_code });
   revalidatePath('/finance/procurement');
@@ -196,15 +202,33 @@ export async function getCatalogImportTargetsAction() {
     .filter((b) => isSuper || b.id === p.user.business_id)
     .map((b) => ({ id: b.id as string, code: b.code as string, name: (b.trade_name || b.legal_name) as string }));
   const defaultIds = p.user.business_id && businesses.some((b) => b.id === p.user.business_id) ? [p.user.business_id] : [];
-  return { businesses, defaultIds, canChooseOthers: isSuper };
+  const { data: locs } = await createClient().rpc('inventory_count_locations');
+  return { businesses, defaultIds, canChooseOthers: isSuper, locations: ((locs ?? []) as any[]).map((l) => ({ id: l.id as string, label: `${l.location_code} — ${l.location_name}` })) };
 }
 
+/** CAT-07 (Build 77): the import file may be CSV (UTF-8 or Windows-1252) or
+ *  an Excel workbook (.xlsx, first sheet). Both give the same rows. */
+async function readImportRows(file: File): Promise<string[][]> {
+  const buf = await file.arrayBuffer();
+  if (/\.xls$/i.test(file.name)) throw appError('Old Excel .xls files cannot be read: save the file as Excel Workbook (.xlsx) or CSV.');
+  if (/\.xlsx$/i.test(file.name) || looksLikeXlsx(buf)) {
+    try { return readXlsxRows(buf); }
+    catch (e: any) { throw appError(`The Excel file could not be read: ${e?.message || e}. Save it again as .xlsx, or as CSV.`); }
+  }
+  return parseCsv(decodeCsv(buf));
+}
+
+type ImportRow = { line: number; item_name: string; category: string; category_id: string; unit: string; generic_item: string | null; brand: string | null; description: string | null; default_supplier_id: string | null; standard_cost: number; supplier_item_code: string | null; addon: number | null; store: number | null; markup: number | null;
+  item_code: string | null; item_id: string | null; specification: string | null; opening_qty: number | null; opening_cost: number | null };
+type BizResult = { business_id: string; code: string; name: string; markups: number; price_changes?: number; new_item_prices?: number; new_addons: { category: string; addon: number }[]; addon_exceptions: string[] };
+
 /**
- * Build 60a / 66 — catalog CSV import, sized for a full catalog (thousands of rows):
- *  - new items are created; items that already exist (same name, category,
- *    unit) keep their details, EXCEPT their Supplier Cost, which is updated
- *    when the file has a different non-zero cost (CAT-33; recorded in the
- *    item cost history as "CSV import");
+ * Build 60a / 66 / 76 / 77 — catalog import (CSV or XLSX), sized for a full
+ * catalog (thousands of rows):
+ *  - new items are created; items that already exist (same Item Code, or
+ *    same name, category, unit) are updated from the file, including their
+ *    Supplier Cost when the file has a different non-zero cost (CAT-33;
+ *    recorded in the item cost history as "CSV import");
  *  - prices (category add-ons, item markups) are applied to every business
  *    ticked on the import screen (SF-06; default = the current business;
  *    only the Super Admin may tick other businesses — enforced by
@@ -215,16 +239,16 @@ export async function getCatalogImportTargetsAction() {
  *  - Add on: a category with no add-on yet for a business gets the most
  *    common Add on value in the file; items whose Add on differs are listed;
  *  - rows identical in every column are imported once.
- * Validation is all-or-nothing (a dry run of the pricing runs before anything
- * is written); writes are batched.
+ * planCatalogImport() reads and validates the whole file and dry-runs the
+ * pricing without writing anything; it powers both the preview (CAT-07) and
+ * the import itself, which refuses everything if the plan has any error.
  */
-export async function importCatalogCsvAction(fd: FormData) {
-  const p = await financeUser(); const db = createClient();
+async function planCatalogImport(p: SessionProfile, db: Db, fd: FormData) {
   const file = fd.get('catalog_file');
-  if (!(file instanceof File) || !file.size) throw appError('Select a CSV catalog file.');
+  if (!(file instanceof File) || !file.size) throw appError('Select a catalog file (CSV or Excel .xlsx).');
   if (file.size > 10 * 1024 * 1024) throw appError('Catalog import is limited to 10 MB.');
-  const rows = parseCsv(decodeCsv(await file.arrayBuffer()));
-  if (rows.length < 2) throw appError('The CSV must contain a header row and at least one data row.');
+  const rows = await readImportRows(file);
+  if (rows.length < 2) throw appError('The file must contain a header row and at least one data row.');
   const headers = rows[0].map(normalizeCatalogHeader);
   for (const [h, label] of [['item_name', 'STANDARD ITEM NAME'], ['category', 'CATEGORY'], ['supplier_cost', 'Supplier Cost']] as const) {
     if (!headers.includes(h)) throw appError(`Missing required column: ${label}.`);
@@ -246,8 +270,20 @@ export async function importCatalogCsvAction(fd: FormData) {
   for (const s of sups || []) for (const k of [s.supplier_code, s.legal_name, s.trade_name]) if (k) supMap.set(String(k).toLowerCase().trim(), s);
   const defaultUnit = unitMap.get('unit') ?? unitMap.get('pc') ?? unitMap.get('pcs') ?? null;
 
-  type Row = { line: number; item_name: string; category: string; category_id: string; unit: string; generic_item: string | null; brand: string | null; description: string | null; default_supplier_id: string | null; standard_cost: number; supplier_item_code: string | null; addon: number | null; store: number | null; markup: number | null };
-  const errors: string[] = []; const prepared: Row[] = []; const seen = new Map<string, string>();
+  // Build 76: rows carrying an Item Code update that item (even when renamed)
+  const codeIdx = headers.indexOf('item_code');
+  const codesInFile = codeIdx >= 0 ? [...new Set(rows.slice(1).map((r) => String(r[codeIdx] ?? '').trim().toUpperCase()).filter(Boolean))] : [];
+  const idByCode = new Map<string, string>();
+  for (const part of chunk(codesInFile, 300)) {
+    const { data, error } = await db.from('finance_procurement_items').select('id,item_code').in('item_code', part);
+    if (error) throw appError(error.message);
+    for (const x of (data ?? []) as any[]) idByCode.set(String(x.item_code).toUpperCase(), x.id);
+  }
+  const specRaw = (r: string[]) => { const i = headers.indexOf('specification'); return i >= 0 ? String(r[i] ?? '').trim() : ''; };
+  const hasOpening = headers.includes('opening_stock');
+  const openingLocation = String(fd.get('opening_location_id') ?? '').trim();
+  const codeSeen = new Set<string>();
+  const errors: string[] = []; const prepared: ImportRow[] = []; const seen = new Map<string, string>();
   let identicalDuplicates = 0;
   for (let n = 1; n < rows.length; n++) {
     const r = rows[n]; const line = `Row ${n + 1}`;
@@ -267,7 +303,17 @@ export async function importCatalogCsvAction(fd: FormData) {
     if (supRaw && !supplier) errors.push(`${line}: SUPPLIER "${supRaw}" not found (use the supplier code or registered name).`);
     if (supplier && !supplier.active) errors.push(`${line}: SUPPLIER "${supRaw}" is inactive.`);
     if (store !== null && !(cost && cost > 0)) errors.push(`${line}: STORE PRICE needs a Supplier Cost above 0.`);
-    const key = `${name.toLowerCase()}|${(cat?.name || '').toLowerCase()}|${(unit || '').toLowerCase()}`;
+    const code = col(r, 'item_code').toUpperCase();
+    const codeId = code ? idByCode.get(code) ?? null : null;
+    if (code && !codeId) errors.push(`${line}: Item Code ${code} is not in the catalog (leave it blank for a new item).`);
+    if (code && codeSeen.has(code)) errors.push(`${line}: Item Code ${code} appears more than once in the file.`);
+    if (code) codeSeen.add(code);
+    let openingQty: number | null = null, openingCost: number | null = null;
+    if (hasOpening) {
+      try { openingQty = money(col(r, 'opening_stock'), 'OPENING STOCK'); } catch (e: any) { errors.push(`${line}: ${e.message}`); }
+      try { openingCost = money(col(r, 'opening_cost'), 'OPENING UNIT COST'); } catch (e: any) { errors.push(`${line}: ${e.message}`); }
+    }
+    const key = code ? `code:${code}` : `${name.toLowerCase()}|${(cat?.name || '').toLowerCase()}|${(unit || '').toLowerCase()}`;
     const whole = r.map((c) => String(c ?? '').trim()).join('\u0001');
     if (seen.has(key)) {
       if (seen.get(key) === whole) { identicalDuplicates++; continue; }
@@ -276,28 +322,21 @@ export async function importCatalogCsvAction(fd: FormData) {
     }
     seen.set(key, whole);
     if (!cat || !unit) continue;
-    prepared.push({ line: n + 1, item_name: name, category: cat.name, category_id: cat.id, unit, generic_item: col(r, 'generic_item') || null, brand: col(r, 'brand') || null, description: col(r, 'description') || null, default_supplier_id: supplier?.id ?? null, standard_cost: cost ?? 0, supplier_item_code: col(r, 'supplier_item_code') || null, addon, store, markup });
+    prepared.push({ line: n + 1, item_name: name, category: cat.name, category_id: cat.id, unit, generic_item: col(r, 'generic_item') || null, brand: col(r, 'brand') || null, description: col(r, 'description') || null, default_supplier_id: supplier?.id ?? null, standard_cost: cost ?? 0, supplier_item_code: col(r, 'supplier_item_code') || null, addon, store, markup,
+      item_code: code || null, item_id: codeId, specification: specRaw(r) || null, opening_qty: openingQty, opening_cost: openingCost });
   }
+  const openingRows = prepared.filter((x) => x.opening_qty !== null);
+  if (openingRows.length && !openingLocation) errors.push('The file has OPENING STOCK values: choose the store location the opening stock is counted at.');
+  if (openingRows.length && !p.user.business_id) errors.push('Select a business in "Acting as" for the opening stock: it belongs to one store.');
+  const deactivateMissing = String(fd.get('deactivate_missing') ?? '') === '1';
+  if (deactivateMissing && p.user.role !== 'super_admin') errors.push('Only the Super Admin can deactivate items missing from the file (the catalog is shared by all stores).');
   const hasPricing = prepared.some((x) => x.store !== null || x.markup !== null);
   const hasAddons = prepared.some((x) => x.addon !== null);
   if (hasPricing && !targets.length) errors.push('The file has STORE PRICE / %Mark up values: tick at least one business to apply the prices to (select a business in "Acting as" to have it ticked by default) — prices are set per business.');
+  if (!prepared.length && !errors.length) errors.push('The file has no item rows.');
 
-  // prices: validated per business by the database (dry run, nothing written).
-  // This also refuses a business the importer may not set prices for.
-  const doPricing = targets.length > 0 && (hasPricing || hasAddons);
-  const pricingRows = (ids: Map<string, string> | null) => prepared.map((x) => ({
-    line: x.line, item_id: ids ? ids.get(keyOf(x)) ?? null : null, item_name: x.item_name, category_id: x.category_id,
-    cost: x.standard_cost, addon: x.addon, store: x.store, markup: x.markup,
-  }));
-  if (doPricing && !errors.length) {
-    const { data, error } = await db.rpc('catalog_import_pricing', { p_business_ids: targets, p_rows: pricingRows(null), p_apply: false });
-    if (error) throw appError(error.message);
-    errors.push(...(((data as any)?.errors ?? []) as string[]));
-  }
-  if (errors.length) throw appError(`Catalog import failed — nothing was imported (${errors.length} issue${errors.length === 1 ? '' : 's'}). ${errors.slice(0, 10).join(' ')}${errors.length > 10 ? ` … and ${errors.length - 10} more.` : ''}`);
-  if (!prepared.length) throw appError('The file has no item rows.');
-
-  // existing items, matched by the database's identity rule (catalog_norm)
+  // existing items, matched by the database's identity rule (catalog_norm);
+  // read-only, so the preview can show new vs updated items
   const idByKey = new Map<string, string>();
   const lookup = async (rows: { item_name: string; category: string; unit: string }[]) => {
     for (const part of chunk(rows.map((x) => ({ item_name: x.item_name, category: x.category, unit: x.unit })), 500)) {
@@ -306,9 +345,102 @@ export async function importCatalogCsvAction(fd: FormData) {
       for (const x of (data ?? []) as any[]) idByKey.set(x.identity_key, x.id);
     }
   };
-  await lookup(prepared);
+  for (const x of prepared) if (x.item_id) idByKey.set(keyOf(x), x.item_id);
+  await lookup(prepared.filter((x) => !x.item_id));
+  for (const x of prepared) if (x.item_id) idByKey.set(keyOf(x), x.item_id);
+
+  // prices: validated per business by the database (dry run, nothing written).
+  // This also refuses a business the importer may not set prices for.
+  const doPricing = targets.length > 0 && (hasPricing || hasAddons);
+  const pricingRows = (ids: Map<string, string> | null) => prepared.map((x) => ({
+    line: x.line, item_id: ids ? ids.get(keyOf(x)) ?? null : null, item_name: x.item_name, category_id: x.category_id,
+    cost: x.standard_cost, addon: x.addon, store: x.store, markup: x.markup,
+  }));
+  let dryRun: BizResult[] = [];
+  if (doPricing && !errors.length) {
+    const { data, error } = await db.rpc('catalog_import_pricing', { p_business_ids: targets, p_rows: pricingRows(idByKey), p_apply: false });
+    if (error) throw appError(error.message);
+    errors.push(...(((data as any)?.errors ?? []) as string[]));
+    dryRun = (((data as any)?.businesses ?? []) as BizResult[]);
+  }
   const existing = prepared.filter((x) => idByKey.has(keyOf(x)));
   const fresh = prepared.filter((x) => !idByKey.has(keyOf(x)));
+  return { file, headers, targets, prepared, existing, fresh, idByKey, lookup, pricingRows, doPricing, dryRun, errors, identicalDuplicates, openingRows, openingLocation, deactivateMissing };
+}
+
+function importFailure(errors: string[]) {
+  return appError(`Catalog import failed — nothing was imported (${errors.length} issue${errors.length === 1 ? '' : 's'}). ${errors.slice(0, 10).join(' ')}${errors.length > 10 ? ` … and ${errors.length - 10} more.` : ''}`);
+}
+
+export type CatalogImportPreview = {
+  file: string; rows: number; errors: string[];
+  newItems: number; updatedItems: number; costChanges: number; costSamples: string[];
+  priceChanges: number; businesses: { code: string; name: string; priceChanges: number; newItemPrices: number; newAddons: string[]; addonExceptions: number }[];
+  openingLines: number; openingQty: number; deactivate: number | null; identicalDuplicates: number;
+};
+
+/** CAT-07 — preview of an import: what the file would change, nothing written. */
+export async function previewCatalogImportAction(fd: FormData): Promise<CatalogImportPreview> {
+  const p = await financeUser(); const db = createClient();
+  const plan = await planCatalogImport(p, db, fd);
+  // Supplier Cost changes of existing items (same rule as catalog_import_update_costs)
+  const ids = [...new Set(plan.existing.map((x) => plan.idByKey.get(keyOf(x))!))];
+  const current = new Map<string, any>();
+  for (const part of chunk(ids, 300)) {
+    const { data, error } = await db.from('finance_procurement_items').select('id,item_code,item_type,standard_cost,service_cost_basis,active').in('id', part);
+    if (error) throw appError(error.message);
+    for (const x of (data ?? []) as any[]) current.set(x.id, x);
+  }
+  let costChanges = 0; const costSamples: string[] = [];
+  const seenIds = new Set<string>();
+  for (const x of plan.existing) {
+    const id = plan.idByKey.get(keyOf(x))!; const cur = current.get(id);
+    if (!cur || seenIds.has(id) || !(x.standard_cost > 0) || !(cur.active || x.item_id)) continue;
+    seenIds.add(id);
+    const old = Number(cur.item_type === 'service' ? cur.service_cost_basis : cur.standard_cost);
+    const next = Math.round(x.standard_cost * 100) / 100;
+    if (Math.round(old * 100) !== Math.round(next * 100)) {
+      costChanges++;
+      if (costSamples.length < 8) costSamples.push(`${cur.item_code} ${x.item_name}: ₱${old.toLocaleString(undefined, { minimumFractionDigits: 2 })} → ₱${next.toLocaleString(undefined, { minimumFractionDigits: 2 })}`);
+    }
+  }
+  let deactivate: number | null = null;
+  if (plan.deactivateMissing && !plan.errors.length) {
+    const { count, error } = await db.from('finance_procurement_items').select('id', { count: 'exact', head: true }).eq('active', true);
+    if (error) throw appError(error.message);
+    const keptActive = ids.filter((id) => current.get(id)?.active || plan.existing.some((x) => x.item_id === id)).length;
+    deactivate = Math.max(0, (count ?? 0) - keptActive);
+  }
+  const businesses = plan.dryRun.map((b) => ({
+    code: b.code, name: b.name, priceChanges: Number(b.price_changes ?? 0), newItemPrices: Number(b.new_item_prices ?? 0),
+    newAddons: (b.new_addons ?? []).map((a) => `${a.category} ${a.addon}%`), addonExceptions: (b.addon_exceptions ?? []).length,
+  }));
+  return {
+    file: plan.file.name, rows: plan.prepared.length, errors: plan.errors,
+    newItems: plan.fresh.length, updatedItems: plan.existing.length, costChanges, costSamples,
+    priceChanges: businesses.reduce((s, b) => s + b.priceChanges + b.newItemPrices, 0), businesses,
+    openingLines: plan.openingRows.length, openingQty: plan.openingRows.reduce((s, x) => s + Number(x.opening_qty || 0), 0),
+    deactivate, identicalDuplicates: plan.identicalDuplicates,
+  };
+}
+
+export async function importCatalogCsvAction(fd: FormData) {
+  const p = await financeUser(); const db = createClient();
+  const { file, headers, targets, prepared, existing, fresh, idByKey, lookup, pricingRows, doPricing, errors, identicalDuplicates, openingRows, openingLocation, deactivateMissing } = await planCatalogImport(p, db, fd);
+  if (errors.length) throw importFailure(errors);
+
+  // Build 76: the file overwrites the details of items that already exist
+  // (name, category, unit, item, brand, description, specification, supplier)
+  let detailsUpdated = 0;
+  for (const part of chunk(existing, 300)) {
+    const { data, error } = await db.rpc('catalog_import_update_items', { p_rows: part.map((x) => ({
+      id: idByKey.get(keyOf(x)), item_name: x.item_name, category: x.category, unit: x.unit, generic_item: x.generic_item ?? '', brand: x.brand ?? '',
+      description: x.description ?? '', ...(headers.includes('specification') ? { specification: x.specification ?? '' } : {}),
+      ...(x.default_supplier_id ? { default_supplier_id: x.default_supplier_id } : {}), reactivate: Boolean(x.item_id),
+    })) });
+    if (error) throw appError(error.code === '23505' ? `Two items would end up with the same name, category and unit (${error.message}). Merge them in the file first.` : error.message);
+    detailsUpdated += Number(data ?? 0);
+  }
 
   const auditRows: any[] = [];
   let insertedCount = 0;
@@ -319,6 +451,10 @@ export async function importCatalogCsvAction(fd: FormData) {
       item_name: x.item_name, category: x.category, unit: x.unit, generic_item: x.generic_item, brand: x.brand, description: x.description,
       default_supplier_id: x.default_supplier_id, standard_cost: x.standard_cost, item_type: 'product',
     })) });
+    if (!error && part.some((x) => x.specification)) {
+      const ids = new Map(((data ?? []) as any[]).map((d) => [keyOf(d), d.id]));
+      await db.rpc('catalog_import_update_items', { p_rows: part.filter((x) => x.specification && ids.get(keyOf(x))).map((x) => ({ id: ids.get(keyOf(x)), specification: x.specification })) });
+    }
     if (error) throw appError(`${error.message} (items saved before this point are kept; re-run the same file to finish)`);
     for (const x of (data ?? []) as any[]) { idByKey.set(keyOf(x), x.id); insertedCount++; auditRows.push({ actor_id: p.user.id, entity_table: 'finance_procurement_items', entity_id: x.id, action: 'catalog_item_imported', detail: { item_code: x.item_code } }); }
   }
@@ -346,7 +482,6 @@ export async function importCatalogCsvAction(fd: FormData) {
 
   // category add-ons, then item markups, for every chosen business (one
   // all-or-nothing database call)
-  type BizResult = { business_id: string; code: string; name: string; markups: number; new_addons: { category: string; addon: number }[]; addon_exceptions: string[] };
   let priced: BizResult[] = [];
   if (doPricing) {
     const { data, error } = await db.rpc('catalog_import_pricing', { p_business_ids: targets, p_rows: pricingRows(idByKey), p_apply: true });
@@ -354,6 +489,25 @@ export async function importCatalogCsvAction(fd: FormData) {
     priced = (((data as any)?.businesses ?? []) as BizResult[]);
   }
   const markupCount = priced.reduce((s, b) => s + Number(b.markups || 0), 0);
+
+  // Build 76 (LOG-46): opening stock from the same file, recorded as an opening
+  // count for the chosen location — a Business Admin approves it before it posts
+  let opening: { count_number: string; lines: number; total_qty: number; total_value: number } | null = null;
+  if (openingRows.length) {
+    const { data, error } = await db.rpc('inventory_opening_count_create', { p: {
+      location_id: openingLocation, count_date: String(fd.get('opening_date') ?? '') || null, source: `Catalog upload ${file.name}`,
+      lines: openingRows.map((x) => ({ item_id: idByKey.get(keyOf(x)), qty: x.opening_qty, unit_cost: x.opening_cost ?? undefined })).filter((x) => x.item_id),
+    } });
+    if (error) throw appError(`${error.message} (the catalog was saved; fix the opening stock and upload again)`);
+    opening = data as any;
+  }
+  let deactivated = 0;
+  if (deactivateMissing) {
+    const keep = [...new Set(prepared.map((x) => idByKey.get(keyOf(x))).filter((x): x is string => Boolean(x)))];
+    const { data, error } = await db.rpc('catalog_deactivate_missing', { p_keep: keep });
+    if (error) throw appError(error.message);
+    deactivated = Number(data ?? 0);
+  }
   auditRows.push({ actor_id: p.user.id, entity_table: 'finance_procurement_items', entity_id: p.user.id, action: 'catalog_imported', detail: { file: file.name, rows: prepared.length, created: insertedCount, existing: prepared.length - insertedCount, costs_updated: costsUpdated, markups: markupCount, business_ids: doPricing ? targets : [], new_addons: priced.map((b) => ({ business: b.code, addons: b.new_addons })) } });
   for (const part of chunk(auditRows, 500)) {
     const { error } = await createClient().from('audit_log').insert(part);
@@ -362,7 +516,9 @@ export async function importCatalogCsvAction(fd: FormData) {
   revalidatePath('/finance/procurement');
 
   const multi = priced.length > 1;
-  const msg = [`Imported ${insertedCount} new catalog item(s); ${prepared.length - insertedCount} already existed${costsUpdated ? ` (Supplier Cost updated for ${costsUpdated})` : ' and were left unchanged'}.`];
+  const msg = [`Imported ${insertedCount} new catalog item(s); ${prepared.length - insertedCount} existing item(s) updated from the file${costsUpdated ? ` (Supplier Cost changed for ${costsUpdated})` : ''}.`];
+  if (deactivated) msg.push(`${deactivated} item(s) not in the file were deactivated.`);
+  if (opening) msg.push(`Opening stock recorded as ${opening.count_number}: ${opening.lines} item(s), ${Number(opening.total_qty).toLocaleString()} units, ₱${Number(opening.total_value).toLocaleString(undefined, { minimumFractionDigits: 2 })} — waiting for a Business Admin's approval (Finance → Opening Stock) before it posts.`);
   for (const b of priced) {
     const who = multi ? `${b.name}: ` : '';
     if (b.markups) msg.push(`${who}prices set for ${b.markups} item(s)${multi ? '' : ' for this business'}.`);
@@ -370,5 +526,6 @@ export async function importCatalogCsvAction(fd: FormData) {
     if (b.addon_exceptions.length) msg.push(`${who}${b.addon_exceptions.length} item(s) have an Add on different from their category (their STORE PRICE is kept exactly; only the Add on / Acquisition Cost shown follow the category): ${b.addon_exceptions.slice(0, 5).join('; ')}${b.addon_exceptions.length > 5 ? ' …' : ''}.`);
   }
   if (identicalDuplicates) msg.push(`${identicalDuplicates} repeated row(s) imported once.`);
+  void detailsUpdated;
   return { imported: insertedCount, skipped: prepared.length - insertedCount, costsUpdated, message: msg.join(' ') };
 }

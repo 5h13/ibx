@@ -13,7 +13,7 @@ async function sales(){const p=await getSessionProfile();if(!p?.user.is_active)t
 async function audit(actor:string,id:string,table:string,action:string,detail:Record<string,unknown>={}){const {error}=await createClient().from('audit_log').insert({actor_id:actor,entity_table:table,entity_id:id,action,detail});if(error)throw appError(error.message)}
 export async function createOpportunityAction(fd:FormData){const p=await sales(),db=createClient();const {data,error}=await db.from('sales_opportunities').insert({...biz(p),opportunity_number:req(fd,'opportunity_number'),lead_id:opt(fd,'lead_id'),customer_id:opt(fd,'customer_id'),opportunity_name:req(fd,'opportunity_name'),owner_id:opt(fd,'owner_id')||p.user.id,expected_close_date:opt(fd,'expected_close_date'),estimated_value:Number(fd.get('estimated_value')||0),probability:Number(fd.get('probability')||0),source:opt(fd,'source'),notes:opt(fd,'notes'),created_by:p.user.id}).select('id').single();if(error||!data)throw appError(error?.message||'Unable to create opportunity.');await audit(p.user.id,data.id,'sales_opportunities','opportunity_created');revalidatePath('/sales/revenue')}
 export async function updateOpportunityStatusAction(id:string,status:string){const p=await sales(),db=createClient();const {error}=await db.from('sales_opportunities').update({status,updated_at:new Date().toISOString()}).eq('id',id);if(error)throw appError(error.message);await audit(p.user.id,id,'sales_opportunities','status_changed',{status});revalidatePath('/sales/revenue')}
-export async function createQuotationAction(fd:FormData){const p=await sales(),db=createClient();const lines=JSON.parse(String(fd.get('lines')||'[]')) as any[];if(!lines.length)throw appError('Add at least one quotation line.');const customerId=req(fd,'customer_id');const priced=[] as any[];for(const l of lines){const qty=Number(l.quantity)||0;if(qty<=0)throw appError('Quotation quantities must be greater than zero.');if(l.catalog_item_id){const {data:pr,error:pe}=await db.rpc('get_catalog_sales_price',{p_item_id:l.catalog_item_id,p_customer_id:customerId,p_supplier_cost:null});if(pe||!pr?.[0])throw appError(pe?.message||'Unable to calculate catalog price.');const x=pr[0];priced.push({catalog_item_id:l.catalog_item_id,description:l.description||l.catalog_item_name||'Catalog item',quantity:qty,unit:l.unit||'unit',unit_price:Number(x.customer_price||0),notes:l.notes||null,pricing_supplier_cost:Number(x.supplier_cost||0),pricing_service_cost_basis:Number(x.service_cost_basis||0),pricing_item_type:x.item_type||'product',pricing_category_addon_percent:Number(x.category_addon_percent||0),pricing_acquisition_cost:Number(x.acquisition_cost||0),pricing_item_markup_percent:Number(x.item_markup_percent||0),pricing_srp:Number(x.srp||0),pricing_customer_discount_percent:Number(x.customer_discount_percent||0),pricing_snapshot_at:new Date().toISOString()});}else priced.push({description:l.description,quantity:qty,unit:l.unit||'unit',unit_price:Number(l.unit_price)||0,notes:l.notes||null});}const subtotal=priced.reduce((s,l)=>s+(Number(l.quantity)||0)*(Number(l.unit_price)||0),0);const {data,error}=await db.from('sales_quotations').insert({...biz(p),opportunity_id:opt(fd,'opportunity_id'),customer_id:customerId,quotation_date:req(fd,'quotation_date'),valid_until:opt(fd,'valid_until'),subtotal,discount_amount:Number(fd.get('discount_amount')||0),tax_amount:0,vat_applied:fd.get('vat_applied')==='1',other_charges:Number(fd.get('other_charges')||0),notes:opt(fd,'notes'),payment_terms:opt(fd,'payment_terms'),delivery_lead_time:opt(fd,'delivery_lead_time'),created_by:p.user.id}).select('id').single();if(error||!data)throw appError(error?.message||'Unable to create quotation.');const {error:le}=await db.from('sales_quotation_items').insert(priced.map(l=>({...biz(p),quotation_id:data.id,...l})));if(le){await db.from('sales_quotations').delete().eq('id',data.id);throw appError(le.message)}await audit(p.user.id,data.id,'sales_quotations','quotation_created',{subtotal,pricing_integrated:priced.some(x=>x.catalog_item_id)});revalidatePath('/sales/revenue')}
+export async function createQuotationAction(fd:FormData){const p=await sales(),db=createClient();const lines=JSON.parse(String(fd.get('lines')||'[]')) as any[];if(!lines.length)throw appError('Add at least one quotation line.');const customerId=req(fd,'customer_id');const priced=[] as any[];for(const l of lines){const qty=Number(l.quantity)||0;if(qty<=0)throw appError('Quotation quantities must be greater than zero.');if(l.catalog_item_id){const {data:pr,error:pe}=await db.rpc('get_catalog_sales_price',{p_item_id:l.catalog_item_id,p_customer_id:customerId,p_supplier_cost:null});if(pe||!pr?.[0])throw appError(pe?.message||'Unable to calculate catalog price.');const x=pr[0];priced.push({catalog_item_id:l.catalog_item_id,description:l.description||l.catalog_item_name||'Catalog item',quantity:qty,unit:l.unit||'unit',unit_price:Number(x.customer_price||0),notes:l.notes||null,pricing_supplier_cost:Number(x.supplier_cost||0),pricing_service_cost_basis:Number(x.service_cost_basis||0),pricing_item_type:x.item_type||'product',pricing_category_addon_percent:Number(x.category_addon_percent||0),pricing_acquisition_cost:Number(x.acquisition_cost||0),pricing_item_markup_percent:Number(x.item_markup_percent||0),pricing_srp:Number(x.srp||0),pricing_customer_discount_percent:Number(x.customer_discount_percent||0),pricing_snapshot_at:new Date().toISOString()});}else{/* CAT-13: a line resolves to a catalog item; the "not in catalog" escape needs a reason and is flagged on the quote */const reason=String(l.custom_reason??'').trim();const desc=String(l.description??'').trim();if(!desc)throw appError('Pick a catalog item for every line (or describe the item that is not in the catalog).');if(!reason)throw appError(`"${desc}" is not a catalog item: pick it from the catalog, or give the reason it is not in the catalog.`);priced.push({description:desc,quantity:qty,unit:l.unit||'unit',unit_price:Number(l.unit_price)||0,notes:l.notes||null,custom_reason:reason});}}const subtotal=priced.reduce((s,l)=>s+(Number(l.quantity)||0)*(Number(l.unit_price)||0),0);const {data,error}=await db.from('sales_quotations').insert({...biz(p),opportunity_id:opt(fd,'opportunity_id'),customer_id:customerId,quotation_date:req(fd,'quotation_date'),valid_until:opt(fd,'valid_until'),subtotal,discount_amount:Number(fd.get('discount_amount')||0),tax_amount:0,vat_applied:fd.get('vat_applied')==='1',other_charges:Number(fd.get('other_charges')||0),notes:opt(fd,'notes'),payment_terms:opt(fd,'payment_terms'),delivery_lead_time:opt(fd,'delivery_lead_time'),created_by:p.user.id}).select('id').single();if(error||!data)throw appError(error?.message||'Unable to create quotation.');const {error:le}=await db.from('sales_quotation_items').insert(priced.map(l=>({...biz(p),quotation_id:data.id,...l})));if(le){await db.from('sales_quotations').delete().eq('id',data.id);throw appError(le.message)}await audit(p.user.id,data.id,'sales_quotations','quotation_created',{subtotal,pricing_integrated:priced.some(x=>x.catalog_item_id)});revalidatePath('/sales/revenue')}
 async function qTransition(id:string,status:string,from:string,field?:string){const p=await sales(),db=createClient();const patch:any={status,updated_at:new Date().toISOString()};if(field){patch[field]=p.user.id;patch[field.replace('_by','_at')]=new Date().toISOString()}const {error}=await db.from('sales_quotations').update(patch).eq('id',id).eq('status',from);if(error)throw appError(error.message);await audit(p.user.id,id,'sales_quotations',status);revalidatePath('/sales/revenue');revalidatePath('/approvals')}
 export const prepareQuotationAction=(id:string)=>qTransition(id,'prepared','draft','prepared_by');
 export const reviewQuotationAction=(id:string,accept:boolean)=>qTransition(id,accept?'reviewed':'draft','prepared', 'reviewed_by');
@@ -175,11 +175,61 @@ export async function orderChainAction(orderId: string) {
     .select('id,order_number,status,client_po_number,go_signal_date,go_signal_via,go_signal_confirmed_by,go_signal_proof_path,requested_delivery_date,delivery_address,contact_name,contact_phone,notes,total_amount,customer:finance_customers(legal_name),items:sales_order_items(id,description,quantity,unit,unit_price,amount,fulfilment)')
     .eq('id', orderId).single();
   if (error || !o) throw appError(error?.message || 'Sales order not found.');
-  const chain = await rpcCall<{ quotation_number: string | null; pr_number: string | null; pr_status: string | null; pr_fulfilment: string | null; po_numbers: string[] }>('sales_order_chain', { p_order: orderId });
+  const chain = await rpcCall<OrderChain>('sales_order_chain', { p_order: orderId });
   let proofUrl: string | null = null;
   if (o.go_signal_proof_path) {
     const { data } = await createAdminClient().storage.from(GO_SIGNAL_BUCKET).createSignedUrl(o.go_signal_proof_path, 600);
     proofUrl = data?.signedUrl ?? null;
   }
   return { order: o, chain, proofUrl };
+}
+
+// ---------------------------------------------------------------------------
+// Build 77 — quote chain stage 2 (DOC-01, DOC-03, DOC-13; migration 20261205).
+
+export type OrderChain = {
+  quotation_number: string | null; order_number: string; pr_number: string | null; pr_status: string | null; pr_fulfilment: string | null; po_numbers: string[];
+  pos: { po_number: string; status: string; issuance_status: string; supplier: string; order_date: string; value: number; paid: number;
+    receipts: { receipt_number: string; date: string; status: string; supplier_dr: string | null }[];
+    invoices: { invoice_number: string; date: string; status: string; total: number; paid: number; balance: number }[];
+    payments: { payment_number: string; date: string; amount: number; status: string; against: string; kind: string | null }[] }[];
+  lines: { id: string; description: string; unit: string; fulfilment: string; ordered: number; received: number | null; delivered: number; released: number; chosen_supplier: string | null }[];
+  drs: { sale_number: string; dr_number: string | null; date: string; total: number; release_status: string | null; si_number: string | null;
+    invoice_number: string | null; invoice_status: string | null; balance_due: number | null }[];
+};
+
+export type QuoteStock = { item_id: string; item_type: string; on_hand_store: number | null; on_hand_business: number | null };
+/** DOC-01: stock on hand for catalog items while quoting (quantities only, this business). */
+export async function quoteStockAction(itemIds: string[]) {
+  await sales();
+  const ids = [...new Set(itemIds.filter(Boolean))];
+  if (!ids.length) return [] as QuoteStock[];
+  return rpcCall<QuoteStock[]>('sales_quote_stock', { p_items: ids });
+}
+
+export type QuoteLineStatus = {
+  quotation_item_id: string; catalog_item_id: string | null; item_type: string; on_hand_store: number | null; on_hand_business: number | null;
+  not_in_catalog: boolean; custom_reason: string | null; price_request_status: 'awaiting' | 'answered' | null; price_request_note: string | null;
+  price_requested_at: string | null; chosen_supplier: string | null; supplier_unit_price: number | null; supplier_validity: string | null;
+  supplier_lead_time: string | null; supplier_terms: string | null; price_answered_at: string | null;
+};
+export async function quoteLineStatusAction(quotationId: string) {
+  await sales();
+  return rpcCall<QuoteLineStatus[]>('sales_quote_line_status', { p_quote: quotationId });
+}
+
+/** DOC-03: "Ask Procurement for supplier price" on lines of a draft quote (the database notifies Procurement). */
+export async function requestSupplierPriceAction(quotationId: string, itemIds: string[], note: string) {
+  const p = await sales();
+  if (!itemIds.length) throw appError('Tick the lines to ask Procurement about.');
+  const r = await rpcCall<{ requested: number }>('sales_request_supplier_price', { p_quote: quotationId, p_items: itemIds, p_note: note.trim() || null });
+  await audit(p.user.id, quotationId, 'sales_quotations', 'supplier_price_request_sent', { lines: r.requested });
+  revalidatePath('/sales/revenue'); revalidatePath('/finance/price-requests');
+  return r;
+}
+
+export async function cancelPriceRequestAction(quotationItemId: string) {
+  await sales();
+  await rpcCall('sales_cancel_price_request', { p_item: quotationItemId });
+  revalidatePath('/sales/revenue'); revalidatePath('/finance/price-requests');
 }

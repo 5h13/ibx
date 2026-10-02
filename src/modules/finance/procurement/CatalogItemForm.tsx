@@ -39,8 +39,10 @@ export function CatalogItemForm({
   const [itemType, setItemType] = useState<string>(item?.item_type ?? 'product');
   const [cost, setCost] = useState<string>(item ? String(item.supplier_cost ?? (item.item_type === 'service' ? item.service_cost_basis : item.standard_cost) ?? 0) : '0');
   const [markup, setMarkup] = useState<string>(item?.markup_percent == null ? '' : String(Number(item.markup_percent)));
-  const [preview, setPreview] = useState<string | null>(item?.photo_url ?? null);
-  const [removePhoto, setRemovePhoto] = useState(false);
+  // Build 76: three photo slots
+  const slots = [['photo', 'photo_url', 'photo_path'], ['photo_2', 'photo_url_2', 'photo_path_2'], ['photo_3', 'photo_url_3', 'photo_path_3']] as const;
+  const [previews, setPreviews] = useState<(string | null)[]>(slots.map(([, u]) => item?.[u] ?? null));
+  const [removed, setRemoved] = useState<boolean[]>([false, false, false]);
   const [storeEdit, setStoreEdit] = useState<string | null>(null);
 
   const calc = useMemo(() => {
@@ -56,7 +58,7 @@ export function CatalogItemForm({
 
   function submit(fd: FormData) {
     setError('');
-    if (removePhoto) fd.set('remove_photo', 'true');
+    slots.forEach(([f], i) => { if (removed[i]) fd.set(`remove_${f}`, 'true'); });
     start(async () => {
       try {
         if (item) {
@@ -65,7 +67,7 @@ export function CatalogItemForm({
           onDone?.(`Saved ${item.item_code}.`);
         } else {
           const r = await createCatalogItemAction(fd);
-          form.current?.reset(); setCategory(''); setCost('0'); setMarkup(''); setPreview(null); setItemType('product');
+          form.current?.reset(); setCategory(''); setCost('0'); setMarkup(''); setPreviews([null, null, null]); setRemoved([false, false, false]); setItemType('product');
           onDone?.(`Created catalog item ${r.item_code}.`);
         }
       } catch (e: any) {
@@ -88,18 +90,25 @@ export function CatalogItemForm({
         <L l="ITEM" hint="Generic item, e.g. AC FILTER DRIER"><input className="input" name="generic_item" defaultValue={item?.generic_item ?? ''} /></L>
         <L l="BRAND"><input className="input" name="brand" defaultValue={item?.brand ?? ''} /></L>
         <div className="md:col-span-3"><L l="DESCRIPTION"><input className="input" name="description" defaultValue={item?.description ?? ''} /></L></div>
-        <div className="md:col-span-4 flex flex-wrap items-end gap-4">
-          <L l="Product Photo" hint="JPG, PNG or WebP, up to 5 MB">
-            <input className="text-sm" type="file" name="photo" accept="image/jpeg,image/png,image/webp"
-              onChange={(e) => { const f = e.target.files?.[0]; setRemovePhoto(false); setPreview(f ? URL.createObjectURL(f) : item?.photo_url ?? null); }} />
+        <div className="md:col-span-4"><L l="SPECIFICATION" hint="One per line, e.g. Capacity: 1.5 HP / Voltage: 220 V / Refrigerant: R32 — shown on the product page">
+          <textarea className="input min-h-[90px]" name="specification" defaultValue={item?.specification ?? ''} /></L></div>
+        <div className="md:col-span-4">
+          <L l="Product Photos (up to 3)" hint="JPG, PNG or WebP, up to 5 MB each; the first is the main photo">
+            <div className="grid gap-3 sm:grid-cols-3">
+              {slots.map(([field, , path], i) => (
+                <div key={field} className="space-y-1 rounded border p-2">
+                  <div className="text-xs text-slate-500">{i === 0 ? 'Main photo' : `Photo ${i + 1}`}</div>
+                  {previews[i] && !removed[i]
+                    // eslint-disable-next-line @next/next/no-img-element
+                    ? <img src={previews[i]!} alt={`Product photo ${i + 1}`} className="h-24 w-full rounded border object-contain" />
+                    : <div className="flex h-24 items-center justify-center rounded border bg-slate-50 text-xs text-slate-400">No photo</div>}
+                  <input className="w-full text-xs" type="file" name={field} accept="image/jpeg,image/png,image/webp"
+                    onChange={(e) => { const f = e.target.files?.[0]; setRemoved(removed.map((r, k) => (k === i ? false : r))); setPreviews(previews.map((p, k) => (k === i ? (f ? URL.createObjectURL(f) : item?.[slots[i][1]] ?? null) : p))); }} />
+                  {item?.[path] && <label className="flex items-center gap-1 text-xs text-slate-600"><input type="checkbox" checked={removed[i]} onChange={(e) => setRemoved(removed.map((r, k) => (k === i ? e.target.checked : r)))} /> Remove</label>}
+                </div>
+              ))}
+            </div>
           </L>
-          {preview && !removePhoto && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={preview} alt="Product photo" className="h-20 w-20 rounded border object-cover" />
-          )}
-          {item?.photo_path && (
-            <label className="flex items-center gap-2 text-sm text-slate-600"><input type="checkbox" checked={removePhoto} onChange={(e) => setRemovePhoto(e.target.checked)} /> Remove photo</label>
-          )}
         </div>
         <div className="md:col-span-2">
           <L l="SUPPLIER">

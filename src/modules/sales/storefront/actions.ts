@@ -93,7 +93,7 @@ export async function openInvoicesAction(customerId: string) {
 
 export async function collectArAction(invoiceId: string, payments: PaymentInput[]) {
   await signedIn();
-  const r = await rpc<{ invoice_number: string; amount: number; balance: number }>('storefront_collect_ar', { p_invoice: invoiceId, p_payments: payments });
+  const r = await rpc<{ invoice_number: string; amount: number; balance: number; payment_id: string }>('storefront_collect_ar', { p_invoice: invoiceId, p_payments: payments });
   refresh();
   return r;
 }
@@ -250,5 +250,14 @@ export async function releaseDrAction(saleId: string, locationId?: string | null
   const r = await rpc<{ dr_number: string; order_complete: boolean }>('storefront_release_dr', { p_sale: saleId, p_location: locationId ?? null });
   refresh();
   revalidatePath('/logistics/warehouse-delivery');
+  return r;
+}
+
+// ---------------------------------------------------------------------------
+// Build 75 (migration 20261201): one booklet SI across several DRs of an order.
+export async function combinedSiAction(input: { sale_ids: string[]; si_number: string; si_date?: string }) {
+  await signedIn();
+  const r = await rpc<{ invoice_number: string; total: number; received: number; balance: number; drs: string }>('storefront_combined_si', { p: input });
+  refresh();
   return r;
 }

@@ -7,12 +7,21 @@
 //                     from stock or order from supplier.
 //   • OrderView     — sales order detail with its chain (quote, PR, POs) and
 //                     the confirmation screenshot.
+// Build 77 — QuoteView shows stock on hand per line (DOC-01), the "not in
+// catalog" flag (CAT-13) and "Ask Procurement for supplier price" on a draft
+// quote (DOC-03); OrderView shows the whole chain down to supplier receipts,
+// AP invoices, supplier payments and the DR / SI / AR status (DOC-13).
 
 import { useEffect, useState, useTransition } from 'react';
 import { errorText } from '@/core/errors/appError';
-import { createOrderFromGoSignalAction, orderChainAction, quotationDetailAction, quoteOrderLinesAction, reviseQuotationAction } from './revenueActions';
+import {
+  cancelPriceRequestAction, createOrderFromGoSignalAction, orderChainAction, quotationDetailAction, quoteLineStatusAction, quoteOrderLinesAction,
+  requestSupplierPriceAction, reviseQuotationAction, type QuoteLineStatus,
+} from './revenueActions';
 
 const money = (n: unknown) => `₱${Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const qty = (n: unknown) => (n === null || n === undefined ? '—' : Number(n).toLocaleString());
+const VALIDITY: Record<string, string> = { while_supply_lasts: 'while supply lasts', fixed_price: 'fixed price' };
 const manilaToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila' }).format(new Date());
 export const REVISABLE = ['draft', 'prepared', 'reviewed', 'approved', 'sent', 'accepted', 'rejected', 'expired'];
 export const ORDERABLE = ['approved', 'sent', 'accepted'];
@@ -28,16 +37,27 @@ function Chip({ s }: { s: string }) {
 // ---------------------------------------------------------------- quote --
 export function QuoteView({ quotationId, onRevised }: { quotationId: string; onRevised: (msg: string) => void }) {
   const [d, setD] = useState<Awaited<ReturnType<typeof quotationDetailAction>> | null>(null);
+  const [lineStatus, setLineStatus] = useState<Record<string, QuoteLineStatus>>({});
+  const [ask, setAsk] = useState<Record<string, boolean>>({});
+  const [note, setNote] = useState('');
+  const [info, setInfo] = useState('');
+  const [reload, setReload] = useState(0);
   const [error, setError] = useState('');
   const [pending, start] = useTransition();
   useEffect(() => {
     let live = true;
-    quotationDetailAction(quotationId).then((r) => { if (live) setD(r); }).catch((e) => { if (live) setError(errorText(e)); });
+    Promise.all([quotationDetailAction(quotationId), quoteLineStatusAction(quotationId)])
+      .then(([r, st]) => { if (live) { setD(r); setLineStatus(Object.fromEntries(st.map((x) => [x.quotation_item_id, x]))); } })
+      .catch((e) => { if (live) setError(errorText(e)); });
     return () => { live = false; };
-  }, [quotationId]);
+  }, [quotationId, reload]);
   if (!d) return error ? <ErrorBox text={error} /> : <p className="text-sm text-slate-500">Loading…</p>;
   const q: any = d.quote;
   const canRevise = REVISABLE.includes(q.status) && d.orders.length === 0;
+  const isDraft = q.status === 'draft';
+  const askable = (st?: QuoteLineStatus) => !!st && isDraft && st.item_type === 'product' && st.price_request_status !== 'awaiting';
+  const chosen = Object.entries(ask).filter(([, v]) => v).map(([k]) => k);
+  const awaiting = Object.values(lineStatus).filter((x) => x.price_request_status === 'awaiting').length;
   return (
     <div className="space-y-4 text-sm">
       <div className="grid gap-3 sm:grid-cols-4">
@@ -47,17 +67,34 @@ export function QuoteView({ quotationId, onRevised }: { quotationId: string; onR
         <div><div className="text-xs text-slate-500">Status</div><Chip s={q.status} /></div>
       </div>
       <table className="w-full">
-        <thead><tr className="border-b text-left text-xs uppercase text-slate-500"><th className="p-2">Item</th><th className="p-2 text-right">Qty</th><th className="p-2 text-right">Unit price</th><th className="p-2 text-right">Amount</th></tr></thead>
-        <tbody>{[...(q.items ?? [])].sort((a: any, b: any) => String(a.created_at).localeCompare(String(b.created_at))).map((i: any) => (
-          <tr key={i.id} className="border-b"><td className="p-2">{i.description}{!i.catalog_item_id && <span className="ml-1 text-xs text-slate-500">(custom)</span>}</td>
-            <td className="p-2 text-right">{Number(i.quantity)} {i.unit}</td><td className="p-2 text-right">{money(i.unit_price)}</td><td className="p-2 text-right">{money(i.amount)}</td></tr>))}</tbody>
+        <thead><tr className="border-b text-left text-xs uppercase text-slate-500">{isDraft && <th className="w-6 p-2" />}<th className="p-2">Item</th><th className="p-2 text-right">Qty</th>
+          <th className="p-2 text-right" title="Stock on hand at the store / in all locations of this business">On hand</th><th className="p-2 text-right">Unit price</th><th className="p-2 text-right">Amount</th></tr></thead>
+        <tbody>{[...(q.items ?? [])].sort((a: any, b: any) => String(a.created_at).localeCompare(String(b.created_at))).map((i: any) => {
+          const st = lineStatus[i.id];
+          const short = st && st.on_hand_business !== null && Number(st.on_hand_business) < Number(i.quantity);
+          return (
+            <tr key={i.id} className="border-b align-top">
+              {isDraft && <td className="p-2">{askable(st) && <input type="checkbox" aria-label="Ask Procurement for this line" checked={!!ask[i.id]} onChange={(e) => setAsk({ ...ask, [i.id]: e.target.checked })} />}</td>}
+              <td className="p-2">{i.description}
+                {!i.catalog_item_id && <div className="text-xs font-medium text-amber-700">Not in catalog{i.custom_reason ? ` — ${i.custom_reason}` : ' (no reason recorded)'}</div>}
+                {st?.price_request_status === 'awaiting' && <div className="text-xs text-amber-700">Awaiting supplier price from Procurement{st.price_request_note ? ` · “${st.price_request_note}”` : ''}
+                  {isDraft && <button type="button" className="ml-2 underline" disabled={pending} onClick={() => start(async () => {
+                    try { await cancelPriceRequestAction(i.id); setReload((n) => n + 1); } catch (e) { setError(errorText(e)); } })}>Withdraw</button>}</div>}
+                {st?.price_request_status === 'answered' && st.chosen_supplier && <div className="text-xs text-emerald-700">Supplier: {st.chosen_supplier} · {money(st.supplier_unit_price)}
+                  {st.supplier_validity ? ` · ${VALIDITY[st.supplier_validity] ?? st.supplier_validity}` : ''}{st.supplier_lead_time ? ` · ${st.supplier_lead_time}` : ''}{st.supplier_terms ? ` · terms ${st.supplier_terms}` : ''}</div>}
+              </td>
+              <td className="p-2 text-right">{Number(i.quantity)} {i.unit}</td>
+              <td className={`p-2 text-right ${short ? 'font-medium text-amber-700' : ''}`}>{st && st.on_hand_business !== null ? `${qty(st.on_hand_store)} / ${qty(st.on_hand_business)}` : '—'}</td>
+              <td className="p-2 text-right">{money(i.unit_price)}</td><td className="p-2 text-right">{money(i.amount)}</td>
+            </tr>);
+        })}</tbody>
         <tfoot>
-          <tr><td colSpan={3} className="p-2 text-right text-slate-500">Subtotal</td><td className="p-2 text-right">{money(q.subtotal)}</td></tr>
-          {Number(q.discount_amount) > 0 && <tr><td colSpan={3} className="p-2 text-right text-slate-500">Discount</td><td className="p-2 text-right">−{money(q.discount_amount)}</td></tr>}
-          {Number(q.tax_amount) > 0 && <tr><td colSpan={3} className="p-2 text-right text-slate-500">Tax</td><td className="p-2 text-right">{money(q.tax_amount)}</td></tr>}
-          {Number(q.other_charges) > 0 && <tr><td colSpan={3} className="p-2 text-right text-slate-500">Other charges</td><td className="p-2 text-right">{money(q.other_charges)}</td></tr>}
-          <tr><td colSpan={3} className="p-2 text-right font-semibold">Total</td><td className="p-2 text-right font-semibold">{money(q.total_amount)}</td></tr>
-          {q.vat_applied && <tr><td colSpan={3} className="p-2 text-right text-slate-500">VAT 12% (included)</td><td className="p-2 text-right">{money(q.vat_amount)}</td></tr>}
+          <tr>{isDraft && <td />}<td colSpan={4} className="p-2 text-right text-slate-500">Subtotal</td><td className="p-2 text-right">{money(q.subtotal)}</td></tr>
+          {Number(q.discount_amount) > 0 && <tr>{isDraft && <td />}<td colSpan={4} className="p-2 text-right text-slate-500">Discount</td><td className="p-2 text-right">−{money(q.discount_amount)}</td></tr>}
+          {Number(q.tax_amount) > 0 && <tr>{isDraft && <td />}<td colSpan={4} className="p-2 text-right text-slate-500">Tax</td><td className="p-2 text-right">{money(q.tax_amount)}</td></tr>}
+          {Number(q.other_charges) > 0 && <tr>{isDraft && <td />}<td colSpan={4} className="p-2 text-right text-slate-500">Other charges</td><td className="p-2 text-right">{money(q.other_charges)}</td></tr>}
+          <tr>{isDraft && <td />}<td colSpan={4} className="p-2 text-right font-semibold">Total</td><td className="p-2 text-right font-semibold">{money(q.total_amount)}</td></tr>
+          {q.vat_applied && <tr>{isDraft && <td />}<td colSpan={4} className="p-2 text-right text-slate-500">VAT 12% (included)</td><td className="p-2 text-right">{money(q.vat_amount)}</td></tr>}
         </tfoot>
       </table>
       {d.history.length > 1 && (
@@ -65,6 +102,23 @@ export function QuoteView({ quotationId, onRevised }: { quotationId: string; onR
           {d.history.map((h: any) => <div key={h.id} className={`flex justify-between border-b py-1 ${h.id === q.id ? 'font-medium' : ''}`}><span>{h.quotation_number} · {h.quotation_date}</span><span>{money(h.total_amount)} · <Chip s={h.status} /></span></div>)}
         </div>
       )}
+      <p className="text-xs text-slate-500">On hand = store / all locations of this business.</p>
+      {isDraft && Object.values(lineStatus).some((x) => askable(x)) && (
+        <div className="space-y-2 rounded border border-slate-200 p-3">
+          <div className="font-medium">Ask Procurement for a supplier price</div>
+          <p className="text-xs text-slate-500">Tick the lines that are not in stock. Procurement is notified, checks suppliers and records the chosen supplier and price here; you are notified back and the line is re-priced from it. The quotation can be prepared once every requested line has its price.</p>
+          <div className="flex flex-wrap gap-2">
+            <input className="input flex-1" placeholder="Note for Procurement (optional) — e.g. needed by Friday" value={note} onChange={(e) => setNote(e.target.value)} />
+            <button type="button" className="button" disabled={pending || chosen.length === 0} onClick={() => start(async () => {
+              setError('');
+              try { const r = await requestSupplierPriceAction(q.id, chosen, note); setInfo(`${r.requested} line(s) sent to Procurement.`); setAsk({}); setNote(''); setReload((n) => n + 1); }
+              catch (e) { setError(errorText(e)); }
+            })}>{pending ? 'Sending…' : `Ask Procurement (${chosen.length})`}</button>
+          </div>
+        </div>
+      )}
+      {awaiting > 0 && <p className="text-xs text-amber-700">{awaiting} line(s) waiting for a supplier price — the quotation cannot be prepared until Procurement answers.</p>}
+      {info && <div className="rounded bg-emerald-50 p-2 text-sm text-emerald-800">{info}</div>}
       {d.orders.length > 0 && <div>Sales order: {d.orders.map((o: any) => `${o.order_number} (${o.status})`).join(', ')}</div>}
       <ErrorBox text={error} />
       <div className="flex flex-wrap justify-end gap-2">
@@ -141,10 +195,10 @@ export function GoSignalForm({ quote, onDone }: { quote: any; onDone: (msg: stri
             <thead><tr className="border-b text-left text-xs uppercase text-slate-500"><th className="p-2">Item</th><th className="p-2 text-right">Qty</th><th className="p-2 text-right">On hand</th><th className="p-2">Fulfil</th></tr></thead>
             <tbody>{lines.map((l) => (
               <tr key={l.quotation_item_id} className="border-b">
-                <td className="p-2">{l.description}{l.item_type === 'custom' && <span className="ml-1 text-xs text-slate-500">(custom)</span>}</td>
+                <td className="p-2">{l.description}{l.item_type === 'custom' && <span className="ml-1 text-xs text-amber-700">(not in catalog — from stock only)</span>}</td>
                 <td className="p-2 text-right">{Number(l.quantity)} {l.unit}</td>
                 <td className={`p-2 text-right ${l.on_hand !== null && Number(l.on_hand) < Number(l.quantity) ? 'text-amber-700' : ''}`}>{l.on_hand === null ? '—' : Number(l.on_hand).toLocaleString()}</td>
-                <td className="p-2">{l.item_type === 'service' ? <span className="text-slate-500">Service</span> : (
+                <td className="p-2">{l.item_type === 'service' ? <span className="text-slate-500">Service</span> : l.item_type === 'custom' ? <span className="text-slate-500">From stock</span> : (
                   <select className="input" value={choice[l.quotation_item_id] ?? 'stock'} onChange={(e) => setChoice({ ...choice, [l.quotation_item_id]: e.target.value as 'stock' | 'source' })}>
                     <option value="stock">From stock</option><option value="source">Order from supplier (PR)</option></select>)}</td>
               </tr>))}</tbody>
@@ -170,6 +224,18 @@ export function OrderView({ orderId }: { orderId: string }) {
   if (!d) return error ? <ErrorBox text={error} /> : <p className="text-sm text-slate-500">Loading…</p>;
   const o: any = d.order; const c = d.chain;
   const FUL: Record<string, string> = { stock: 'From stock', source: 'Order from supplier', service: 'Service' };
+  const lineState = (l: (typeof c.lines)[number]) => {
+    const ord = Number(l.ordered), del = Number(l.delivered), rel = Number(l.released);
+    if (l.fulfilment === 'service') return del >= ord ? 'Done' : 'Service';
+    if (del >= ord) return rel >= ord ? 'Delivered (released)' : 'Delivered — awaiting warehouse release';
+    if (del > 0) return `Partly delivered (${qty(del)} of ${qty(ord)})`;
+    if (l.fulfilment === 'source') {
+      const rec = Number(l.received ?? 0);
+      if (!c.po_numbers?.length) return c.pr_number ? 'Awaiting PO' : 'Awaiting PR (order approval)';
+      return rec >= ord ? 'Received from supplier' : rec > 0 ? `Partly received (${qty(rec)} of ${qty(ord)})` : 'Awaiting supplier delivery';
+    }
+    return 'From stock — ready to deliver';
+  };
   return (
     <div className="space-y-4 text-sm">
       <div className="flex flex-wrap items-center gap-2 rounded bg-slate-50 p-3">
@@ -178,6 +244,7 @@ export function OrderView({ orderId }: { orderId: string }) {
         {c.pr_number ? <><b>{c.pr_number}</b> <Chip s={c.pr_status ?? ''} /> <span className="text-xs text-slate-500">{String(c.pr_fulfilment ?? '').replaceAll('_', ' ')}</span></>
           : <span className="text-slate-500">{o.items?.some((i: any) => i.fulfilment === 'source') ? 'PR is created when the order is approved' : 'No PR (all from stock)'}</span>}
         {c.po_numbers?.length > 0 && <><span>→</span><b>{c.po_numbers.join(', ')}</b></>}
+        {c.drs?.length > 0 && <><span>→</span><b>{c.drs.map((x) => x.dr_number ?? x.sale_number).join(', ')}</b></>}
       </div>
       <div className="grid gap-3 sm:grid-cols-4">
         <div><div className="text-xs text-slate-500">Customer</div><div className="font-medium">{o.customer?.legal_name}</div></div>
@@ -187,11 +254,41 @@ export function OrderView({ orderId }: { orderId: string }) {
         <div><div className="text-xs text-slate-500">Delivery</div><div className="font-medium">{o.requested_delivery_date || '—'}</div><div className="text-xs">{[o.delivery_address, o.contact_name, o.contact_phone].filter(Boolean).join(' · ')}</div></div>
       </div>
       <table className="w-full">
-        <thead><tr className="border-b text-left text-xs uppercase text-slate-500"><th className="p-2">Item</th><th className="p-2 text-right">Qty</th><th className="p-2 text-right">Amount</th><th className="p-2">Fulfil</th></tr></thead>
-        <tbody>{(o.items ?? []).map((i: any) => <tr key={i.id} className="border-b"><td className="p-2">{i.description}</td><td className="p-2 text-right">{Number(i.quantity)} {i.unit}</td><td className="p-2 text-right">{money(i.amount)}</td><td className="p-2">{FUL[i.fulfilment] ?? i.fulfilment}</td></tr>)}</tbody>
-        <tfoot><tr><td colSpan={2} className="p-2 text-right font-semibold">Total</td><td className="p-2 text-right font-semibold">{money(o.total_amount)}</td><td /></tr>
-          <tr><td colSpan={4} className="p-2 text-right text-xs text-slate-500">{o.vat_applied ? `With VAT (from the quotation): VAT 12% included ${money(o.vat_amount)}` : 'Without VAT (from the quotation)'}{o.payment_terms ? ` · terms ${o.payment_terms}` : ''} · DRs are issued at the Storefront (Orders tab)</td></tr></tfoot>
+        <thead><tr className="border-b text-left text-xs uppercase text-slate-500"><th className="p-2">Item</th><th className="p-2 text-right">Qty</th><th className="p-2 text-right">Amount</th><th className="p-2">Fulfil</th><th className="p-2">Status</th></tr></thead>
+        <tbody>{(o.items ?? []).map((i: any) => { const l = c.lines?.find((x) => x.id === i.id); return (
+          <tr key={i.id} className="border-b"><td className="p-2">{i.description}{l?.chosen_supplier && <div className="text-xs text-slate-500">Supplier: {l.chosen_supplier}</div>}</td>
+            <td className="p-2 text-right">{Number(i.quantity)} {i.unit}</td><td className="p-2 text-right">{money(i.amount)}</td><td className="p-2">{FUL[i.fulfilment] ?? i.fulfilment}</td>
+            <td className="p-2 text-xs">{l ? lineState(l) : '—'}</td></tr>); })}</tbody>
+        <tfoot><tr><td colSpan={2} className="p-2 text-right font-semibold">Total</td><td className="p-2 text-right font-semibold">{money(o.total_amount)}</td><td colSpan={2} /></tr>
+          <tr><td colSpan={5} className="p-2 text-right text-xs text-slate-500">{o.vat_applied ? `With VAT (from the quotation): VAT 12% included ${money(o.vat_amount)}` : 'Without VAT (from the quotation)'}{o.payment_terms ? ` · terms ${o.payment_terms}` : ''} · DRs are issued at the Storefront (Orders tab)</td></tr></tfoot>
       </table>
+      {c.pos?.length > 0 && (
+        <section className="space-y-2">
+          <h4 className="font-semibold">Supplier side</h4>
+          {c.pos.map((po) => (
+            <div key={po.po_number} className="rounded border p-3">
+              <div className="flex flex-wrap items-center gap-2"><b>{po.po_number}</b><Chip s={po.status} /><span className="text-slate-600">{po.supplier}</span>
+                <span className="ml-auto text-xs">PO {money(po.value)} · paid {money(po.paid)} · remaining {money(Math.max(Number(po.value) - Number(po.paid), 0))}</span></div>
+              <div className="mt-2 grid gap-3 text-xs sm:grid-cols-3">
+                <div><div className="font-medium uppercase text-slate-500">Receipts</div>{po.receipts.length ? po.receipts.map((r) => <div key={r.receipt_number}>{r.receipt_number} · {r.date} · <Chip s={r.status} />{r.supplier_dr ? ` · supplier DR ${r.supplier_dr}` : ''}</div>) : <div className="text-slate-500">None yet</div>}</div>
+                <div><div className="font-medium uppercase text-slate-500">AP invoices</div>{po.invoices.length ? po.invoices.map((x) => <div key={x.invoice_number}>{x.invoice_number} · {money(x.total)} · <Chip s={x.status} /> · balance {money(x.balance)}</div>) : <div className="text-slate-500">Not registered yet</div>}</div>
+                <div><div className="font-medium uppercase text-slate-500">Supplier payments</div>{po.payments.length ? po.payments.map((x) => <div key={x.payment_number}>{x.payment_number} · {money(x.amount)} · against {x.against}{x.kind ? ` (${x.kind.replaceAll('_', ' ')})` : ''} · <Chip s={x.status} /></div>) : <div className="text-slate-500">None yet</div>}</div>
+              </div>
+            </div>
+          ))}
+        </section>
+      )}
+      <section className="space-y-1">
+        <h4 className="font-semibold">Deliveries and billing</h4>
+        {c.drs?.length ? (
+          <table className="w-full text-xs">
+            <thead><tr className="border-b text-left uppercase text-slate-500"><th className="p-1">DR</th><th className="p-1">Date</th><th className="p-1 text-right">Amount</th><th className="p-1">Warehouse</th><th className="p-1">SI</th><th className="p-1">AR</th><th className="p-1 text-right">Balance</th></tr></thead>
+            <tbody>{c.drs.map((x) => <tr key={x.sale_number} className="border-b"><td className="p-1">{x.dr_number ?? x.sale_number}</td><td className="p-1">{x.date}</td><td className="p-1 text-right">{money(x.total)}</td>
+              <td className="p-1">{String(x.release_status ?? '—').replaceAll('_', ' ')}</td><td className="p-1">{x.si_number ?? 'Not yet'}</td>
+              <td className="p-1">{x.invoice_number ? <>{x.invoice_number} <Chip s={x.invoice_status ?? ''} /></> : '—'}</td><td className="p-1 text-right">{x.balance_due === null ? '—' : money(x.balance_due)}</td></tr>)}</tbody>
+          </table>
+        ) : <p className="text-xs text-slate-500">No DR yet — DRs are issued at the Storefront (Orders tab).</p>}
+      </section>
       {o.notes && <p className="text-slate-600">Notes: {o.notes}</p>}
     </div>
   );

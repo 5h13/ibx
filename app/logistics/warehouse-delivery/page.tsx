@@ -8,7 +8,10 @@ import {AuthedShell} from '@/core/layout/AuthedShell';
 import {WarehouseDeliveryManagement} from '@/modules/logistics/warehouse-delivery/WarehouseDeliveryManagement';
 import {DrReleasePanel} from '@/modules/sales/storefront/DrReleasePanel';
 
-export default async function Page(){
+const DATE=/^\d{4}-\d{2}-\d{2}$/;
+const ORDER_STATUSES=['draft','prepared','picked','packed','reviewed','approved','dispatched','delivered','cancelled'];
+const DISPATCH_STATUSES=['planned','loaded','in_transit','delivered','failed','cancelled'];
+export default async function Page({searchParams}:{searchParams?:{from?:string;to?:string;status?:string;dispatch_status?:string}}){
  const profile=await getSessionProfile(); if(!profile?.user.is_active) redirect('/login');
  // Build 52: this page had NO section gate at all — any signed-in user of any
  // department could open it — and read through the service-role client, so it
@@ -18,12 +21,20 @@ export default async function Page(){
  if(!allowed) redirect('/dashboard');
  // Session-scoped client: business-isolation RLS applies.
  const db=createClient();
+ // LOG-03: drill-down from the Logistics dashboard — optional period / status filters
+ const sp=searchParams??{};const from=DATE.test(sp.from??'')?sp.from!:'';const to=DATE.test(sp.to??'')?sp.to!:'';
+ const status=ORDER_STATUSES.includes(sp.status??'')?sp.status!:'';const dispatchStatus=DISPATCH_STATUSES.includes(sp.dispatch_status??'')?sp.dispatch_status!:'';
+ let orderQ=db.from('logistics_delivery_orders').select('*,customer:finance_customers(customer_code,legal_name)').order('delivery_date',{ascending:false});
+ if(from)orderQ=orderQ.gte('delivery_date',from);if(to)orderQ=orderQ.lte('delivery_date',to);if(status)orderQ=orderQ.eq('status',status);
+ let dispatchQ=db.from('logistics_dispatches').select('*,delivery:logistics_delivery_orders(delivery_number),vehicle:fleet_vehicles(vehicle_no,plate_no),driver:fleet_drivers(id,employee_id),trip:fleet_trips(trip_no,status)').order('dispatch_date',{ascending:false});
+ if(from)dispatchQ=dispatchQ.gte('dispatch_date',from);if(to)dispatchQ=dispatchQ.lte('dispatch_date',to);if(dispatchStatus)dispatchQ=dispatchQ.eq('delivery_status',dispatchStatus);
+ const filtered=!!(from||to||status||dispatchStatus);
  const [{data:locations,error:e1},{data:items,error:e2},{data:customers,error:e3},{data:orders,error:e4},{data:dispatchRows,error:e5},{data:vehicles,error:e6},{data:driverRows,error:e7}]=await Promise.all([
   db.from('logistics_locations').select('id,location_code,location_name').eq('active',true).order('location_code'),
   db.from('logistics_inventory_items').select('id,item_code,item_name,unit').eq('active',true).order('item_code'),
   db.from('finance_customers').select('id,customer_code,legal_name').eq('active',true).order('legal_name'),
-  db.from('logistics_delivery_orders').select('*,customer:finance_customers(customer_code,legal_name)').order('delivery_date',{ascending:false}),
-  db.from('logistics_dispatches').select('*,delivery:logistics_delivery_orders(delivery_number),vehicle:fleet_vehicles(vehicle_no,plate_no),driver:fleet_drivers(id,employee_id),trip:fleet_trips(trip_no,status)').order('dispatch_date',{ascending:false}),
+  orderQ,
+  dispatchQ,
   db.from('fleet_vehicles').select('id,vehicle_no,plate_no,status,registration_expiry,insurance_expiry').in('status',['available','assigned']).order('vehicle_no'),
   // license_no deliberately not selected: CONFIDENTIAL (Admin approvers only,
   // see 20260924_admin_driver_license_confidentiality.sql).
@@ -42,5 +53,5 @@ export default async function Page(){
  const dispatches=(dispatchRows??[]).map((d:any)=>({...d,driver:d.driver?{...d.driver,employee:byId.get(d.driver.employee_id)??null}:null}));
  /* Build 74 (SF-01): Storefront DRs from sales orders waiting for the physical release */
  const {data:drs}=await db.rpc('storefront_drs_awaiting_release');
- return <AuthedShell profile={profile}><div className="mb-6"><DrReleasePanel drs={(drs??[]) as any} locations={locations??[]}/></div><WarehouseDeliveryManagement profile={profile} locations={locations??[]} items={items??[]} customers={customers??[]} orders={orders??[]} dispatches={dispatches} vehicles={vehicles??[]} drivers={drivers}/></AuthedShell>
+ return <AuthedShell profile={profile}>{filtered&&<div className="mb-4 rounded-lg bg-slate-100 px-4 py-2 text-sm flex flex-wrap justify-between gap-2"><span>Filtered from the dashboard:{from||to?` ${from||'…'} to ${to||'…'}`:''}{status?` · delivery orders ${status.replace('_',' ')}`:''}{dispatchStatus?` · dispatches ${dispatchStatus.replace('_',' ')}`:''}</span><a className="text-blue-700" href="/logistics/warehouse-delivery">Show everything</a></div>}<div className="mb-6"><DrReleasePanel drs={(drs??[]) as any} locations={locations??[]}/></div><WarehouseDeliveryManagement profile={profile} locations={locations??[]} items={items??[]} customers={customers??[]} orders={orders??[]} dispatches={dispatches} vehicles={vehicles??[]} drivers={drivers}/></AuthedShell>
 }

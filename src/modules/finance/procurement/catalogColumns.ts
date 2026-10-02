@@ -19,7 +19,10 @@ export function normalizeCatalogHeader(h: string): string {
     supplier_cost: 'supplier_cost', standard_cost: 'supplier_cost',
     add_on: 'add_on', acquisition_cost: 'acquisition_cost', store_price: 'store_price',
     percent_mark_up: 'markup_percent', percent_markup: 'markup_percent', mark_up: 'markup_percent', markup: 'markup_percent', markup_percent: 'markup_percent',
-    unit: 'unit', item_code: 'item_code',
+    unit: 'unit', item_code: 'item_code', code: 'item_code',
+    specification: 'specification', specifications: 'specification', spec: 'specification', specs: 'specification',
+    opening_stock: 'opening_stock', opening_qty: 'opening_stock', starting_stock: 'opening_stock', beginning_stock: 'opening_stock',
+    opening_unit_cost: 'opening_cost', opening_cost: 'opening_cost',
   };
   return alias[k] ?? k;
 }
@@ -29,3 +32,9 @@ export function normalizeCatalogHeader(h: string): string {
  * import, export and Product Search. */
 export const CATALOG_TABLE_HIDDEN = ['CATEGORY', 'ITEM', 'BRAND', 'DESCRIPTION'] as const;
 export const CATALOG_TABLE_COLUMNS = CATALOG_COLUMNS.filter((c) => !(CATALOG_TABLE_HIDDEN as readonly string[]).includes(c));
+
+/** Build 76 — extra columns of the full-catalog upload / export, after the
+ * catalog layout: the item code (matches the row to the item, so a cleaned-up
+ * name still updates the same item), unit, specification and the opening
+ * stock (LOG-46) with an optional unit cost (default: Supplier Cost). */
+export const CATALOG_UPLOAD_EXTRA = ['Item Code', 'Unit', 'SPECIFICATION', 'OPENING STOCK', 'OPENING UNIT COST'] as const;

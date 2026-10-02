@@ -88,11 +88,11 @@ export default async function ProductSearchPage({ searchParams }: { searchParams
               <div key={p.item_id} className="flex gap-3 rounded-lg border bg-white p-3">
                 <div className="h-24 w-24 flex-none overflow-hidden rounded border bg-slate-50">
                   {p.photo_url
-                    ? <a href={p.photo_url} target="_blank" rel="noreferrer">{/* eslint-disable-next-line @next/next/no-img-element */}<img src={p.photo_url} alt={p.item_name} className="h-full w-full object-cover" /></a>
+                    ? <a href={`/catalog/${p.item_id}?back=${encodeURIComponent('/catalog' + link(page))}`}>{/* eslint-disable-next-line @next/next/no-img-element */}<img src={p.photo_url} alt={p.item_name} className="h-full w-full object-cover" /></a>
                     : <div className="flex h-full items-center justify-center text-xs text-slate-400">No photo</div>}
                 </div>
                 <div className="min-w-0 flex-1 space-y-1">
-                  <div className="font-medium leading-snug">{p.item_name}</div>
+                  <a className="font-medium leading-snug hover:underline" href={`/catalog/${p.item_id}?back=${encodeURIComponent('/catalog' + link(page))}`}>{p.item_name}</a>
                   <div className="text-xs text-slate-500">{p.item_code} · {[p.category, p.generic_item, p.brand].filter(Boolean).join(' · ')}</div>
                   {p.description && <div className="text-xs text-slate-600">{p.description}</div>}
                   <div className="flex flex-wrap items-center gap-2 pt-1">
