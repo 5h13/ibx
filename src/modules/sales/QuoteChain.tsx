@@ -145,8 +145,8 @@ export function GoSignalForm({ quote, onDone }: { quote: any; onDone: (msg: stri
     quoteOrderLinesAction(quote.id).then((r) => {
       if (!live) return;
       setLines(r);
-      // default: order from the supplier when stock does not cover the quantity
-      setChoice(Object.fromEntries(r.filter((l) => l.item_type === 'product').map((l) => [l.quotation_item_id, Number(l.on_hand ?? 0) >= Number(l.quantity) ? 'stock' : 'source'])));
+      // default: order from the supplier when stock does not cover the quantity, and always for order-only items (CAT-38)
+      setChoice(Object.fromEntries(r.filter((l) => l.item_type === 'product').map((l) => [l.quotation_item_id, l.stock_type !== 'order_only' && Number(l.on_hand ?? 0) >= Number(l.quantity) ? 'stock' : 'source'])));
     }).catch((e) => { if (live) setError(errorText(e)); });
     return () => { live = false; };
   }, [quote.id]);

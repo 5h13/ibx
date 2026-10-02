@@ -48,7 +48,7 @@ export default async function ProductSearchPage({ searchParams }: { searchParams
       <div className="space-y-5">
         <div>
           <h2 className="text-xl font-semibold">Product Search</h2>
-          <p className="mt-1 text-sm text-slate-500">Look up products, store prices and stock on hand. View only. “Not stocked” = this store has never ordered or received the item; “Out of stock” = stocked before, none on hand now.</p>
+          <p className="mt-1 text-sm text-slate-500">Look up products, store prices and stock on hand. View only. Available = on hand minus what approved sales orders have reserved. “Order only” = bought only against a client PO; “Not stocked” = this store has never ordered or received the item; “Out of stock” = stocked before, none on hand now.</p>
         </div>
         {noBusiness && <div className="rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">Select a business in &quot;Acting as&quot; to see store prices and stock — they are kept per business.</div>}
 
@@ -61,7 +61,7 @@ export default async function ProductSearchPage({ searchParams }: { searchParams
             <input className="input" name="item" list="ps-items" defaultValue={f.item} placeholder="All items" /><datalist id="ps-items">{itemOptions.map((v) => <option key={v} value={v} />)}</datalist></label>
           <label className="block text-sm"><span className="mb-1 block font-medium text-slate-700">Brand</span>
             <input className="input" name="brand" list="ps-brands" defaultValue={f.brand} placeholder="All brands" /><datalist id="ps-brands">{brandOptions.map((v) => <option key={v} value={v} />)}</datalist></label>
-          <label className="flex items-center gap-2 pb-2 text-sm"><input type="checkbox" name="stock" value="1" defaultChecked={f.stock} /> In stock only</label>
+          <label className="flex items-center gap-2 pb-2 text-sm"><input type="checkbox" name="stock" value="1" defaultChecked={f.stock} /> Available only</label>
           <div className="flex gap-2 md:col-span-6"><button className="button">Search</button>{filtered && <a className="button-secondary" href="/catalog">Clear</a>}</div>
         </form>
 
@@ -78,10 +78,13 @@ export default async function ProductSearchPage({ searchParams }: { searchParams
           {items.map((p) => {
             const locs = (p.stock_by_location ?? []) as { location: string; on_hand: number }[];
             const onHand = p.on_hand == null ? null : Number(p.on_hand);
+            const reserved = Number(p.reserved ?? 0);   // Build 78: held for approved sales orders
             const badge = p.item_type === 'service' ? { t: 'Service', c: 'bg-slate-100 text-slate-700' }
               : noBusiness ? null
+              : p.stock_type === 'order_only' && !(Number(p.on_hand ?? 0) > 0) ? { t: 'Order only', c: 'bg-sky-50 text-sky-800' }
               : !p.stocked ? { t: 'Not stocked', c: 'bg-slate-100 text-slate-600' }
               : onHand == null ? null
+              : onHand > 0 && reserved > 0 && onHand - reserved <= 0 ? { t: `${qty(onHand)} on hand, all reserved`, c: 'bg-amber-50 text-amber-800' }
               : onHand > 0 ? { t: `In stock: ${qty(onHand)} ${p.unit}`, c: 'bg-emerald-50 text-emerald-700' }
               : { t: 'Out of stock', c: 'bg-red-50 text-red-700' };
             return (
@@ -100,6 +103,7 @@ export default async function ProductSearchPage({ searchParams }: { searchParams
                     <span className="text-xs text-slate-500">per {p.unit}</span>
                     {badge && <span className={`rounded px-2 py-0.5 text-xs font-medium ${badge.c}`}>{badge.t}</span>}
                   </div>
+                  {reserved > 0 && onHand != null && <div className="text-xs text-slate-600">{qty(reserved)} reserved for sales orders · <b>{qty(Math.max(onHand - reserved, 0))} available</b></div>}
                   {locs.length > 0 && (
                     <details className="text-xs text-slate-600">
                       <summary className="cursor-pointer">Stock by location</summary>

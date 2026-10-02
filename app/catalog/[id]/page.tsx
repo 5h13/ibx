@@ -56,8 +56,10 @@ export default async function ProductDetailPage({ params, searchParams }: { para
               {!p.priced && <span className="text-xs text-amber-700">Select a business in &quot;Acting as&quot; to see the store price</span>}
             </div>
             {p.item_type === 'service' ? <span className="inline-block rounded bg-slate-100 px-2 py-0.5 text-xs">Service</span>
+              : p.stock_type === 'order_only' && !(Number(onHand ?? 0) > 0) ? <span className="inline-block rounded bg-sky-50 px-2 py-0.5 text-xs text-sky-800">Order only — bought against a client PO</span>
               : onHand == null ? (p.priced ? <span className="inline-block rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-600">Not stocked</span> : null)
               : <span className={`inline-block rounded px-2 py-0.5 text-xs font-medium ${onHand > 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>{onHand > 0 ? `In stock: ${qty(onHand)} ${p.unit}` : 'Out of stock'}</span>}
+            {Number(p.reserved ?? 0) > 0 && onHand != null && <div className="text-sm text-slate-600">{qty(p.reserved)} reserved for sales orders · <b>{qty(Math.max(onHand - Number(p.reserved), 0))} available</b></div>}
             {locs.length > 0 && <ul className="text-sm text-slate-600">{locs.map((l) => <li key={l.location} className="flex justify-between border-b py-1"><span>{l.location}</span><span>{qty(l.on_hand)}</span></li>)}</ul>}
             {p.description && <p className="text-sm text-slate-700">{p.description}</p>}
             <div>

@@ -3,10 +3,12 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState } from 'react';
-import { isAdminTier, type SessionProfile } from '@/core/auth/types';
+import { hasSectionWorkflowRole, isAdminTier, type SessionProfile } from '@/core/auth/types';
 import { canViewProductSearch } from '@/modules/catalog/productSearchAccess';
 
-type NavItem = { label: string; href: string };
+type NavItem = { label: string; href: string; show?: (p: SessionProfile) => boolean };
+// Build 78: the price review is for the Sales approver, Finance and admins (the page checks again)
+const canReviewPrices = (p: SessionProfile) => isAdminTier(p) || hasSectionWorkflowRole(p, 'sales', 'approver') || p.user.role === 'finance' || p.access.some((a) => a.section_code === 'finance');
 
 type NavGroup = { code: string; label: string; items: NavItem[] };
 
@@ -36,6 +38,7 @@ const NAV_GROUPS: NavGroup[] = [
       { label: 'Procurement', href: '/finance/procurement' },
       { label: 'Supplier Quotes', href: '/finance/procurement/supplier-quotes' },
       { label: 'Price Requests', href: '/finance/price-requests' },
+      { label: 'Price Review', href: '/sales/price-review', show: canReviewPrices },
       { label: 'Accounts Payable', href: '/finance/accounts-payable' },
       { label: 'Accounts Receivable', href: '/finance/accounts-receivable' },
       { label: 'Storefront (view)', href: '/sales/storefront' },
@@ -71,6 +74,7 @@ const NAV_GROUPS: NavGroup[] = [
       { label: 'Storefront', href: '/sales/storefront' },
       { label: 'Sales / Revenue Pipeline', href: '/sales/revenue' },
       { label: 'Supplier Quotes', href: '/finance/procurement/supplier-quotes' },
+      { label: 'Price Review', href: '/sales/price-review', show: canReviewPrices },
       { label: 'Monthly Sales', href: '/sales/monthly-sales' },
       { label: 'Commission Operations & Reporting', href: '/sales/commission-report' },
     ],
@@ -154,7 +158,7 @@ export function Sidebar({ profile }: { profile: SessionProfile }) {
 
             {isOpen && (
               <div className="mt-1 ml-2 border-l border-slate-600 pl-2 space-y-1">
-                {group.items.map((item) => {
+                {group.items.filter((item) => !item.show || item.show(profile)).map((item) => {
                   // Most specific match wins (e.g. Supplier Quotes under /finance/procurement/).
                   const matches = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
                   const active = matches(item.href) && !group.items.some((o) => o.href.length > item.href.length && o.href.startsWith(`${item.href}/`) && matches(o.href));

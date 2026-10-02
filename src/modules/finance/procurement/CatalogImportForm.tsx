@@ -75,6 +75,7 @@ export function CatalogImportForm({ pending, run, onDone }: { pending: boolean; 
             </select></label>
           <label className="block text-xs">Count date<input className="input mt-1" type="date" name="opening_date" /></label>
         </div>
+        <p className="mt-1 text-xs text-slate-500">Add on is a percentage of the Supplier Cost per category (e.g. 5 for 5%). STOCK TYPE: Stock or Order only (blank keeps an existing item as it is; new items are Stock).</p>
         <p className="mt-1 text-xs text-slate-500">OPENING STOCK becomes an opening count for that location (unit cost from OPENING UNIT COST, else the Supplier Cost). It posts only after a Business Admin approves it in Finance → Opening Stock; the store&apos;s stock is then set to the counted quantities.</p>
         {canChooseOthers && <label className="mt-2 flex items-start gap-2 text-xs"><input type="checkbox" name="deactivate_missing" value="1" /> <span>Deactivate catalog items that are <b>not in this file</b> (they are kept with their history, just hidden). Use only with the full cleaned catalog.</span></label>}
       </fieldset>

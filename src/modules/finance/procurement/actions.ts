@@ -239,3 +239,20 @@ export async function getItemPricingHistoryAction(itemId:string){
  if(error)throw appError(error.message);
  return (data??[]) as {id:string;captured_at:string;business_code:string|null;rule_type:string;subject:string;value_percent:number;previous_percent:number|null;effective_from:string|null;captured_by_name:string|null}[];
 }
+// Build 78 — the item's lots in this store: each receipt (purchase) with its
+// supplier, date and price, and what is left of it (inventory_item_purchase_history).
+export async function getItemLotsAction(itemId:string){
+ await finance();
+ const {data,error}=await createClient().rpc('inventory_item_purchase_history',{p_catalog_item:itemId});
+ if(error)throw appError(error.message);
+ return (data??[]) as {lot_id:string;lot_code:string;received_date:string;supplier:string|null;receipt_number:string|null;po_number:string|null;received_qty:number;unit_cost:number;supplier_lot_no:string|null;on_hand:number;source:string}[];
+}
+// Build 79 (CAT-37): delete deactivated catalog items that nothing uses (Super Admin; the database decides).
+export async function purgeUnusedItemsAction(apply:boolean){
+ const p=await finance();
+ if(p.user.role!=='super_admin')throw appError('Only the Super Admin can delete catalog items.');
+ const {data,error}=await createClient().rpc('catalog_purge_unused',{p_apply:apply});
+ if(error)throw appError(error.message);
+ if(apply)revalidatePath('/finance/procurement');
+ return (data??[]) as {item_id:string;item_code:string;item_name:string;deleted:boolean;reason:string}[];
+}

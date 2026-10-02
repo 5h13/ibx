@@ -125,7 +125,7 @@ export async function quotationDetailAction(quotationId: string) {
 export async function quoteOrderLinesAction(quotationId: string) {
   await sales();
   return rpcCall<{ quotation_item_id: string; catalog_item_id: string | null; description: string; quantity: number; unit: string; unit_price: number;
-    item_type: 'product' | 'service' | 'custom'; on_hand: number | null; current_cost: number | null }[]>('sales_quote_order_lines', { p_quote: quotationId });
+    item_type: 'product' | 'service' | 'custom'; on_hand: number | null; current_cost: number | null; stock_type?: 'stock' | 'order_only' }[]>('sales_quote_order_lines', { p_quote: quotationId });
 }
 
 const PROOF_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/heic', 'application/pdf'];

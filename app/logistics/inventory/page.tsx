@@ -13,7 +13,7 @@ async function fetchAll<T>(page:(from:number,to:number)=>PromiseLike<{data:T[]|n
  return out;
 }
 
-export default async function LogisticsInventoryPage({searchParams}:{searchParams?:LedgerSearchParams&{tab?:string;receipt_view?:string;receipt_status?:string;receipt_from?:string;receipt_to?:string;low?:string;transfer_status?:string;receipt?:string}}){
+export default async function LogisticsInventoryPage({searchParams}:{searchParams?:LedgerSearchParams&{tab?:string;lot_q?:string;lot_loc?:string;lot_all?:string;lot_page?:string;receipt_view?:string;receipt_status?:string;receipt_from?:string;receipt_to?:string;low?:string;transfer_status?:string;receipt?:string}}){
  const profile=await requireSection('logistics');const db=createClient();
  const sp=searchParams??{};
  // LOG-39 / RA-08: Logistics screens show quantities, not costs.
@@ -23,7 +23,7 @@ export default async function LogisticsInventoryPage({searchParams}:{searchParam
  const lf=ledgerFilters(sp);
  const [{data:locations,error:e1},{data:items,error:e2},{data:receipts,error:e3},{data:receiptItems,error:e4},{data:transfers,error:e6},{data:transferItems,error:e7},{data:orders,error:e8},{data:poItems,error:e9},{data:suppliers,error:e10},{data:locationSettings,error:e12},{data:kpis,error:e14},{data:ledgerRows,error:e15}]=await Promise.all([
   db.from('logistics_locations').select('*').order('location_code'),
-  db.from('logistics_inventory_items').select('*').order('item_code'),
+  db.from('logistics_inventory_items').select('*,catalog:finance_procurement_items(stock_type)').order('item_code'),
   db.from('logistics_receipts').select('*,location:logistics_locations(location_code,location_name),supplier:finance_suppliers(supplier_code,legal_name),purchase_order:purchase_orders(po_number)').order('receipt_date',{ascending:false}),
   db.from('logistics_receipt_items').select(receiptItemCols),
   db.from('logistics_stock_transfers').select('*,from_location:logistics_locations!logistics_stock_transfers_from_location_id_fkey(location_code,location_name),to_location:logistics_locations!logistics_stock_transfers_to_location_id_fkey(location_code,location_name)').order('transfer_date',{ascending:false}),
@@ -44,5 +44,16 @@ export default async function LogisticsInventoryPage({searchParams}:{searchParam
  const {data:usage,error:e13}=await db.rpc('logistics_locations_in_use');if(e13)throw new Error(e13.message);
  const locationUsage=Object.fromEntries(((usage??[]) as {location_id:string;used_in:string[]|null}[]).map(u=>[u.location_id,u.used_in??[]]));
  const ledger={rows:(ledgerRows??[]) as any[],total:Number((ledgerRows as any[]|null)?.[0]?.total_count??0),filters:lf};
- return <AuthedShell profile={profile}><LogisticsInventoryManagement profile={profile} showCost={showCost} initialTab={sp.tab} view={{receipt_view:sp.receipt_view,receipt_status:sp.receipt_status,receipt_from:/^\d{4}-\d{2}-\d{2}$/.test(sp.receipt_from??'')?sp.receipt_from:undefined,receipt_to:/^\d{4}-\d{2}-\d{2}$/.test(sp.receipt_to??'')?sp.receipt_to:undefined,low:sp.low==='1',transfer_status:sp.transfer_status,receipt:sp.receipt}} kpis={(kpis??[]) as any[]} ledger={ledger} balances={balances} locations={locations??[]} items={items??[]} receipts={receipts??[]} receiptItems={(receiptItems??[]) as any[]} transfers={transfers??[]} transferItems={transferItems??[]} orders={orders??[]} poItems={(poItems??[]) as any[]} suppliers={suppliers??[]} catalogItems={[]} locationSettings={locationSettings??[]} locationUsage={locationUsage}/></AuthedShell>
+ // Build 78: lot register and aging (only when the Lots tab is open)
+ let lots:any;
+ if(sp.tab==='lots'){
+  const page=Math.max(1,Number(sp.lot_page)||1);const filters={q:(sp.lot_q??'').trim().slice(0,60)||undefined,loc:/^[0-9a-f-]{36}$/i.test(sp.lot_loc??'')?sp.lot_loc:undefined,all:sp.lot_all==='1',page};
+  const [{data:lr,error:le},{data:ag,error:ae}]=await Promise.all([
+   db.rpc('inventory_lot_register',{p_search:filters.q??null,p_location:filters.loc??null,p_open_only:!filters.all,p_limit:100,p_offset:(page-1)*100}),
+   db.rpc('inventory_lot_aging'),
+  ]);
+  if(le||ae)throw new Error((le||ae)!.message);
+  lots={rows:lr??[],aging:ag??[],filters};
+ }
+ return <AuthedShell profile={profile}><LogisticsInventoryManagement lots={lots} profile={profile} showCost={showCost} initialTab={sp.tab} view={{receipt_view:sp.receipt_view,receipt_status:sp.receipt_status,receipt_from:/^\d{4}-\d{2}-\d{2}$/.test(sp.receipt_from??'')?sp.receipt_from:undefined,receipt_to:/^\d{4}-\d{2}-\d{2}$/.test(sp.receipt_to??'')?sp.receipt_to:undefined,low:sp.low==='1',transfer_status:sp.transfer_status,receipt:sp.receipt}} kpis={(kpis??[]) as any[]} ledger={ledger} balances={balances} locations={locations??[]} items={items??[]} receipts={receipts??[]} receiptItems={(receiptItems??[]) as any[]} transfers={transfers??[]} transferItems={transferItems??[]} orders={orders??[]} poItems={(poItems??[]) as any[]} suppliers={suppliers??[]} catalogItems={[]} locationSettings={locationSettings??[]} locationUsage={locationUsage}/></AuthedShell>
 }

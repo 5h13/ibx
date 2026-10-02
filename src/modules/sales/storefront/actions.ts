@@ -22,16 +22,22 @@ async function rpc<T = any>(fn: string, args?: Record<string, unknown>): Promise
   return data as T;
 }
 const refresh = () => revalidatePath('/sales/storefront');
-const REASON_TEXT: Record<string, string> = { below_floor: 'a price is below the 7% floor', no_cost: 'an item has no cost on record', late_entry: 'it is entered late (earlier sale date)' };
+const REASON_TEXT: Record<string, string> = { below_floor: 'a price is below the 7% floor', no_cost: 'an item has no cost on record', late_entry: 'it is entered late (earlier sale date)',
+  reserved_stock: 'it takes stock reserved for approved sales orders' };
 
-export type SaleLineInput = { item_id: string; quantity: number; unit_price?: number | null };
+export type SaleLineInput = { item_id: string; quantity: number; unit_price?: number | null; lot_id?: string | null };
+/** Build 78: a lot with stock at the store, for the lot picker (no cost). */
+export type LotOption = { lot_id: string; lot_code: string; received_date: string; on_hand: number; supplier_lot_no: string | null; expiry_date: string | null;
+  supplier?: string | null; unit_cost?: number | null; list_price?: number | null; floor_price?: number | null };
+export type PriceLine = { item_id: string; item_code: string; item_name: string; unit: string; item_type: string; list_price: number; floor_price: number; on_hand: number | null;
+  no_cost: boolean; reserved: number | null; available: number | null; default_lot_id: string | null; lots: LotOption[]; stock_type?: 'stock' | 'order_only' };
 export type PaymentInput = { method: 'cash' | 'gcash' | 'maya' | 'card' | 'bank_transfer' | 'check'; amount: number; reference?: string; account?: string;
   tendered?: number; check_bank?: string; check_date?: string; issuer?: string };
 
 export async function priceLinesAction(itemIds: string[]) {
   await signedIn();
   if (!itemIds.length) return [];
-  return rpc<any[]>('storefront_price_lines', { p_items: itemIds });
+  return rpc<PriceLine[]>('storefront_price_lines', { p_items: itemIds });
 }
 
 export async function addCustomerAction(input: { name: string; phone?: string; address?: string; tax_id?: string }) {
@@ -47,7 +53,7 @@ export async function setStoreLocationAction(locationId: string) {
   refresh();
 }
 
-export async function submitSaleAction(input: { customer_id?: string | null; lines: SaleLineInput[]; payments: PaymentInput[]; si_number?: string; issue_dr: boolean; notes?: string; sale_date?: string; late_reason?: string }) {
+export async function submitSaleAction(input: { customer_id?: string | null; lines: SaleLineInput[]; payments: PaymentInput[]; si_number?: string; issue_dr: boolean; notes?: string; sale_date?: string; late_reason?: string; hardcopy_dr_no?: string }) {
   const p = await signedIn();
   const r = await rpc<{ id: string; sale_number: string; status: string; total: number; reasons: string[] }>('storefront_submit_sale', { p: input });
   if (r.status === 'pending_approval') {
@@ -102,7 +108,8 @@ export type ReturnCondition = 'back_to_stock' | 'damaged' | 'wrong_item';
 export async function saleForReturnAction(saleNumber: string) {
   await signedIn();
   return rpc<{ id: string; sale_number: string; dr_number: string | null; si_number: string | null; sale_date: string; customer: string; total: number; ar_balance: number; order_dr: boolean;
-    lines: { sale_item_id: string; description: string; unit: string | null; item_type: string; sold: number; unit_price: number; returned: number; released: boolean }[] }>(
+    hardcopy_dr_no?: string | null;
+    lines: { sale_item_id: string; description: string; unit: string | null; item_type: string; sold: number; unit_price: number; returned: number; released: boolean; lot_code?: string | null }[] }>(
     'storefront_sale_for_return', { p_sale_number: saleNumber });
 }
 
@@ -225,14 +232,15 @@ export async function checkAction(checkId: string, action: 'deposit' | 'clear' |
 }
 
 export type OrderLine = { id: string; description: string; unit: string | null; ordered: number; unit_price: number; fulfilment: string; catalog_item_id: string | null;
-  delivered: number; released: number; received: number | null; on_hand: number | null };
+  delivered: number; released: number; received: number | null; on_hand: number | null;
+  reserved_here?: number; reserved_total?: number | null; default_lot_id?: string | null; lots?: LotOption[] };
 export type OrderDr = { sale_id: string; sale_number: string; dr_number: string; si_number: string | null; sale_date: string; total: number; release_status: string | null;
-  released_at: string | null; invoice_number: string | null; invoice_status: string | null; balance_due: number | null; due_date: string | null };
+  released_at: string | null; hardcopy_dr_no?: string | null; invoice_number: string | null; invoice_status: string | null; balance_due: number | null; due_date: string | null };
 export type StoreOrder = { id: string; order_number: string; order_date: string; status: string; quotation_number: string | null; customer_id: string; customer: string;
   client_po: string | null; payment_terms: string | null; vat_applied: boolean; total: number; delivery_address: string | null; requested_delivery_date: string | null;
   pr_number: string | null; po_numbers: string[]; lines: OrderLine[]; drs: OrderDr[] };
 
-export async function orderDrAction(input: { order_id: string; lines: { sales_order_item_id: string; quantity: number }[]; payments: PaymentInput[]; si_number?: string; notes?: string }) {
+export async function orderDrAction(input: { order_id: string; lines: { sales_order_item_id: string; quantity: number; lot_id?: string | null }[]; payments: PaymentInput[]; si_number?: string; notes?: string; hardcopy_dr_no?: string }) {
   const p = await signedIn();
   const r = await rpc<{ id: string; sale_number: string; dr_number: string; total: number; balance: number }>('storefront_order_dr', { p: input });
   await notifyWorkflowRole(p.user.business_id, 'logistics', 'preparer', {
@@ -259,5 +267,16 @@ export async function combinedSiAction(input: { sale_ids: string[]; si_number: s
   await signedIn();
   const r = await rpc<{ invoice_number: string; total: number; received: number; balance: number; drs: string }>('storefront_combined_si', { p: input });
   refresh();
+  return r;
+}
+
+// ---------------------------------------------------------------------------
+// Build 78 (migration 20261209): cancelling a sales order releases its stock
+// reservation (Sales approver / Business Admin; only while no DR is out).
+export async function cancelOrderAction(orderId: string, reason: string) {
+  await signedIn();
+  const r = await rpc<{ order_number: string; pr_number: string | null }>('sales_order_cancel', { p_order: orderId, p_reason: reason });
+  refresh();
+  revalidatePath('/sales/revenue');
   return r;
 }

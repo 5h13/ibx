@@ -16,20 +16,33 @@ import { ActionBar, PopupAction } from '@/core/ui/PopupAction';
 import { CatalogItemPicker } from '@/shared/catalog/CatalogItemPicker';
 import {
   addCustomerAction, approveSaleAction, cancelSaleAction, completeSaleAction, decideCancelAction, priceLinesAction, requestCancelAction,
-  setStoreLocationAction, submitSaleAction, type StoreOrder,
+  setStoreLocationAction, submitSaleAction, type LotOption, type PriceLine, type StoreOrder,
 } from './actions';
-import { CONDITION_LABEL, METHODS, REASON_LABEL, changeDue, methodLabel, num, paysToInput, peso, r2, type Pay } from './storefrontShared';
+import { CONDITION_LABEL, METHODS, REASON_LABEL, changeDue, lotLabel, methodLabel, num, paysToInput, peso, r2, type Pay } from './storefrontShared';
 import { PayRow } from './PayRow';
 import { OrdersTab } from './StorefrontOrders';
 import { ChecksTab } from './StorefrontChecks';
 import { ArCollectionForm, CashDrawerForm, ClosingForm, ClosingsTab, ReturnForm, ReturnsTab } from './StorefrontCounterOps';
+import { CustomerBox } from './CustomerBox';
 import { AccountPicker, StoreAccountsContext, type StoreAccount } from './accountsContext';
 import { StoreSettingsExtra } from './StoreSettingsExtra';
 
 type Ctx = { business_id: string; location_id: string | null; location_name: string | null; walk_in_customer_id: string; can_approve: boolean; can_setup: boolean; read_only?: boolean; can_handle_checks?: boolean;
   is_super_admin?: boolean; booklet_business_id?: string; booklet_code?: string; booklet_name?: string; booklet_vat?: boolean; own_vat?: boolean; accounts?: StoreAccount[] };
 type Customer = { id: string; customer_code: string; legal_name: string; phone: string | null };
-type Line = { item_id: string; item_code: string; name: string; unit: string; item_type: string; qty: number; price: string; list: number; floor: number; on_hand: number | null; no_cost: boolean };
+// Build 78: every product line carries its lot (oldest with stock filled in); reserved / available per item.
+type Line = { key: number; item_id: string; item_code: string; name: string; unit: string; item_type: string; qty: number; price: string; list: number; floor: number; on_hand: number | null; no_cost: boolean;
+  lot_id: string; lots: LotOption[]; reserved: number | null; available: number | null; order_only: boolean };
+let lineKey = 0;
+const toLine = (p: PriceLine, lot: string | null): Line => ({ key: ++lineKey, item_id: p.item_id, item_code: p.item_code, name: p.item_name, unit: p.unit, item_type: p.item_type, qty: 1, price: String(p.list_price),
+  list: Number(p.list_price), floor: Number(p.floor_price), on_hand: p.on_hand == null ? null : Number(p.on_hand), no_cost: !!p.no_cost, lot_id: lot ?? '', lots: p.lots ?? [],
+  reserved: p.reserved == null ? null : Number(p.reserved), available: p.available == null ? null : Number(p.available), order_only: p.stock_type === 'order_only' });
+/** Build 79 (SF-31): a line follows its lot — price, minimum and store price come from that lot's purchase price. */
+const lotPricing = (l: Line, lotId: string): Partial<Line> => {
+  const o = l.lots.find((x) => x.lot_id === lotId);
+  return o && o.list_price != null ? { lot_id: lotId, list: Number(o.list_price), floor: Number(o.floor_price ?? o.list_price), price: String(Number(o.list_price)), no_cost: !(Number(o.unit_cost ?? 0) > 0) && l.no_cost } : { lot_id: lotId };
+};
+const qtyText = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 3 });
 const manilaToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila' }).format(new Date());
 function Tile({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return <div className="rounded-lg border bg-white p-3"><div className="text-xs uppercase tracking-wide text-slate-500">{label}</div><div className="mt-1 text-lg font-semibold">{value}</div>{hint && <div className="text-xs text-slate-500">{hint}</div>}</div>;
@@ -68,7 +81,6 @@ export function PaymentBlock({ total, pays, setPays, si, setSi, dr, setDr, vatBo
 function SaleForm({ ctx, customers: initialCustomers, onDone }: { ctx: Ctx; customers: Customer[]; onDone: (msg: string) => void }) {
   const [customers, setCustomers] = useState(initialCustomers);
   const [customerId, setCustomerId] = useState(ctx.walk_in_customer_id);
-  const [custQ, setCustQ] = useState('');
   const [adding, setAdding] = useState(false);
   const [newCust, setNewCust] = useState({ name: '', phone: '', address: '', tax_id: '' });
   const [lines, setLines] = useState<Line[]>([]);
@@ -79,6 +91,7 @@ function SaleForm({ ctx, customers: initialCustomers, onDone }: { ctx: Ctx; cust
   const [notes, setNotes] = useState('');
   const [saleDate, setSaleDate] = useState(manilaToday());
   const [lateReason, setLateReason] = useState('');
+  const [hardcopy, setHardcopy] = useState('');
   const [error, setError] = useState('');
   const [pending, start] = useTransition();
   const late = saleDate < manilaToday();
@@ -86,9 +99,12 @@ function SaleForm({ ctx, customers: initialCustomers, onDone }: { ctx: Ctx; cust
   const total = useMemo(() => r2(lines.reduce((s, l) => s + (Number.isFinite(num(l.price)) ? r2(l.qty * num(l.price)) : 0), 0)), [lines]);
   const belowPrice = lines.some((l) => num(l.price) < l.floor);
   const noCost = lines.some((l) => l.no_cost);
-  const below = belowPrice || noCost || late;   // any of these → an approver signs off first
-  const short = lines.filter((l) => l.item_type !== 'service' && l.on_hand !== null && l.qty > l.on_hand);
-  const filteredCustomers = customers.filter((c) => !custQ || `${c.legal_name} ${c.customer_code} ${c.phone ?? ''}`.toLowerCase().includes(custQ.toLowerCase())).slice(0, 200);
+  // Build 78: quantity per item over all its lines, against what is free (on hand − reserved for sales orders)
+  const itemQty = lines.reduce<Record<string, number>>((m, l) => ({ ...m, [l.item_id]: (m[l.item_id] ?? 0) + (l.qty > 0 ? l.qty : 0) }), {});
+  const dipsReserved = (l: Line) => (l.reserved ?? 0) > 0 && (itemQty[l.item_id] ?? 0) > Math.max(l.available ?? 0, 0);
+  const reservedHit = lines.some(dipsReserved);
+  const below = belowPrice || noCost || late || reservedHit;   // any of these → an approver signs off first
+  const short = lines.filter((l) => l.item_type !== 'service' && l.on_hand !== null && (itemQty[l.item_id] ?? 0) > l.on_hand);
   const set = (i: number, patch: Partial<Line>) => setLines(lines.map((l, j) => (j === i ? { ...l, ...patch } : l)));
 
   function addItem(id: string) {
@@ -97,12 +113,21 @@ function SaleForm({ ctx, customers: initialCustomers, onDone }: { ctx: Ctx; cust
       try {
         const [p] = await priceLinesAction([id]);
         if (!p) return;
-        const existing = lines.findIndex((l) => l.item_id === id);
+        const existing = lines.findIndex((l) => l.item_id === id && l.lot_id === (p.default_lot_id ?? ''));
         if (existing >= 0) set(existing, { qty: lines[existing].qty + 1 });
-        else setLines([...lines, { item_id: p.item_id, item_code: p.item_code, name: p.item_name, unit: p.unit, item_type: p.item_type, qty: 1, price: String(p.list_price), list: Number(p.list_price), floor: Number(p.floor_price), on_hand: p.on_hand == null ? null : Number(p.on_hand), no_cost: !!p.no_cost }]);
+        else setLines([...lines, toLine(p, p.default_lot_id)]);
         setPickerKey((k) => k + 1);
       } catch (e) { setError(errorText(e)); }
     });
+  }
+  /** Build 78: the same item from another lot, on its own line (the next lot not used yet). */
+  function addLotLine(i: number) {
+    const l = lines[i];
+    const used = new Set(lines.filter((x) => x.item_id === l.item_id).map((x) => x.lot_id));
+    const next = l.lots.find((o) => !used.has(o.lot_id));
+    if (!next) { setError(`${l.name}: every lot with stock is already on the sale.`); return; }
+    const nl: Line = { ...l, key: ++lineKey, qty: 1 };
+    setLines([...lines.slice(0, i + 1), { ...nl, ...lotPricing(nl, next.lot_id) }, ...lines.slice(i + 1)]);
   }
   function saveCustomer() {
     setError('');
@@ -119,13 +144,19 @@ function SaleForm({ ctx, customers: initialCustomers, onDone }: { ctx: Ctx; cust
     if (!lines.length) { setError('Add at least one item.'); return; }
     if (lines.some((l) => !(l.qty > 0) || !Number.isFinite(num(l.price)))) { setError('Every line needs a quantity and a price.'); return; }
     if (late && !lateReason.trim()) { setError('Say why this sale is entered late.'); return; }
+    const dup = lines.find((l, i) => lines.findIndex((x) => x.item_id === l.item_id && x.lot_id === l.lot_id) !== i);
+    if (dup) { setError(`${dup.name} is on the sale twice from the same lot: put the quantity on one line.`); return; }
+    const noLot = lines.find((l) => l.item_type !== 'service' && l.lots.length > 0 && !l.lot_id);
+    if (noLot) { setError(`Choose the lot for ${noLot.name}.`); return; }
+    const ordOnly = lines.find((l) => l.order_only && (itemQty[l.item_id] ?? 0) > Math.max(l.on_hand ?? 0, 0));
+    if (ordOnly) { setError(`${ordOnly.name} is an order-only item with ${qtyText(Math.max(ordOnly.on_hand ?? 0, 0))} on hand: make a quotation so it is ordered from the supplier.`); return; }
     start(async () => {
       try {
         const r = await submitSaleAction({
           customer_id: customerId, notes,
-          lines: lines.map((l) => ({ item_id: l.item_id, quantity: l.qty, unit_price: num(l.price) })),
+          lines: lines.map((l) => ({ item_id: l.item_id, quantity: l.qty, unit_price: num(l.price), lot_id: l.lot_id || null })),
           payments: below ? [] : paysToInput(pays),
-          si_number: si, issue_dr: dr, sale_date: saleDate, late_reason: late ? lateReason : undefined,
+          si_number: si, issue_dr: dr, sale_date: saleDate, late_reason: late ? lateReason : undefined, hardcopy_dr_no: hardcopy.trim() || undefined,
         });
         onDone(r.status === 'pending_approval'
           ? `${r.sale_number} saved and sent for approval (${(r.reasons ?? []).map((x) => REASON_LABEL[x] ?? x).join(', ')}). Take payment when it is approved (Awaiting approval tab).`
@@ -139,11 +170,7 @@ function SaleForm({ ctx, customers: initialCustomers, onDone }: { ctx: Ctx; cust
       <section className="space-y-2">
         <h4 className="font-semibold">Customer</h4>
         <div className="flex flex-wrap items-center gap-2">
-          <input className="input max-w-xs" placeholder="Search customer" value={custQ} onChange={(e) => setCustQ(e.target.value)} />
-          <select className="input max-w-md" value={customerId} onChange={(e) => setCustomerId(e.target.value)}>
-            <option value={ctx.walk_in_customer_id}>Walk-in customer</option>
-            {filteredCustomers.filter((c) => c.id !== ctx.walk_in_customer_id).map((c) => <option key={c.id} value={c.id}>{c.legal_name}{c.phone ? ` · ${c.phone}` : ''}</option>)}
-          </select>
+          <CustomerBox customers={customers} value={customerId} onChange={setCustomerId} walkInId={ctx.walk_in_customer_id} />
           <button type="button" className="button-secondary" onClick={() => setAdding(!adding)}>{adding ? 'Cancel' : '+ New customer'}</button>
         </div>
         {adding && (
@@ -163,17 +190,29 @@ function SaleForm({ ctx, customers: initialCustomers, onDone }: { ctx: Ctx; cust
         {lines.length > 0 && (
           <div className="overflow-x-auto rounded border">
             <table className="w-full text-sm">
-              <thead><tr className="border-b bg-slate-50 text-left text-xs uppercase text-slate-500"><th className="p-2">Item</th><th className="p-2 w-24">Qty</th><th className="p-2 w-32">Price</th><th className="p-2 text-right">Amount</th><th className="p-2" /></tr></thead>
+              <thead><tr className="border-b bg-slate-50 text-left text-xs uppercase text-slate-500"><th className="p-2">Item</th><th className="p-2">Lot</th><th className="p-2 w-24">Qty</th><th className="p-2 w-32">Price</th><th className="p-2 text-right">Amount</th><th className="p-2" /></tr></thead>
               <tbody>
                 {lines.map((l, i) => {
                   const price = num(l.price);
                   return (
-                    <tr key={l.item_id} className="border-b align-top last:border-0">
+                    <tr key={l.key} className="border-b align-top last:border-0">
                       <td className="p-2"><div className="font-medium">{l.name}</div>
-                        <div className="text-xs text-slate-500">{l.item_code} · store price {peso(l.list)} · min {peso(l.floor)}{l.on_hand !== null && ` · ${l.on_hand.toLocaleString()} ${l.unit} on hand`}</div>
+                        <div className="text-xs text-slate-500">{l.item_code} · store price {peso(l.list)} · min {peso(l.floor)}{l.on_hand !== null && ` · ${qtyText(l.on_hand)} ${l.unit} on hand`}
+                          {(l.reserved ?? 0) > 0 && ` · ${qtyText(l.reserved ?? 0)} reserved · ${qtyText(Math.max(l.available ?? 0, 0))} available`}</div>
                         {price < l.floor && <div className="text-xs font-medium text-amber-700">Below the 7% floor — needs an approver</div>}
                         {l.no_cost && <div className="text-xs font-medium text-amber-700">No cost on record for this item — needs an approver</div>}
-                        {l.on_hand !== null && l.qty > l.on_hand && <div className="text-xs text-red-700">More than on hand — stock will go negative</div>}
+                        {dipsReserved(l) && <div className="text-xs font-medium text-amber-700">Takes stock reserved for sales orders — needs an approver</div>}
+                        {l.order_only && (itemQty[l.item_id] ?? 0) > Math.max(l.on_hand ?? 0, 0) && <div className="text-xs font-medium text-red-700">Order-only item: only {qtyText(Math.max(l.on_hand ?? 0, 0))} on hand — make a quotation instead</div>}
+                        {!l.order_only && l.on_hand !== null && (itemQty[l.item_id] ?? 0) > l.on_hand && <div className="text-xs text-red-700">More than on hand — stock will go negative</div>}
+                      </td>
+                      <td className="p-2">{l.item_type === 'service' ? <span className="text-xs text-slate-400">—</span> : l.lots.length === 0
+                        ? <span className="text-xs text-slate-500">No lot with stock here</span>
+                        : <div className="space-y-1"><select className="input min-w-[12rem]" value={l.lot_id} onChange={(e) => set(i, lotPricing(l, e.target.value))}>
+                            <option value="">Choose the lot…</option>
+                            {l.lots.map((o) => <option key={o.lot_id} value={o.lot_id}>{lotLabel(o)}{o.list_price != null ? ` → sells ${peso(o.list_price)}` : ''}</option>)}
+                          </select>
+                          {(() => { const o = l.lots.find((x) => x.lot_id === l.lot_id); return o && l.qty > Number(o.on_hand) ? <div className="text-xs text-red-700">More than this lot holds ({qtyText(Number(o.on_hand))})</div> : null; })()}
+                          {l.lots.length > 1 && <button type="button" className="text-xs text-blue-700 underline" onClick={() => addLotLine(i)}>+ from another lot</button>}</div>}
                       </td>
                       <td className="p-2"><input className="input" type="number" min="0.001" step="any" value={l.qty} onChange={(e) => set(i, { qty: Number(e.target.value) })} /></td>
                       <td className="p-2"><input className={`input ${price < l.floor ? 'border-amber-500' : ''}`} type="number" min="0" step="0.01" value={l.price} onChange={(e) => set(i, { price: e.target.value })} />
@@ -196,8 +235,9 @@ function SaleForm({ ctx, customers: initialCustomers, onDone }: { ctx: Ctx; cust
           <label className="flex items-center gap-2">Sale date <input className="input w-auto" type="date" max={manilaToday()} value={saleDate} onChange={(e) => setSaleDate(e.target.value || manilaToday())} /></label>
           {late && <input className="input max-w-md" placeholder="Why is this sale entered late? *" value={lateReason} onChange={(e) => setLateReason(e.target.value)} />}
         </div>
+        <label className="flex flex-wrap items-center gap-2 text-sm">Hardcopy DR no. <input className="input w-48" value={hardcopy} maxLength={40} onChange={(e) => setHardcopy(e.target.value)} placeholder="Optional — handwritten DR on site" /></label>
         {below
-          ? <div className="rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">{[belowPrice && 'A price is below the 7% floor', noCost && 'an item has no cost on record', late && `the sale is dated ${saleDate} (entered late)`].filter(Boolean).join('; ')}. The sale goes to an approver first; payment and documents are taken after approval ({peso(total)}).</div>
+          ? <div className="rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">{[belowPrice && 'A price is below the 7% floor', noCost && 'an item has no cost on record', late && `the sale is dated ${saleDate} (entered late)`, reservedHit && 'it takes stock reserved for sales orders'].filter(Boolean).join('; ')}. The sale goes to an approver first; payment and documents are taken after approval ({peso(total)}).</div>
           : <PaymentBlock total={total} pays={pays} setPays={setPays} si={si} setSi={setSi} dr={dr} setDr={setDr} vatBooklet={!!ctx.booklet_vat} />}
         <input className="input" placeholder="Notes (optional)" value={notes} onChange={(e) => setNotes(e.target.value)} />
       </section>
@@ -274,7 +314,7 @@ function SaleDetail({ sale, items, payments, returnItems = [], canRequestCancel 
     <div className="space-y-4 text-sm">
       <div className="grid gap-2 sm:grid-cols-3">
         <div><span className="text-slate-500">Customer</span><div className="font-medium">{sale.customer?.legal_name}</div></div>
-        <div><span className="text-slate-500">DR / SI</span><div className="font-medium">{sale.dr_number ?? '—'} / {sale.si_number ?? '—'}</div></div>
+        <div><span className="text-slate-500">DR / SI</span><div className="font-medium">{sale.dr_number ?? '—'} / {sale.si_number ?? '—'}</div>{sale.hardcopy_dr_no && <div className="text-xs text-slate-500">Hardcopy DR no. {sale.hardcopy_dr_no}</div>}</div>
         <div><span className="text-slate-500">Status</span><div className="font-medium capitalize">{String(sale.status).replace('_', ' ')}{sale.cancel_status === 'approved' ? ' · cancelled (reversed)' : sale.cancel_status === 'requested' ? ' · cancellation requested' : ''}</div></div>
       </div>
       {sale.late_entry && <div className="rounded bg-amber-50 p-2 text-amber-800">Entered late — sale date {sale.sale_date}. Reason: {sale.late_reason}</div>}
@@ -283,6 +323,7 @@ function SaleDetail({ sale, items, payments, returnItems = [], canRequestCancel 
         <tbody>{items.map((i) => {
           const ret = returnItems.filter((r) => r.sale_item_id === i.id);
           return <tr key={i.id} className="border-b align-top"><td className="p-2">{i.description}{i.below_floor && <span className="ml-2 rounded bg-amber-100 px-1 text-xs text-amber-800">approved price</span>}
+            {i.lot_code && <div className="text-xs text-slate-500">Lot {i.lot_code}</div>}
             {ret.length > 0 && <div className="text-xs text-slate-500">Returned: {ret.map((r) => `${Number(r.quantity)} ${CONDITION_LABEL[r.condition] ?? r.condition}`).join(', ')}</div>}</td>
             <td className="p-2 text-right">{Number(i.quantity)} {i.unit}</td><td className="p-2 text-right">{peso(i.list_price)}</td><td className="p-2 text-right">{peso(i.unit_price)}</td><td className="p-2 text-right">{peso(i.line_total)}</td></tr>;
         })}</tbody></table>
@@ -395,7 +436,7 @@ export function StorefrontManagement({ ctx, date, today, sales, open, items, pay
         <section className="space-y-3 rounded-xl border bg-white p-4">
           <form method="get" className="flex flex-wrap items-center gap-2 text-sm">
             <label>Date <input className="input w-auto" type="date" name="date" defaultValue={date} /></label>
-            <input className="input w-64" name="q" defaultValue={search} placeholder="Or search all dates: sale / DR / SI no., customer" />
+            <input className="input w-64" name="q" defaultValue={search} placeholder="Or search all dates: sale / DR / SI / hardcopy DR no., customer" />
             <button className="button-secondary">Show</button>
             {search && <a className="text-slate-500 underline" href="/sales/storefront">Clear search</a>}
           </form>
@@ -409,7 +450,7 @@ export function StorefrontManagement({ ctx, date, today, sales, open, items, pay
                   <tr key={s.id} className="border-b">
                     <td className="p-2 font-medium">{s.sale_number}<div className="text-xs font-normal text-slate-500">{search ? s.sale_date : new Date(s.created_at).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' })}{s.late_entry ? ' · entered late' : ''}{s.sales_order_id ? ' · order DR' : ''}</div></td>
                     <td className="p-2">{s.customer?.legal_name}</td>
-                    <td className="p-2 text-xs">{s.dr_number ?? '—'}<br />{s.si_number ? `SI ${s.si_number}` : '—'}</td>
+                    <td className="p-2 text-xs">{s.dr_number ?? '—'}<br />{s.si_number ? `SI ${s.si_number}` : '—'}{s.hardcopy_dr_no && <><br />Hardcopy {s.hardcopy_dr_no}</>}</td>
                     <td className="p-2 text-right">{peso(s.total)}</td><td className="p-2 text-right">{peso(s.amount_paid)}</td>
                     <td className="p-2 text-right">{Number(s.balance) > 0 ? <span className="text-amber-700">{peso(s.balance)}</span> : '—'}</td>
                     <td className="p-2 capitalize">{String(s.status).replace('_', ' ')}{s.cancel_status === 'approved' ? <div className="text-xs text-red-700">cancelled (reversed)</div> : s.cancel_status === 'requested' ? <div className="text-xs text-amber-700">cancel requested</div> : null}</td>
@@ -425,7 +466,7 @@ export function StorefrontManagement({ ctx, date, today, sales, open, items, pay
 
       {tab === 'orders' && (
         <section className="space-y-3 rounded-xl border bg-white p-4">
-          <OrdersTab orders={orders} readOnly={ro || !ctx.location_id} canRelease={ctx.can_setup} vatBooklet={!!ctx.booklet_vat} onMessage={setMessage} />
+          <OrdersTab orders={orders} readOnly={ro || !ctx.location_id} canRelease={ctx.can_setup} canCancel={!ro && ctx.can_approve} vatBooklet={!!ctx.booklet_vat} onMessage={setMessage} />
         </section>
       )}
 

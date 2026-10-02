@@ -9,6 +9,7 @@
 
 import { useEffect, useState, useTransition } from 'react';
 import { errorText } from '@/core/errors/appError';
+import { CustomerBox } from './CustomerBox';
 import { PopupAction } from '@/core/ui/PopupAction';
 import {
   cashMovementAction, closeDayAction, closingPreviewAction, collectArAction, decideClosingAction, openInvoicesAction, refundableAction, returnAction, saleForReturnAction,
@@ -41,14 +42,12 @@ function PayRows({ pays, setPays, fillLabel, fillAmount, refund = false }: { pay
 
 // ------------------------------------------------------------------ AR --
 export function ArCollectionForm({ customers, walkInId, onDone }: { customers: Customer[]; walkInId: string; onDone: (msg: string) => void }) {
-  const [q, setQ] = useState('');
   const [customerId, setCustomerId] = useState('');
   const [invoices, setInvoices] = useState<Awaited<ReturnType<typeof openInvoicesAction>> | null>(null);
   const [invoiceId, setInvoiceId] = useState('');
   const [pays, setPays] = useState<Pay[]>([{ method: 'cash', amount: '', reference: '' }]);
   const [error, setError] = useState('');
   const [pending, start] = useTransition();
-  const list = customers.filter((c) => c.id !== walkInId && (!q || `${c.legal_name} ${c.customer_code} ${c.phone ?? ''}`.toLowerCase().includes(q.toLowerCase()))).slice(0, 200);
   const inv = invoices?.find((i) => i.invoice_id === invoiceId);
   const paying = paysTotal(pays);
 
@@ -74,11 +73,7 @@ export function ArCollectionForm({ customers, walkInId, onDone }: { customers: C
   return (
     <div className="space-y-4 text-sm">
       <div className="flex flex-wrap items-center gap-2">
-        <input className="input max-w-xs" placeholder="Search customer" value={q} onChange={(e) => setQ(e.target.value)} />
-        <select className="input max-w-md" value={customerId} onChange={(e) => pick(e.target.value)}>
-          <option value="">Select customer</option>
-          {list.map((c) => <option key={c.id} value={c.id}>{c.legal_name}{c.phone ? ` · ${c.phone}` : ''}</option>)}
-        </select>
+        <CustomerBox customers={customers.filter((c) => c.id !== walkInId)} value={customerId} onChange={pick} placeholder="Type the customer's name, code or phone" />
       </div>
       {pending && !invoices && customerId && <p className="text-slate-500">Loading open invoices…</p>}
       {customerId && <a className="text-xs underline" href={`/finance/accounts-receivable/statement/${customerId}`} target="_blank" rel="noreferrer">Print statement of account</a>}
@@ -154,7 +149,7 @@ export function ReturnForm({ saleNumber = '', onDone }: { saleNumber?: string; o
   return (
     <div className="space-y-4 text-sm">
       <div className="flex flex-wrap items-center gap-2">
-        <input className="input max-w-xs" placeholder="Sale, DR or SI number" value={no} onChange={(e) => setNo(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); find(); } }} />
+        <input className="input max-w-xs" placeholder="Sale, DR, SI or hardcopy DR no." value={no} onChange={(e) => setNo(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); find(); } }} />
         <button type="button" className="button-secondary" disabled={pending || !no.trim()} onClick={find}>Find sale</button>
       </div>
       {sale && (
@@ -166,7 +161,7 @@ export function ReturnForm({ saleNumber = '', onDone }: { saleNumber?: string; o
               const left = Number(l.sold) - Number(l.returned);
               return (
                 <tr key={l.sale_item_id} className="border-b">
-                  <td className="p-2">{l.description}{l.item_type === 'service' && <span className="ml-1 text-xs text-slate-500">(service — no stock)</span>}</td>
+                  <td className="p-2">{l.description}{l.item_type === 'service' && <span className="ml-1 text-xs text-slate-500">(service — no stock)</span>}{l.lot_code && <div className="text-xs text-slate-500">Lot {l.lot_code} — goes back into this lot</div>}</td>
                   <td className="p-2 text-right">{Number(l.sold)} {l.unit}</td><td className="p-2 text-right">{Number(l.returned) || '—'}</td><td className="p-2 text-right">{peso(l.unit_price)}</td>
                   <td className="p-2"><input className="input" type="number" min="0" max={left} step="any" disabled={left <= 0} placeholder={left > 0 ? `max ${left}` : 'none left'} value={qty[l.sale_item_id] ?? ''} onChange={(e) => setQty({ ...qty, [l.sale_item_id]: e.target.value })} /></td>
                   <td className="p-2">{l.item_type === 'service' ? <span className="text-xs text-slate-500">—</span> : (

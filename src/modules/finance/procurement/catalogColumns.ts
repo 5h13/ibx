@@ -23,6 +23,7 @@ export function normalizeCatalogHeader(h: string): string {
     specification: 'specification', specifications: 'specification', spec: 'specification', specs: 'specification',
     opening_stock: 'opening_stock', opening_qty: 'opening_stock', starting_stock: 'opening_stock', beginning_stock: 'opening_stock',
     opening_unit_cost: 'opening_cost', opening_cost: 'opening_cost',
+    stock_type: 'stock_type', stock_item: 'stock_type', stocking: 'stock_type',
   };
   return alias[k] ?? k;
 }
@@ -37,4 +38,5 @@ export const CATALOG_TABLE_COLUMNS = CATALOG_COLUMNS.filter((c) => !(CATALOG_TAB
  * catalog layout: the item code (matches the row to the item, so a cleaned-up
  * name still updates the same item), unit, specification and the opening
  * stock (LOG-46) with an optional unit cost (default: Supplier Cost). */
-export const CATALOG_UPLOAD_EXTRA = ['Item Code', 'Unit', 'SPECIFICATION', 'OPENING STOCK', 'OPENING UNIT COST'] as const;
+// Build 79 (CAT-38): STOCK TYPE = Stock / Order only (blank: Stock for a new item, unchanged for an existing one).
+export const CATALOG_UPLOAD_EXTRA = ['Item Code', 'Unit', 'SPECIFICATION', 'OPENING STOCK', 'OPENING UNIT COST', 'STOCK TYPE'] as const;

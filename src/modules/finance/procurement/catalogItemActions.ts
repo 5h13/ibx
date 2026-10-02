@@ -219,7 +219,7 @@ async function readImportRows(file: File): Promise<string[][]> {
 }
 
 type ImportRow = { line: number; item_name: string; category: string; category_id: string; unit: string; generic_item: string | null; brand: string | null; description: string | null; default_supplier_id: string | null; standard_cost: number; supplier_item_code: string | null; addon: number | null; store: number | null; markup: number | null;
-  item_code: string | null; item_id: string | null; specification: string | null; opening_qty: number | null; opening_cost: number | null };
+  item_code: string | null; item_id: string | null; specification: string | null; opening_qty: number | null; opening_cost: number | null; stock_type: 'stock' | 'order_only' | null };
 type BizResult = { business_id: string; code: string; name: string; markups: number; price_changes?: number; new_item_prices?: number; new_addons: { category: string; addon: number }[]; addon_exceptions: string[] };
 
 /**
@@ -308,6 +308,10 @@ async function planCatalogImport(p: SessionProfile, db: Db, fd: FormData) {
     if (code && !codeId) errors.push(`${line}: Item Code ${code} is not in the catalog (leave it blank for a new item).`);
     if (code && codeSeen.has(code)) errors.push(`${line}: Item Code ${code} appears more than once in the file.`);
     if (code) codeSeen.add(code);
+    // CAT-38: STOCK TYPE (Stock / Order only)
+    const stRaw = col(r, 'stock_type').toLowerCase().replace(/[^a-z]/g, '');
+    const stockType: 'stock' | 'order_only' | null = !stRaw ? null : stRaw.startsWith('order') || stRaw === 'po' || stRaw === 'onorder' ? 'order_only' : stRaw.startsWith('stock') ? 'stock' : null;
+    if (stRaw && !stockType) errors.push(`${line}: STOCK TYPE "${col(r, 'stock_type')}" must be Stock or Order only.`);
     let openingQty: number | null = null, openingCost: number | null = null;
     if (hasOpening) {
       try { openingQty = money(col(r, 'opening_stock'), 'OPENING STOCK'); } catch (e: any) { errors.push(`${line}: ${e.message}`); }
@@ -323,7 +327,7 @@ async function planCatalogImport(p: SessionProfile, db: Db, fd: FormData) {
     seen.set(key, whole);
     if (!cat || !unit) continue;
     prepared.push({ line: n + 1, item_name: name, category: cat.name, category_id: cat.id, unit, generic_item: col(r, 'generic_item') || null, brand: col(r, 'brand') || null, description: col(r, 'description') || null, default_supplier_id: supplier?.id ?? null, standard_cost: cost ?? 0, supplier_item_code: col(r, 'supplier_item_code') || null, addon, store, markup,
-      item_code: code || null, item_id: codeId, specification: specRaw(r) || null, opening_qty: openingQty, opening_cost: openingCost });
+      item_code: code || null, item_id: codeId, specification: specRaw(r) || null, opening_qty: openingQty, opening_cost: openingCost, stock_type: stockType });
   }
   const openingRows = prepared.filter((x) => x.opening_qty !== null);
   if (openingRows.length && !openingLocation) errors.push('The file has OPENING STOCK values: choose the store location the opening stock is counted at.');
@@ -436,7 +440,7 @@ export async function importCatalogCsvAction(fd: FormData) {
     const { data, error } = await db.rpc('catalog_import_update_items', { p_rows: part.map((x) => ({
       id: idByKey.get(keyOf(x)), item_name: x.item_name, category: x.category, unit: x.unit, generic_item: x.generic_item ?? '', brand: x.brand ?? '',
       description: x.description ?? '', ...(headers.includes('specification') ? { specification: x.specification ?? '' } : {}),
-      ...(x.default_supplier_id ? { default_supplier_id: x.default_supplier_id } : {}), reactivate: Boolean(x.item_id),
+      ...(x.default_supplier_id ? { default_supplier_id: x.default_supplier_id } : {}), ...(x.stock_type ? { stock_type: x.stock_type } : {}), reactivate: Boolean(x.item_id),
     })) });
     if (error) throw appError(error.code === '23505' ? `Two items would end up with the same name, category and unit (${error.message}). Merge them in the file first.` : error.message);
     detailsUpdated += Number(data ?? 0);
@@ -451,9 +455,9 @@ export async function importCatalogCsvAction(fd: FormData) {
       item_name: x.item_name, category: x.category, unit: x.unit, generic_item: x.generic_item, brand: x.brand, description: x.description,
       default_supplier_id: x.default_supplier_id, standard_cost: x.standard_cost, item_type: 'product',
     })) });
-    if (!error && part.some((x) => x.specification)) {
+    if (!error && part.some((x) => x.specification || x.stock_type)) {
       const ids = new Map(((data ?? []) as any[]).map((d) => [keyOf(d), d.id]));
-      await db.rpc('catalog_import_update_items', { p_rows: part.filter((x) => x.specification && ids.get(keyOf(x))).map((x) => ({ id: ids.get(keyOf(x)), specification: x.specification })) });
+      await db.rpc('catalog_import_update_items', { p_rows: part.filter((x) => (x.specification || x.stock_type) && ids.get(keyOf(x))).map((x) => ({ id: ids.get(keyOf(x)), ...(x.specification ? { specification: x.specification } : {}), ...(x.stock_type ? { stock_type: x.stock_type } : {}) })) });
     }
     if (error) throw appError(`${error.message} (items saved before this point are kept; re-run the same file to finish)`);
     for (const x of (data ?? []) as any[]) { idByKey.set(keyOf(x), x.id); insertedCount++; auditRows.push({ actor_id: p.user.id, entity_table: 'finance_procurement_items', entity_id: x.id, action: 'catalog_item_imported', detail: { item_code: x.item_code } }); }

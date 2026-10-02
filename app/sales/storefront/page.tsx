@@ -27,15 +27,15 @@ export default async function StorefrontPage({ searchParams }: { searchParams?: 
   const date = /^\d{4}-\d{2}-\d{2}$/.test(searchParams?.date ?? '') ? searchParams!.date! : manilaToday();
   const search = (searchParams?.q ?? '').trim().slice(0, 60);
   const saleCols = 'id,sale_number,sale_date,status,customer_id,dr_number,si_number,subtotal,discount_total,total,amount_paid,balance,below_floor,notes,created_at,created_by,vat_applied,vat_amount,'
-    + 'late_entry,late_reason,approval_reasons,sales_order_id,release_status,cancel_status,cancel_reason,cancel_requested_by,customer:finance_customers(legal_name,customer_code),order:sales_orders(order_number)';
+    + 'late_entry,late_reason,approval_reasons,sales_order_id,release_status,cancel_status,cancel_reason,cancel_requested_by,hardcopy_dr_no,customer:finance_customers(legal_name,customer_code),order:sales_orders(order_number)';
   let register = db.from('storefront_sales').select(saleCols).in('status', ['completed', 'cancelled']);
   if (search) {
-    // any date: sale / DR / SI number or customer name
+    // any date: sale / DR / SI / hardcopy DR number or customer name
     const term = search.replace(/[%_,()*.]/g, ' ').trim();
     const { data: cust } = await db.from('finance_customers').select('id').ilike('legal_name', `%${term}%`).limit(200);
     const like = `*${term}*`;
     const ids = (cust ?? []).map((c: any) => c.id);
-    register = register.or([`sale_number.ilike.${like}`, `dr_number.ilike.${like}`, `si_number.ilike.${like}`, ...(ids.length ? [`customer_id.in.(${ids.join(',')})`] : [])].join(','))
+    register = register.or([`sale_number.ilike.${like}`, `dr_number.ilike.${like}`, `si_number.ilike.${like}`, `hardcopy_dr_no.ilike.${like}`, ...(ids.length ? [`customer_id.in.(${ids.join(',')})`] : [])].join(','))
       .order('created_at', { ascending: false }).limit(100);
   } else {
     register = register.eq('sale_date', date).order('created_at', { ascending: false }).limit(500);
