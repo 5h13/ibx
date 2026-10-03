@@ -30,7 +30,7 @@ export default async function StorefrontPage(
   const date = /^\d{4}-\d{2}-\d{2}$/.test(searchParams?.date ?? '') ? searchParams!.date! : manilaToday();
   const search = (searchParams?.q ?? '').trim().slice(0, 60);
   const saleCols = 'id,sale_number,sale_date,status,customer_id,dr_number,si_number,subtotal,discount_total,total,amount_paid,balance,below_floor,notes,created_at,created_by,vat_applied,vat_amount,'
-    + 'late_entry,late_reason,approval_reasons,sales_order_id,release_status,cancel_status,cancel_reason,cancel_requested_by,hardcopy_dr_no,customer:finance_customers(legal_name,customer_code),order:sales_orders(order_number)';
+    + 'late_entry,late_reason,approval_reasons,sales_order_id,release_status,cancel_status,cancel_reason,cancel_requested_by,hardcopy_dr_no,customer:finance_customers(legal_name,customer_code),agent:sales_agents(name),order:sales_orders(order_number)';
   let register = db.from('storefront_sales').select(saleCols).in('status', ['completed', 'cancelled']);
   if (search) {
     // any date: sale / DR / SI / hardcopy DR number or customer name
@@ -46,7 +46,7 @@ export default async function StorefrontPage(
   const [{ data: saleRows, error: se }, { data: open, error: oe }, { data: customers, error: cue }, { data: cancelRequests, error: cre }] = await Promise.all([
     register,
     db.from('storefront_sales').select(saleCols).in('status', ['pending_approval', 'approved']).order('created_at', { ascending: false }).limit(200),
-    db.from('finance_customers').select('id,customer_code,legal_name,phone').eq('active', true).order('legal_name').limit(2000),
+    db.from('finance_customers').select('id,customer_code,legal_name,phone,agent_id').eq('active', true).order('legal_name').limit(2000),
     db.from('storefront_sales').select(saleCols).eq('cancel_status', 'requested').order('cancel_requested_at', { ascending: false }).limit(100),
   ]);
   const err = se || oe || cue || cre;
@@ -81,13 +81,15 @@ export default async function StorefrontPage(
     : [{ data: [] }, { data: [] }];
   const itemIds = ((items ?? []) as any[]).map((i) => i.id);
   const { data: returnItems } = itemIds.length ? await db.from('storefront_return_items').select('sale_item_id,quantity,condition').in('sale_item_id', itemIds) : { data: [] };
+  // Build 86: agents (the store's own agent + freelance agents) for the customer's agent
+  const { data: agents } = await db.from('sales_agents').select('id,agent_code,name,kind,business_id,active').eq('active', true).order('kind', { ascending: false }).order('name');
   const { data: locations } = (ctx as any).can_setup
     ? await db.from('logistics_locations').select('id,location_code,location_name').eq('active', true).order('location_code')
     : { data: [] };
   return (
     <AuthedShell profile={profile}>
       <StorefrontManagement ctx={ctx as any} date={date} sales={saleRows ?? []} open={open ?? []} items={items ?? []} payments={payments ?? []}
-        customers={(customers ?? []) as any} locations={locations ?? []} initialTab={searchParams?.tab}
+        customers={(customers ?? []) as any} agents={((agents ?? []) as any[]).filter((a) => a.kind === 'freelance' || a.business_id === (ctx as any).business_id)} locations={locations ?? []} initialTab={searchParams?.tab}
         dayPayments={dayPayments ?? []} returns={returns ?? []} closings={closingsWithJournal} today={manilaToday()}
         dayCash={dayCash ?? []} me={profile.user.id} cancelRequests={cancelRequests ?? []} returnItems={returnItems ?? []}
         checks={checks ?? []} orders={(orders ?? []) as any} search={search} />

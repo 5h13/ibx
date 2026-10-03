@@ -40,9 +40,10 @@ export async function priceLinesAction(itemIds: string[]) {
   return rpc<PriceLine[]>('storefront_price_lines', { p_items: itemIds });
 }
 
-export async function addCustomerAction(input: { name: string; phone?: string; address?: string; tax_id?: string }) {
+export async function addCustomerAction(input: { name: string; phone?: string; address?: string; tax_id?: string; agent_id?: string }) {
   await signedIn();
-  const id = await rpc<string>('storefront_add_customer', { p_name: input.name, p_phone: input.phone ?? null, p_address: input.address ?? null, p_tax_id: input.tax_id ?? null });
+  // Build 86: every customer has an agent (default: the store's own agent)
+  const id = await rpc<string>('storefront_add_customer', { p_name: input.name, p_phone: input.phone ?? null, p_address: input.address ?? null, p_tax_id: input.tax_id ?? null, p_agent: input.agent_id || null });
   refresh();
   return id;
 }

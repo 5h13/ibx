@@ -30,7 +30,9 @@ import { StoreSettingsExtra } from './StoreSettingsExtra';
 
 type Ctx = { business_id: string; location_id: string | null; location_name: string | null; walk_in_customer_id: string; can_approve: boolean; can_setup: boolean; read_only?: boolean; can_handle_checks?: boolean;
   is_super_admin?: boolean; booklet_business_id?: string; booklet_code?: string; booklet_name?: string; booklet_vat?: boolean; own_vat?: boolean; accounts?: StoreAccount[] };
-type Customer = { id: string; customer_code: string; legal_name: string; phone: string | null };
+type Customer = { id: string; customer_code: string; legal_name: string; phone: string | null; agent_id?: string | null };
+// Build 86 (AGT-01): every customer and every sale has an agent; the sale's agent is the customer's (locked)
+export type Agent = { id: string; agent_code: string; name: string; kind: 'store' | 'freelance'; business_id: string | null };
 // Build 78: every product line carries its lot (oldest with stock filled in); reserved / available per item.
 type Line = { key: number; item_id: string; item_code: string; name: string; unit: string; item_type: string; qty: number; price: string; list: number; floor: number; on_hand: number | null; no_cost: boolean;
   lot_id: string; lots: LotOption[]; reserved: number | null; available: number | null; order_only: boolean };
@@ -79,11 +81,14 @@ export function PaymentBlock({ total, pays, setPays, si, setSi, dr, setDr, vatBo
   );
 }
 
-function SaleForm({ ctx, customers: initialCustomers, onDone }: { ctx: Ctx; customers: Customer[]; onDone: (msg: string) => void }) {
+function SaleForm({ ctx, customers: initialCustomers, agents, onDone }: { ctx: Ctx; customers: Customer[]; agents: Agent[]; onDone: (msg: string) => void }) {
   const [customers, setCustomers] = useState(initialCustomers);
+  const storeAgent = agents.find((a) => a.kind === 'store');
   const [customerId, setCustomerId] = useState(ctx.walk_in_customer_id);
   const [adding, setAdding] = useState(false);
-  const [newCust, setNewCust] = useState({ name: '', phone: '', address: '', tax_id: '' });
+  const [newCust, setNewCust] = useState({ name: '', phone: '', address: '', tax_id: '', agent_id: '' });
+  const custAgentId = customers.find((c) => c.id === customerId)?.agent_id ?? storeAgent?.id ?? '';
+  const custAgent = agents.find((a) => a.id === custAgentId)?.name ?? storeAgent?.name ?? 'Store';
   const [lines, setLines] = useState<Line[]>([]);
   const [pickerKey, setPickerKey] = useState(0);
   const [pays, setPays] = useState<Pay[]>([{ method: 'cash', amount: '', reference: '' }]);
@@ -134,9 +139,10 @@ function SaleForm({ ctx, customers: initialCustomers, onDone }: { ctx: Ctx; cust
     setError('');
     start(async () => {
       try {
-        const id = await addCustomerAction(newCust);
-        setCustomers([{ id, customer_code: 'new', legal_name: newCust.name, phone: newCust.phone || null }, ...customers]);
-        setCustomerId(id); setAdding(false); setNewCust({ name: '', phone: '', address: '', tax_id: '' });
+        const agentId = newCust.agent_id || storeAgent?.id || '';
+        const id = await addCustomerAction({ ...newCust, agent_id: agentId });
+        setCustomers([{ id, customer_code: 'new', legal_name: newCust.name, phone: newCust.phone || null, agent_id: agentId }, ...customers]);
+        setCustomerId(id); setAdding(false); setNewCust({ name: '', phone: '', address: '', tax_id: '', agent_id: '' });
       } catch (e) { setError(errorText(e)); }
     });
   }
@@ -174,12 +180,17 @@ function SaleForm({ ctx, customers: initialCustomers, onDone }: { ctx: Ctx; cust
           <CustomerBox customers={customers} value={customerId} onChange={setCustomerId} walkInId={ctx.walk_in_customer_id} />
           <button type="button" className="button-secondary" onClick={() => setAdding(!adding)}>{adding ? 'Cancel' : '+ New customer'}</button>
         </div>
+        <div className="text-sm"><span className="text-slate-500">Agent:</span> <span className="font-medium">{custAgent}</span> <span className="text-xs text-slate-500">(from the customer record — change it on the customer)</span></div>
         {adding && (
           <div className="grid gap-2 rounded border p-3 sm:grid-cols-4">
             <input className="input sm:col-span-2" placeholder="Customer / company name *" value={newCust.name} onChange={(e) => setNewCust({ ...newCust, name: e.target.value })} />
             <input className="input" placeholder="Phone" value={newCust.phone} onChange={(e) => setNewCust({ ...newCust, phone: e.target.value })} />
             <input className="input" placeholder="TIN" value={newCust.tax_id} onChange={(e) => setNewCust({ ...newCust, tax_id: e.target.value })} />
-            <input className="input sm:col-span-3" placeholder="Address" value={newCust.address} onChange={(e) => setNewCust({ ...newCust, address: e.target.value })} />
+            <input className="input sm:col-span-2" placeholder="Address" value={newCust.address} onChange={(e) => setNewCust({ ...newCust, address: e.target.value })} />
+            <label className="block text-xs text-slate-600">Agent *
+              <select className="input mt-0.5" value={newCust.agent_id || storeAgent?.id || ''} onChange={(e) => setNewCust({ ...newCust, agent_id: e.target.value })}>
+                {agents.map((a) => <option key={a.id} value={a.id}>{a.name}{a.kind === 'freelance' ? ` (${a.agent_code})` : ''}</option>)}
+              </select></label>
             <button type="button" className="button" disabled={pending || !newCust.name.trim()} onClick={saveCustomer}>Save customer</button>
           </div>
         )}
@@ -315,6 +326,7 @@ function SaleDetail({ sale, items, payments, returnItems = [], canRequestCancel 
     <div className="space-y-4 text-sm">
       <div className="grid gap-2 sm:grid-cols-3">
         <div><span className="text-slate-500">Customer</span><div className="font-medium">{sale.customer?.legal_name}</div></div>
+        {sale.agent?.name && <div><span className="text-slate-500">Agent</span><div className="font-medium">{sale.agent.name}</div></div>}
         <div><span className="text-slate-500">DR / SI</span><div className="font-medium">{sale.dr_number ?? '—'} / {sale.si_number ?? '—'}</div>{sale.hardcopy_dr_no && <div className="text-xs text-slate-500">Hardcopy DR no. {sale.hardcopy_dr_no}</div>}</div>
         <div><span className="text-slate-500">Status</span><div className="font-medium capitalize">{String(sale.status).replace('_', ' ')}{sale.cancel_status === 'approved' ? ' · cancelled (reversed)' : sale.cancel_status === 'requested' ? ' · cancellation requested' : ''}</div></div>
       </div>
@@ -344,10 +356,10 @@ function SaleDetail({ sale, items, payments, returnItems = [], canRequestCancel 
 
 const TABS = ['register', 'approval', 'orders', 'returns', 'checks', 'closing'] as const;
 
-export function StorefrontManagement({ ctx, date, today, sales, open, items, payments, dayPayments, returns, closings, customers, locations, initialTab = 'register', dayCash = [], me = '',
+export function StorefrontManagement({ ctx, date, today, sales, open, items, payments, dayPayments, returns, closings, customers, agents = [], locations, initialTab = 'register', dayCash = [], me = '',
   cancelRequests = [], returnItems = [], checks = [], orders = [], search = '' }: {
   ctx: Ctx; date: string; today: string; sales: any[]; open: any[]; items: any[]; payments: any[]; dayPayments: any[]; returns: any[]; closings: any[]; dayCash?: any[]; me?: string;
-  customers: Customer[]; locations: any[]; initialTab?: string; cancelRequests?: any[]; returnItems?: any[]; checks?: any[]; orders?: StoreOrder[]; search?: string;
+  customers: Customer[]; agents?: Agent[]; locations: any[]; initialTab?: string; cancelRequests?: any[]; returnItems?: any[]; checks?: any[]; orders?: StoreOrder[]; search?: string;
 }) {
   const [tab, setTab] = useState<(typeof TABS)[number]>((TABS as readonly string[]).includes(initialTab) ? (initialTab as (typeof TABS)[number]) : 'register');
   const [message, setMessage] = useState('');
@@ -383,7 +395,7 @@ export function StorefrontManagement({ ctx, date, today, sales, open, items, pay
       {!ro && (
       <ActionBar>
         <PopupAction label="+ New sale" title="New counter sale" wide disabled={!ctx.location_id} openParam="sale">
-          {(close) => <SaleForm ctx={ctx} customers={customers} onDone={(m) => { setMessage(m); close(); }} />}
+          {(close) => <SaleForm ctx={ctx} customers={customers} agents={agents} onDone={(m) => { setMessage(m); close(); }} />}
         </PopupAction>
         <PopupAction label="Receive AR payment" title="Receive payment on an existing invoice" variant="secondary" wide openParam="arpay">
           {(close) => <ArCollectionForm customers={customers} walkInId={ctx.walk_in_customer_id} onDone={(m) => { setMessage(m); close(); }} />}
@@ -450,7 +462,7 @@ export function StorefrontManagement({ ctx, date, today, sales, open, items, pay
                 {sales.map((s) => (
                   <tr key={s.id} className="border-b">
                     <td className="p-2 font-medium">{s.sale_number}<div className="text-xs font-normal text-slate-500">{search ? s.sale_date : new Date(s.created_at).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' })}{s.late_entry ? ' · entered late' : ''}{s.sales_order_id ? ' · order DR' : ''}</div></td>
-                    <td className="p-2">{s.customer?.legal_name}</td>
+                    <td className="p-2">{s.customer?.legal_name}{s.agent?.name && <div className="text-xs text-slate-500">Agent: {s.agent.name}</div>}</td>
                     <td className="p-2 text-xs">{s.dr_number ?? '—'}<br />{s.si_number ? `SI ${s.si_number}` : '—'}{s.hardcopy_dr_no && <><br />Hardcopy {s.hardcopy_dr_no}</>}</td>
                     <td className="p-2 text-right">{peso(s.total)}</td><td className="p-2 text-right">{peso(s.amount_paid)}</td>
                     <td className="p-2 text-right">{Number(s.balance) > 0 ? <span className="text-amber-700">{peso(s.balance)}</span> : '—'}</td>

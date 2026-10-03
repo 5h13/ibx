@@ -3,7 +3,7 @@
 select proof.as_owner();
 select proof.set('pili', (select id::text from businesses where code = 'PILI'));
 select proof.set('ar1', (select s.ar_invoice_id::text from storefront_sales s where s.business_id = proof.get('pili')::uuid and s.ar_invoice_id is not null and s.dr_number is not null order by s.created_at limit 1));
-select proof.set('dr1', (select dr_number from storefront_sales where ar_invoice_id = proof.get('ar1')::uuid and dr_number is not null limit 1));
+select proof.set('dr1', (select coalesce(nullif(btrim(hardcopy_dr_no), ''), dr_number) from storefront_sales where ar_invoice_id = proof.get('ar1')::uuid and dr_number is not null limit 1));  -- Build 85: the paper DR no. first
 select proof.set('cust1', (select customer_id::text from finance_customer_invoices where id = proof.get('ar1')::uuid));
 select proof.set('sup', '30000000-0000-0000-0000-000000000001');
 
@@ -31,7 +31,7 @@ select proof.ok((select supplier_si = 'SI-5520' and supplier_dr is null from pub
 select proof.set('st', public.supplier_statement(proof.get('sup')::uuid)::text);
 select proof.ok((proof.get('st')::jsonb->'aging'->>'total')::numeric = 7000, 'supplier statement: total owed 5,000 + 2,000 balance');
 select proof.ok((proof.get('st')::jsonb->'aging'->>'d1_30')::numeric = 5000 and (proof.get('st')::jsonb->'aging'->>'current')::numeric = 2000, 'supplier statement aging: 5,000 overdue 10 days, 2,000 not yet due');
-select proof.ok((select count(*) from jsonb_array_elements(proof.get('st')::jsonb->'payments') x where x->>'number' = 'SP-T-1' and x->>'against' = 'SI SI-5520') = 1, 'supplier statement lists the payment made');
+select proof.ok((select count(*) from jsonb_array_elements(proof.get('st')::jsonb->'lines') x where x->>'ref' = 'SP-T-1' and x->>'si' = 'SI-5520') = 1, 'supplier statement lists the payment made');  -- Build 85: transactions list
 select proof.as_user('00000000-0000-0000-0000-000000000013');
 select proof.fails($$select public.supplier_statement(proof.get('sup')::uuid)$$, 'Finance access', 'a Sales user cannot open a supplier statement');
 select proof.ok((select count(*) from public.ap_invoice_refs(array['00000000-0000-0000-0000-0000000a0001'::uuid])) = 0, 'a Sales user sees no AP references');

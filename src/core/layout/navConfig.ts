@@ -70,6 +70,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: 'Storefront', href: '/sales/storefront' },
       { label: 'Sales / Revenue Pipeline', href: '/sales/revenue' },
+      { label: 'Agents', href: '/sales/agents' },
       { label: 'Supplier Quotes', href: '/finance/procurement/supplier-quotes' },
       { label: 'Price Review', href: '/sales/price-review', show: canReviewPrices },
       { label: 'Monthly Sales', href: '/sales/monthly-sales' },

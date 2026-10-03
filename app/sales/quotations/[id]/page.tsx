@@ -15,7 +15,7 @@ export default async function QuotationPrintPage(props: { params: Promise<{ id: 
   await requireSection('sales');
   const db = createClient();
   const { data: q } = await db.from('sales_quotations')
-    .select(`*,customer:finance_customers(legal_name,address,phone,email,tax_id,contact_person),business:businesses(${DOCUMENT_BUSINESS_COLUMNS}),prepared:users!sales_quotations_prepared_by_fkey(full_name),approved:users!sales_quotations_approved_by_fkey(full_name),creator:users!sales_quotations_created_by_fkey(full_name)`)
+    .select(`*,customer:finance_customers(legal_name,address,phone,email,tax_id,contact_person),agent:sales_agents(name,kind),business:businesses(${DOCUMENT_BUSINESS_COLUMNS}),prepared:users!sales_quotations_prepared_by_fkey(full_name),approved:users!sales_quotations_approved_by_fkey(full_name),creator:users!sales_quotations_created_by_fkey(full_name)`)
     .eq('id', params.id).maybeSingle();
   if (!q) notFound();
   const { data: items } = await db.from('sales_quotation_items').select('*').eq('quotation_id', q.id).order('created_at').order('id');
@@ -52,7 +52,7 @@ export default async function QuotationPrintPage(props: { params: Promise<{ id: 
       {q.notes && <div className="mt-4"><div className="text-xs uppercase">Notes</div><div className="whitespace-pre-line">{q.notes}</div></div>}
       <div className="mt-4 text-xs">Prices are in Philippine pesos{q.valid_until ? ` and valid until ${q.valid_until}` : ''}. To proceed, please send your purchase order or written confirmation quoting {q.quotation_number}.</div>
       <div data-pdf-block className="mt-12 grid grid-cols-3 gap-8 text-center text-xs">
-        <div><div className="h-5">{preparedBy}</div><div className="border-t border-black pt-1">Prepared by</div></div>
+        <div><div className="h-5">{preparedBy}{q.agent?.kind === 'freelance' ? ` · Agent: ${q.agent.name}` : ''}</div><div className="border-t border-black pt-1">Prepared by</div></div>
         <div><div className="h-5">{approvedBy}</div><div className="border-t border-black pt-1">Approved by</div></div>
         <div><div className="h-5" /><div className="border-t border-black pt-1">Conforme (client signature / date)</div></div>
       </div>
