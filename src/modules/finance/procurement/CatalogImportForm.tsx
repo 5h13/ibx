@@ -86,11 +86,12 @@ export function CatalogImportForm({ pending, run, onDone }: { pending: boolean; 
         <button disabled={pending || previewing || !targets} className="button-secondary">{previewing ? 'Reading file…' : preview ? 'Preview again' : 'Preview import'}</button>
         {preview && (
           <button type="button" className="button" disabled={pending || previewing || preview.result.errors.length > 0}
-            onClick={() => { const fd = preview.fd; run(async () => { const r = await importCatalogCsvAction(fd); setPreview(null); formRef.current?.reset(); onDone(); return r.message; }); }}>
+            onClick={() => { const fd = preview.fd; setPreviewError(''); run(async () => { try { const r = await importCatalogCsvAction(fd); setPreview(null); formRef.current?.reset(); onDone(); return r.message; } catch (e) { setPreviewError(`Import failed: ${errorText(e) || 'no answer from the server (it may have taken too long)'}`); throw e; } }); }}>
             {pending ? 'Importing…' : 'Confirm import'}
           </button>
         )}
       </div>
+      {previewError && preview && <div className="rounded border border-red-200 bg-red-50 p-2 text-sm text-red-700">{previewError}</div>}
       {pending && preview && <div className="rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">Importing — a full catalog can take a few minutes. Keep this window open; a message shows here and at the top of the page when it is done or if it fails.</div>}
       {preview && !pending && <p className="text-xs text-slate-500">Nothing has been saved yet. The file is checked again when you confirm; if anything changed meanwhile and a row fails, nothing is imported.</p>}
     </Form>
