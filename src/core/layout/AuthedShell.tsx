@@ -7,7 +7,7 @@ import { Header } from './Header';
 import { RoleAuditBanner } from './RoleAuditBanner';
 import { ResponsiveNav } from './ResponsiveNav';
 import { listMyNotificationsAction } from '@/shared/notifications/service';
-import { parseTheme, themeCss } from '@/core/theme/brandTheme';
+import { parseTheme, themeCss, THEME_PRESETS } from '@/core/theme/brandTheme';
 
 export async function AuthedShell({ profile, children }: { profile: SessionProfile; children: ReactNode }) {
   // A001 completion: only the Global Super Admin needs the acting-business
@@ -36,7 +36,8 @@ export async function AuthedShell({ profile, children }: { profile: SessionProfi
   // whole app for everyone working in that business (and for the Super Admin
   // while "Acting as" it). No theme = the original look.
   const actingBusiness: any = businesses.find((b: any) => b.id === profile.user.business_id);
-  const css = themeCss(parseTheme(actingBusiness?.branding?.theme));
+  // 5H13 level (Super Admin with no store chosen): the 5H13 PH-accent theme.
+  const css = themeCss(actingBusiness ? parseTheme(actingBusiness?.branding?.theme) : THEME_PRESETS.ph.theme);
 
   return (
     // Independent scrolling (md+): the shell fills exactly the viewport as a

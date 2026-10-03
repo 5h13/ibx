@@ -46,6 +46,10 @@ export const THEME_PRESETS: Record<string, { label: string; theme: BrandTheme }>
     label: 'Forest (light green)',
     theme: { preset: 'forest', mode: 'light', header: '#dcf2e3', headerEnd: '#c3e8cf', headerText: '#123d25', page: '#eef8f1', panel: '#fbfefc', text: '#143a26', accent: '#16a34a', border: '#c4e4cf' },
   },
+  ph: {
+    label: 'PH accent (5H13 — blue, red, yellow)',
+    theme: { preset: 'ph', mode: 'light', header: '#0038a8', headerEnd: '#1d3f9e', headerText: '#ffffff', page: '#f3f6fc', panel: '#ffffff', text: '#14213d', accent: '#0038a8', border: '#d3dbef' },
+  },
   slate: {
     label: 'Slate (dark)',
     theme: { preset: 'slate', mode: 'dark', header: '#0b1220', headerEnd: '#1e293b', headerText: '#e2e8f0', page: '#0f172a', panel: '#1e293b', text: '#e2e8f0', accent: '#38bdf8', border: '#334155' },

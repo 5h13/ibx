@@ -3,7 +3,7 @@ import type { SessionProfile } from '@/core/auth/types';
 import { ActingBusinessSwitcher } from './ActingBusinessSwitcher';
 import { RoleAuditSwitcher } from './RoleAuditSwitcher';
 import { NotificationBell } from '@/shared/notifications/NotificationBell';
-import { parseTheme, headerBackground } from '@/core/theme/brandTheme';
+import { parseTheme, headerBackground, THEME_PRESETS } from '@/core/theme/brandTheme';
 
 type Branding = { primary_color?: string; logo_url?: string };
 type Business = { id: string; code: string; legal_name: string; trade_name: string | null; branding?: Branding | null };
@@ -23,7 +23,8 @@ export function Header({ profile, businesses = [], notifications = [] }: { profi
   const actingBusiness = businesses.find((b) => b.id === profile.user.business_id);
   const accent = accentColor(actingBusiness?.branding);
   const logoUrl = actingBusiness?.branding?.logo_url;
-  const theme = parseTheme((actingBusiness?.branding as any)?.theme);
+  // 5H13 level (no store chosen): 5H13 logo and the PH-accent theme.
+  const theme = actingBusiness ? parseTheme((actingBusiness?.branding as any)?.theme) : THEME_PRESETS.ph.theme;
   const tagline = (actingBusiness?.branding as any)?.tagline as string | undefined;
   const bizName = actingBusiness ? actingBusiness.trade_name || actingBusiness.legal_name : null;
   return (
@@ -44,13 +45,17 @@ export function Header({ profile, businesses = [], notifications = [] }: { profi
               {profile.user.role === 'super_admin' && <p className="text-[10px] uppercase tracking-wide text-slate-400">Acting as this business</p>}
             </div>
           ) : (
-            <div>
-              <h1 className="text-xl font-bold tracking-wide">5H13 BUSINESS SOLUTIONS</h1>
-              <p className="text-xs text-slate-400">
-                {profile.user.role === 'super_admin'
-                  ? bizName ? `Acting as ${bizName}` : 'Commission & Sales Management System'
-                  : bizName ?? 'Commission & Sales Management System'}
-              </p>
+            <div className="flex items-center gap-3">
+              {!actingBusiness && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src="/brand/5h13-logo.jpg" alt="5H13" className="h-12 w-12 rounded-xl object-cover shadow" />
+              )}
+              <div className="leading-tight">
+                <h1 className="text-xl font-extrabold tracking-wide">5H13 BUSINESS SOLUTIONS</h1>
+                <p className="text-xs font-semibold uppercase tracking-widest" style={!actingBusiness ? { color: '#fcd116' } : undefined}>
+                  {profile.user.role === 'super_admin' && bizName ? `Acting as ${bizName}` : bizName ?? 'Business Management System'}
+                </p>
+              </div>
             </div>
           )}
         </div>
@@ -77,6 +82,7 @@ export function Header({ profile, businesses = [], notifications = [] }: { profi
           </form>
         </div>
       </div>
+      {!actingBusiness && <div aria-hidden className="h-1 w-full" style={{ background: 'linear-gradient(90deg, #fcd116 0%, #fcd116 33%, #0038a8 33%, #0038a8 66%, #ce1126 66%, #ce1126 100%)' }} />}
     </header>
   );
 }

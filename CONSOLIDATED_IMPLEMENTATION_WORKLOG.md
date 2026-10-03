@@ -1137,3 +1137,9 @@ Owner, 2026-10-03: AR must refer to both DRs and SIs (some sales issue no SI); t
 - AP: `finance_supplier_invoices.supplier_dr_number`; "Record supplier invoice" takes the supplier SI / invoice no. or, when there is none, the supplier DR no. (stored as `DR <no.>`). `ap_invoice_refs(ids)` gives supplier SI, supplier DR (entered, else the PO's goods-receipt DR references) and our PO no.; the AP list shows those columns. **Supplier statement** (`supplier_statement`, `/finance/accounts-payable/statement/<supplier>`, Print / PDF): open payables, aging, payments made in the last 90 days; opened from each AP row or the "Supplier statement for…" picker.
 - Opening balances: no change needed — one approved "Opening balance as of <cut-off>" invoice per customer / supplier (manual, or an SQL file from the owner's list).
 - Verified: `proof81.sql` (11 checks) on the database after proofs 78–80, migration applied as one transaction; typecheck and production build pass. Not run in a browser.
+
+## Build 81a — AP Suppliers tab (2026-10-03, app only)
+- Finance → Accounts Payable → **Suppliers** tab: per supplier, this store's open invoices, owed, overdue, last posted payment, and the supplier statement; search and "only suppliers we owe". Suppliers stay maintained in Procurement. No database change.
+
+## Build 81b — 5H13 branding (2026-10-03, app only)
+- At the 5H13 level (Super Admin with no store chosen in "Acting as"): the 5H13 logo (`public/brand/5h13-logo.jpg`) in the header, subtitle "Business Management System" (was "Commission & Sales Management System"), a PH tricolour stripe under the header, and the new **PH accent** theme (PH blue header, blue accent) across the app. The theme is also offered as a preset in System → Businesses for any store. No database change.
