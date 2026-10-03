@@ -353,6 +353,36 @@ async function planCatalogImport(p: SessionProfile, db: Db, fd: FormData) {
   await lookup(prepared.filter((x) => !x.item_id));
   for (const x of prepared) if (x.item_id) idByKey.set(keyOf(x), x.item_id);
 
+  // Build 83d: two active items may not share STANDARD ITEM NAME + CATEGORY + unit.
+  // Name the rows (and the existing item) that would clash, before anything is saved.
+  {
+    const byIdentity = new Map<string, ImportRow[]>();
+    for (const x of prepared) { const k = keyOf(x); byIdentity.set(k, [...(byIdentity.get(k) ?? []), x]); }
+    for (const rs of byIdentity.values()) {
+      if (rs.length < 2) continue;
+      const distinct = new Set(rs.map((r) => r.item_id ?? `new:${r.line}`));
+      if (distinct.size > 1) errors.push(`Rows ${rs.map((r) => r.line).join(', ')}: same STANDARD ITEM NAME, CATEGORY and unit ("${rs[0].item_name}" · ${rs[0].category} · ${rs[0].unit})${rs.some((r) => r.item_code) ? ` — Item Codes ${rs.map((r) => r.item_code || 'none').join(', ')}` : ''}. Two active items cannot share these: merge the rows or change one name.`);
+    }
+    const coded = prepared.filter((x) => x.item_id);
+    const holders = new Map<string, string>();
+    for (const part of chunk(coded.map((x) => ({ item_name: x.item_name, category: x.category, unit: x.unit })), 500)) {
+      const { data, error } = await db.rpc('catalog_lookup_items', { p_rows: part });
+      if (error) throw appError(error.message);
+      for (const x of (data ?? []) as any[]) holders.set(x.identity_key, x.id);
+    }
+    const fileIds = new Map(prepared.filter((x) => x.item_id).map((x) => [x.item_id!, x.line]));
+    const clashes = coded.map((x) => ({ x, holder: holders.get(keyOf(x)) })).filter((c) => c.holder && c.holder !== c.x.item_id);
+    if (clashes.length) {
+      const { data: hs } = await db.from('finance_procurement_items').select('id,item_code').in('id', [...new Set(clashes.map((c) => c.holder!))]);
+      const codeOf = new Map(((hs ?? []) as any[]).map((h) => [h.id, h.item_code]));
+      for (const { x, holder } of clashes) {
+        const otherLine = fileIds.get(holder!);
+        if (otherLine) errors.push(`Row ${x.line} (${x.item_code}): takes the name, category and unit of ${codeOf.get(holder!) ?? 'another item'}, which row ${otherLine} renames in the same file. Swap names in two uploads, or merge the rows.`);
+        else if (!deactivateMissing) errors.push(`Row ${x.line} (${x.item_code}): another active item, ${codeOf.get(holder!) ?? 'not in this file'}, already has the name "${x.item_name}" · ${x.category} · ${x.unit}. Merge them, change one name, or tick "Deactivate catalog items that are not in this file".`);
+      }
+    }
+  }
+
   // prices: validated per business by the database (dry run, nothing written).
   // This also refuses a business the importer may not set prices for.
   const doPricing = targets.length > 0 && (hasPricing || hasAddons);
@@ -433,6 +463,15 @@ export async function importCatalogCsvAction(fd: FormData) {
   const { file, headers, targets, prepared, existing, fresh, idByKey, lookup, pricingRows, doPricing, errors, identicalDuplicates, openingRows, openingLocation, deactivateMissing } = await planCatalogImport(p, db, fd);
   if (errors.length) throw importFailure(errors);
 
+  // Build 83d: deactivate the items missing from the file first, so a row may take the name of an item being retired
+  let deactivated = 0;
+  if (deactivateMissing) {
+    const keep = [...new Set(prepared.map((x) => idByKey.get(keyOf(x))).filter((x): x is string => Boolean(x)))];
+    const { data, error } = await db.rpc('catalog_deactivate_missing', { p_keep: keep });
+    if (error) throw appError(error.message);
+    deactivated = Number(data ?? 0);
+  }
+
   // Build 76: the file overwrites the details of items that already exist
   // (name, category, unit, item, brand, description, specification, supplier)
   let detailsUpdated = 0;
@@ -504,13 +543,6 @@ export async function importCatalogCsvAction(fd: FormData) {
     } });
     if (error) throw appError(`${error.message} (the catalog was saved; fix the opening stock and upload again)`);
     opening = data as any;
-  }
-  let deactivated = 0;
-  if (deactivateMissing) {
-    const keep = [...new Set(prepared.map((x) => idByKey.get(keyOf(x))).filter((x): x is string => Boolean(x)))];
-    const { data, error } = await db.rpc('catalog_deactivate_missing', { p_keep: keep });
-    if (error) throw appError(error.message);
-    deactivated = Number(data ?? 0);
   }
   auditRows.push({ actor_id: p.user.id, entity_table: 'finance_procurement_items', entity_id: p.user.id, action: 'catalog_imported', detail: { file: file.name, rows: prepared.length, created: insertedCount, existing: prepared.length - insertedCount, costs_updated: costsUpdated, markups: markupCount, business_ids: doPricing ? targets : [], new_addons: priced.map((b) => ({ business: b.code, addons: b.new_addons })) } });
   for (const part of chunk(auditRows, 500)) {

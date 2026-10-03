@@ -1167,3 +1167,7 @@ Owner: security update before outside users log in. 14.2.35 (last 14.x) still ha
 
 ## Build 83b — loading indicator (2026-10-03, app only)
 - Owner: no sign of loading after clicking. `src/core/ui/BusyIndicator.tsx` (in the root layout) wraps fetch once and shows the 5H13 logo turning and pulsing with "Working…" at the top of the screen while any request (page change, save, Supabase call) has been running for more than 250 ms; no page changes needed. Animation in `app/globals.css` (off for reduced-motion users). Checked in a headless browser.
+
+## Build 83c / 83d — catalog import errors with row numbers (2026-10-03, app only)
+- 83c: import errors show in red right above Confirm import (they were at the top of the pop-up, out of view).
+- 83d: the owner's full-catalog import failed on the database rule that two active items cannot share name + category + unit, without saying which rows. The preview now finds these before anything is saved and names them: rows of the file that would end up with the same name / category / unit (Item Codes listed), and rows whose new name is already used by another active item (its Item Code), or by an item renamed elsewhere in the same file. The import deactivates items missing from the file (when ticked) before updating, so a row may take the name of an item being retired. (Earlier: rows with different Item Codes but the same name / category / unit were not compared at all.)
