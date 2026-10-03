@@ -533,3 +533,41 @@ export async function importCatalogCsvAction(fd: FormData) {
   void detailsUpdated;
   return { imported: insertedCount, skipped: prepared.length - insertedCount, costsUpdated, message: msg.join(' ') };
 }
+
+// ------------------------------------------------------------ bulk photos --
+// Build 79a: photos named by Item Code (PA-0123.jpg, PA-0123_2.jpg …) are
+// matched to their items, then sent one file per call so no request is large.
+export type PhotoMatch = { item_code: string; id: string; item_name: string; active: boolean; photo_path: string | null; photo_path_2: string | null; photo_path_3: string | null };
+export async function matchPhotoCodesAction(codes: string[]): Promise<PhotoMatch[]> {
+  await financeUser(); const db = createClient();
+  const wanted = Array.from(new Set(codes.map((c) => String(c).trim().toUpperCase()).filter(Boolean))).slice(0, 5000);
+  const out: PhotoMatch[] = [];
+  for (const part of chunk(wanted, 300)) {
+    const { data, error } = await db.from('finance_procurement_items').select('id,item_code,item_name,active,photo_path,photo_path_2,photo_path_3').in('item_code', part);
+    if (error) throw appError(error.message);
+    for (const x of (data ?? []) as any[]) out.push({ ...x, item_code: String(x.item_code).toUpperCase() });
+  }
+  return out;
+}
+
+export async function uploadCatalogPhotoAction(fd: FormData): Promise<'saved' | 'skipped'> {
+  const p = await financeUser(); const db = createClient();
+  const id = need(fd, 'item_id', 'Item');
+  const slot = Number(fd.get('slot'));
+  if (![1, 2, 3].includes(slot)) throw appError('Photo slot must be 1, 2 or 3.');
+  const column = PHOTO_SLOTS[slot - 1][1];
+  const { data: current, error } = await db.from('finance_procurement_items').select(`id,item_code,${column}`).eq('id', id).single();
+  if (error || !current) throw appError(error?.message || 'Catalog item not found.');
+  const old = (current as any)[column] as string | null;
+  if (old && String(fd.get('replace') || '') !== 'true') return 'skipped';
+  const path = await savePhoto(id, fd.get('file'), old, column);
+  if (!path) throw appError('The photo file is empty.');
+  await audit(p.user.id, id, 'finance_procurement_items', 'catalog_photo_uploaded', { item_code: (current as any).item_code, slot });
+  return 'saved';
+}
+
+export async function photoUploadDoneAction() {
+  await financeUser();
+  revalidatePath('/finance/procurement');
+  revalidatePath('/catalog');
+}

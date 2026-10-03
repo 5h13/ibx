@@ -62,3 +62,17 @@ export async function getCurrentMonthId(businessId: string | null): Promise<stri
   if (error || !created) throw error ?? new Error('Could not create month row');
   return created.id;
 }
+
+/** Build 80: the month row for a given business / year / month, created when
+ * `create` is true (an expense dated in that month), else null when missing. */
+export async function getMonthId(businessId: string, year: number, month: number, create = true): Promise<string | null> {
+  const supabase = createClient();
+  const { data: existing, error } = await supabase.from('months').select('id').eq('business_id', businessId).eq('year', year).eq('month', month).maybeSingle();
+  if (error) throw error;
+  if (existing) return existing.id;
+  if (!create) return null;
+  const label = new Date(year, month - 1, 1).toLocaleString('en-US', { month: 'long', year: 'numeric' });
+  const { data: created, error: ce } = await supabase.from('months').insert({ business_id: businessId, year, month, label }).select('id').single();
+  if (ce || !created) throw ce ?? new Error('Could not create month row');
+  return created.id;
+}

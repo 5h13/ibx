@@ -15,6 +15,8 @@ proof scripts against it. Nothing here touches the live Supabase project.
 - `lib.sql` — proof helpers: `proof.as_user(id)` (RLS on, as that user),
   `proof.as_owner()`, `proof.ok(condition, label)`,
   `proof.fails(sql, expected message, label)`, `proof.set/get` for ids.
+- `proof81.sql` — Build 81 (AR-01 / AP-01): DR / SI references on AR invoices and the statement of account, AP references (supplier SI / DR, PO), supplier statement, access (after proof80). `runall81.sh` runs replay + seed + proofs 78–81.
+- `proof80.sql` — Build 80 (EXP-01): expense categories, Finance posting / paying into the ledger, prepaid spread, accruals, 13th month from payroll, isolation (after proof79). `runall80.sh` runs replay + seed + proofs 78–80.
 - `proof79.sql` — Build 79: price and cost by lot, order-only items, delete unused items (after proof78).
 - `proof78.sql` — Build 78: lots, reservation, hardcopy DR no., price review,
   isolation, plus a regression section (AR, returns, closing, count rejection).

@@ -3,7 +3,7 @@
 import { appError } from '@/core/errors/appError';
 
 import { revalidatePath } from 'next/cache';
-import { submitForReview, markReviewed, markApproved, postExpense, markExpensePaid, deleteExpenseDraft } from './service';
+import { submitForReview, markReviewed, markApproved, deleteExpenseDraft } from './service';
 
 // Keep cache invalidation scoped to the page that actually changed.
 // Revalidating the root layout forced the entire authenticated shell to
@@ -38,6 +38,4 @@ export async function markApprovedAction(expenseId: string, pathname: string) {
   revalidateExpensePage(pathname);
 }
 
-export async function postExpenseAction(expenseId: string, pathname: string) { await postExpense(expenseId); revalidateExpensePage(pathname); }
-export async function markExpensePaidAction(expenseId: string, pathname: string, bankAccountId?: string | null, transactionDate?: string | null) { await markExpensePaid(expenseId, bankAccountId, transactionDate); revalidateExpensePage(pathname); }
 export async function deleteExpenseDraftAction(expenseId: string, pathname: string) { await deleteExpenseDraft(expenseId); revalidateExpensePage(pathname); }

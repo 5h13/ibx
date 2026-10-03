@@ -34,12 +34,12 @@ export default async function StatementPage({ params }: { params: { customerId: 
       </div>
       <div className="mb-2 font-semibold">Open invoices</div>
       <table className="w-full border-collapse">
-        <thead><tr className="border-b-2 border-black text-left"><th className="py-1">Invoice</th><th className="py-1">Date</th><th className="py-1">Due</th><th className="py-1 text-right">Amount</th><th className="py-1 text-right">Paid</th><th className="py-1 text-right">Balance</th><th className="py-1 text-right">Days overdue</th></tr></thead>
+        <thead><tr className="border-b-2 border-black text-left"><th className="py-1">DR no.</th><th className="py-1">SI no.</th><th className="py-1">Date</th><th className="py-1">Due</th><th className="py-1 text-right">Amount</th><th className="py-1 text-right">Paid</th><th className="py-1 text-right">Balance</th><th className="py-1 text-right">Days overdue</th></tr></thead>
         <tbody>
-          {(s.invoices ?? []).length === 0 && <tr><td colSpan={7} className="py-2">No open invoices — thank you.</td></tr>}
-          {(s.invoices ?? []).map((i: any) => <tr key={i.number} className="border-b"><td className="py-1">{i.number}</td><td className="py-1">{i.date}</td><td className="py-1">{i.due ?? '—'}</td><td className="py-1 text-right">{peso(i.total)}</td><td className="py-1 text-right">{peso(i.received)}</td><td className="py-1 text-right">{peso(i.balance)}</td><td className="py-1 text-right">{Number(i.days_overdue) > 0 ? i.days_overdue : '—'}</td></tr>)}
+          {(s.invoices ?? []).length === 0 && <tr><td colSpan={8} className="py-2">No open invoices — thank you.</td></tr>}
+          {(s.invoices ?? []).map((i: any) => <tr key={i.number} className="border-b"><td className="py-1">{i.linked ? (i.dr ?? '—') : i.number}</td><td className="py-1">{i.linked ? (i.si ?? 'none') : '—'}</td><td className="py-1">{i.date}</td><td className="py-1">{i.due ?? '—'}</td><td className="py-1 text-right">{peso(i.total)}</td><td className="py-1 text-right">{peso(i.received)}</td><td className="py-1 text-right">{peso(i.balance)}</td><td className="py-1 text-right">{Number(i.days_overdue) > 0 ? i.days_overdue : '—'}</td></tr>)}
         </tbody>
-        <tfoot><tr><td colSpan={5} className="pt-2 text-right font-semibold">Total amount due</td><td className="pt-2 text-right font-semibold">{peso(a.total)}</td><td /></tr></tfoot>
+        <tfoot><tr><td colSpan={6} className="pt-2 text-right font-semibold">Total amount due</td><td className="pt-2 text-right font-semibold">{peso(a.total)}</td><td /></tr></tfoot>
       </table>
       <table data-pdf-block className="mt-4 w-full border-collapse text-center text-xs">
         <thead><tr className="border-b border-black"><th className="py-1">Not yet due</th><th className="py-1">1–30 days</th><th className="py-1">31–60 days</th><th className="py-1">61–90 days</th><th className="py-1">Over 90 days</th></tr></thead>

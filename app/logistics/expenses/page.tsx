@@ -1,30 +1,11 @@
-// app/logistics/expenses/page.tsx
+// Build 80 (EXP-01): the same expense page for every department.
 import { requireSection } from '@/core/auth/requireSection';
-import { listExpenses } from '@/shared/expenses/service';
-import { ExpensesTable } from '@/shared/expenses/ExpensesTable';
-import { NewExpenseForm } from '@/shared/expenses/NewExpenseForm';
-import { getCurrentMonthId } from '@/core/utils/currentMonth';
 import { AuthedShell } from '@/core/layout/AuthedShell';
-import { ActionBar, PopupAction } from '@/core/ui/PopupAction';
+import { DepartmentExpenses } from '@/shared/expenses/DepartmentExpenses';
+import { loadDepartmentExpenses } from '@/shared/expenses/loadDepartmentExpenses';
 
-export default async function LogisticsExpensesPage() {
+export default async function ExpensesPage({ searchParams }: { searchParams?: { month?: string } }) {
   const profile = await requireSection('logistics');
-  const monthId = await getCurrentMonthId(profile.user.business_id);
-  const rows = await listExpenses('logistics', monthId);
-  const supabase = (await import('@/core/auth/supabaseServer')).createClient();
-  const { data: costCenters } = await supabase.from('finance_cost_centers').select('id,code,name').eq('active', true).order('name');
-  const { data: categories } = await supabase.from('admin_expense_categories').select('id,code,name').eq('active', true).order('name');
-  const { data: suppliers } = await supabase.from('finance_suppliers').select('id,supplier_code,legal_name').eq('active', true).order('legal_name');
-
-  return (
-    <AuthedShell profile={profile}>
-      <h2 className="text-lg font-semibold mb-4">Logistics Expenses</h2>
-      <ActionBar className="mb-4">
-        <PopupAction label="+ New expense" title="New expense">
-          <NewExpenseForm sectionCode="logistics" monthId={monthId} costCenters={costCenters || []} categories={categories || []} suppliers={suppliers || []} />
-        </PopupAction>
-      </ActionBar>
-      <ExpensesTable rows={rows} profile={profile} pathname="/logistics/expenses" categories={categories || []} suppliers={suppliers || []} />
-    </AuthedShell>
-  );
+  const data = await loadDepartmentExpenses(profile, 'logistics', searchParams?.month);
+  return <AuthedShell profile={profile}><DepartmentExpenses profile={profile} data={data} /></AuthedShell>;
 }

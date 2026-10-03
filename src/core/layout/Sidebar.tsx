@@ -35,6 +35,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: 'Finance Dashboard', href: '/finance/dashboard' },
       { label: 'Expenses', href: '/finance/expenses' },
+      { label: 'All expenses', href: '/finance/expenses/register' },
       { label: 'Procurement', href: '/finance/procurement' },
       { label: 'Supplier Quotes', href: '/finance/procurement/supplier-quotes' },
       { label: 'Price Requests', href: '/finance/price-requests' },
@@ -57,6 +58,7 @@ const NAV_GROUPS: NavGroup[] = [
       { label: 'Inventory & Receiving', href: '/logistics/inventory' },
       { label: 'Warehouse / Delivery', href: '/logistics/warehouse-delivery' },
       { label: 'Reporting & Operations Dashboard', href: '/logistics/reports' },
+      { label: 'Expenses', href: '/logistics/expenses' },
     ],
   },
   {
@@ -64,7 +66,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'Marketing',
     items: [
       { label: 'Campaigns & Leads', href: '/marketing' },
-      { label: 'Marketing Expenses', href: '/marketing/expenses' },
+      { label: 'Expenses', href: '/marketing/expenses' },
     ],
   },
   {
@@ -77,6 +79,7 @@ const NAV_GROUPS: NavGroup[] = [
       { label: 'Price Review', href: '/sales/price-review', show: canReviewPrices },
       { label: 'Monthly Sales', href: '/sales/monthly-sales' },
       { label: 'Commission Operations & Reporting', href: '/sales/commission-report' },
+      { label: 'Expenses', href: '/sales/expenses' },
     ],
   },
 ];
