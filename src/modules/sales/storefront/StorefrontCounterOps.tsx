@@ -3,6 +3,7 @@
 // Build 68 — DOC-15 part 2 counter operations, opened from the Storefront
 // action bar / tabs as pop-ups (Build 65 layout rule):
 //   • Receive AR payment — pay an existing (old) invoice, partial allowed.
+//     Build 88: by default one payment is applied to the oldest invoices first.
 //   • Return / refund    — staff, linked to the original sale, with a reason.
 //   • Close the day      — cash count vs expected, per-method summary, sent
 //                          to an approver; approvers approve or return it.
@@ -12,7 +13,7 @@ import { errorText } from '@/core/errors/appError';
 import { CustomerBox } from './CustomerBox';
 import { PopupAction } from '@/core/ui/PopupAction';
 import {
-  cashMovementAction, closeDayAction, closingPreviewAction, collectArAction, decideClosingAction, openInvoicesAction, refundableAction, returnAction, saleForReturnAction,
+  cashMovementAction, closeDayAction, closingPreviewAction, collectArAction, collectArOldestAction, decideClosingAction, openInvoicesAction, refundableAction, returnAction, saleForReturnAction,
 } from './actions';
 import { CONDITION_LABEL, METHODS, changeDue, methodLabel, num, paysToInput, paysTotal, peso, pesoSigned, r2, type Pay } from './storefrontShared';
 import { useStoreAccounts } from './accountsContext';
@@ -45,17 +46,22 @@ export function ArCollectionForm({ customers, walkInId, onDone }: { customers: C
   const [customerId, setCustomerId] = useState('');
   const [invoices, setInvoices] = useState<Awaited<ReturnType<typeof openInvoicesAction>> | null>(null);
   const [invoiceId, setInvoiceId] = useState('');
+  const [oneInvoice, setOneInvoice] = useState(false);   // Build 88: default = oldest invoices first
   const [pays, setPays] = useState<Pay[]>([{ method: 'cash', amount: '', reference: '' }]);
   const [error, setError] = useState('');
   const [pending, start] = useTransition();
   const inv = invoices?.find((i) => i.invoice_id === invoiceId);
   const paying = paysTotal(pays);
+  const owed = r2((invoices ?? []).reduce((s, i) => s + Number(i.balance_due), 0));
+  // the split the counter will make: oldest invoice first (same order as the list)
+  const split: Record<string, number> = {};
+  { let left = Number.isFinite(paying) ? paying : 0; for (const i of invoices ?? []) { const t = r2(Math.min(left, Number(i.balance_due))); split[i.invoice_id] = t > 0 ? t : 0; left = r2(left - split[i.invoice_id]); } }
 
   function pick(id: string) {
     setCustomerId(id); setInvoices(null); setInvoiceId(''); setError('');
     if (!id) return;
     start(async () => {
-      try { const r = await openInvoicesAction(id); setInvoices(r); if (r.length === 1) setInvoiceId(r[0].invoice_id); }
+      try { const r = await openInvoicesAction(id); setInvoices(r); if (r.length >= 1) setInvoiceId(r[0].invoice_id); }
       catch (e) { setError(errorText(e)); }
     });
   }
@@ -63,6 +69,12 @@ export function ArCollectionForm({ customers, walkInId, onDone }: { customers: C
     setError('');
     start(async () => {
       try {
+        if (!oneInvoice) {
+          const r = await collectArOldestAction(customerId, paysToInput(pays));
+          if (r.payment_id && r.applied.length === 1) window.open(`/sales/storefront/payments/${r.payment_id}/receipt`, '_blank');
+          onDone(`${peso(r.amount)} received, oldest first: ${r.applied.map((a) => `${a.dr ? 'DR ' + a.dr : a.invoice_number} ${peso(a.applied)}${Number(a.balance) > 0 ? ` (balance ${peso(a.balance)})` : ' (paid)'}`).join('; ')}. Still owed ${peso(r.balance)}.`);
+          return;
+        }
         const r = await collectArAction(invoiceId, paysToInput(pays));
         if (r.payment_id) window.open(`/sales/storefront/payments/${r.payment_id}/receipt`, '_blank');
         onDone(`${peso(r.amount)} received on ${r.invoice_number}. Remaining balance ${peso(r.balance)}.`);
@@ -80,29 +92,37 @@ export function ArCollectionForm({ customers, walkInId, onDone }: { customers: C
       {invoices && invoices.length === 0 && <p className="text-slate-500">This customer has no unpaid approved invoices.</p>}
       {invoices && invoices.length > 0 && (
         <table className="w-full">
-          <thead><tr className="border-b text-left text-xs uppercase text-slate-500"><th className="p-2" /><th className="p-2">Invoice</th><th className="p-2">Date</th><th className="p-2">Due</th><th className="p-2 text-right">Total</th><th className="p-2 text-right">Paid</th><th className="p-2 text-right">Balance</th></tr></thead>
+          <thead><tr className="border-b text-left text-xs uppercase text-slate-500"><th className="p-2" /><th className="p-2">Invoice</th><th className="p-2">Date</th><th className="p-2">Due</th><th className="p-2 text-right">Total</th><th className="p-2 text-right">Paid</th><th className="p-2 text-right">Balance</th>{!oneInvoice && <th className="p-2 text-right">This payment</th>}</tr></thead>
           <tbody>{invoices.map((i) => (
             <tr key={i.invoice_id} className="border-b">
-              <td className="p-2"><input type="radio" name="inv" checked={invoiceId === i.invoice_id} onChange={() => setInvoiceId(i.invoice_id)} aria-label={i.invoice_number} /></td>
+              <td className="p-2">{oneInvoice && <input type="radio" name="inv" checked={invoiceId === i.invoice_id} onChange={() => setInvoiceId(i.invoice_id)} aria-label={i.invoice_number} />}</td>
               <td className="p-2 font-medium">{i.invoice_number}</td><td className="p-2">{i.invoice_date}</td><td className="p-2">{i.due_date ?? '—'}</td>
               <td className="p-2 text-right">{peso(i.total_amount)}</td><td className="p-2 text-right">{peso(i.amount_received)}</td><td className="p-2 text-right font-medium text-amber-700">{peso(i.balance_due)}</td>
+              {!oneInvoice && <td className="p-2 text-right">{split[i.invoice_id] > 0 ? <span className="font-medium text-emerald-700">{peso(split[i.invoice_id])}{split[i.invoice_id] >= Number(i.balance_due) ? ' · paid' : ''}</span> : <span className="text-slate-400">—</span>}</td>}
             </tr>))}
-            <tr><td colSpan={6} className="p-2 text-right text-slate-500">Total owed</td><td className="p-2 text-right font-semibold">{peso(invoices.reduce((s, i) => s + Number(i.balance_due), 0))}</td></tr>
+            <tr><td colSpan={6} className="p-2 text-right text-slate-500">Total owed</td><td className="p-2 text-right font-semibold">{peso(owed)}</td>{!oneInvoice && <td />}</tr>
           </tbody>
         </table>
       )}
-      {inv && (
-        <>
-          <PayRows pays={pays} setPays={setPays} fillLabel="Pay full balance in cash" fillAmount={Number(inv.balance_due)} />
-          <div className="grid gap-2 rounded bg-slate-50 p-3 sm:grid-cols-3">
-            <div>Balance <b>{peso(inv.balance_due)}</b></div><div>Paying <b>{peso(paying)}</b>{changeDue(pays) > 0 && <> · change <b className="text-emerald-700">{peso(changeDue(pays))}</b></>}</div>
-            <div>{paying > Number(inv.balance_due) ? <b className="text-red-700">More than the balance</b> : <>Remaining <b>{peso(r2(Number(inv.balance_due) - paying))}</b></>}</div>
-          </div>
-          <p className="text-xs text-slate-500">Each line is posted as an AR receipt on the invoice; Finance sees it at once.</p>
-        </>
+      {invoices && invoices.length > 1 && (
+        <label className="flex items-center gap-2 text-xs text-slate-600"><input type="checkbox" checked={oneInvoice} onChange={(e) => setOneInvoice(e.target.checked)} />
+          Pay one specific invoice instead (normally the payment goes to the oldest invoices first)</label>
       )}
+      {invoices && invoices.length > 0 && (oneInvoice ? inv : true) && (() => {
+        const target = oneInvoice && inv ? Number(inv.balance_due) : owed;
+        return (
+          <>
+            <PayRows pays={pays} setPays={setPays} fillLabel={oneInvoice ? 'Pay full balance in cash' : 'Pay everything owed in cash'} fillAmount={target} />
+            <div className="grid gap-2 rounded bg-slate-50 p-3 sm:grid-cols-3">
+              <div>{oneInvoice ? 'Balance' : 'Total owed'} <b>{peso(target)}</b></div><div>Paying <b>{peso(paying)}</b>{changeDue(pays) > 0 && <> · change <b className="text-emerald-700">{peso(changeDue(pays))}</b></>}</div>
+              <div>{paying > target ? <b className="text-red-700">More than {oneInvoice ? 'the balance' : 'what is owed'}</b> : <>Remaining <b>{peso(r2(target - paying))}</b></>}</div>
+            </div>
+            <p className="text-xs text-slate-500">{oneInvoice ? 'Each line is posted as an AR receipt on the invoice; Finance sees it at once.' : 'The payment pays the oldest invoice first, then the next (see "This payment" above); each part is posted as an AR receipt on its invoice. A check covering several invoices stays one check.'}</p>
+          </>
+        );
+      })()}
       <ErrorBox text={error} />
-      <div className="flex justify-end"><button type="button" className="button" disabled={pending || !inv || !(paying > 0)} onClick={save}>{pending ? 'Saving…' : `Receive ${peso(paying)}`}</button></div>
+      <div className="flex justify-end"><button type="button" className="button" disabled={pending || !invoices?.length || (oneInvoice && !inv) || !(paying > 0)} onClick={save}>{pending ? 'Saving…' : `Receive ${peso(paying)}`}</button></div>
     </div>
   );
 }

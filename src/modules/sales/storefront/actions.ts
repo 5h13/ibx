@@ -98,6 +98,15 @@ export async function openInvoicesAction(customerId: string) {
     'storefront_open_invoices', { p_customer: customerId });
 }
 
+// Build 88 (AR-02): one payment from the customer, applied to the oldest open invoices first
+export async function collectArOldestAction(customerId: string, payments: PaymentInput[]) {
+  await signedIn();
+  const r = await rpc<{ amount: number; owed_before: number; balance: number; payment_id: string; applied: { invoice_number: string; dr: string | null; applied: number; balance: number }[] }>(
+    'storefront_collect_ar_oldest', { p_customer: customerId, p_payments: payments });
+  refresh();
+  return r;
+}
+
 export async function collectArAction(invoiceId: string, payments: PaymentInput[]) {
   await signedIn();
   const r = await rpc<{ invoice_number: string; amount: number; balance: number; payment_id: string }>('storefront_collect_ar', { p_invoice: invoiceId, p_payments: payments });
