@@ -7,7 +7,8 @@ import { pesoDoc as peso, requireAnySection } from '@/shared/documents/access';
 
 export const dynamic = 'force-dynamic';
 
-export default async function PurchaseOrderPrintPage({ params }: { params: { id: string } }) {
+export default async function PurchaseOrderPrintPage(props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   await requireAnySection(['finance']);
   const db = createClient();
   const { data: po } = await db.from('purchase_orders')

@@ -1,4 +1,5 @@
 'use client';
+import { Form } from '@/core/ui/Form';
 import { errorText } from '@/core/errors/appError';
 
 // Build 55 — item ↔ supplier purchase price history (UI).
@@ -87,13 +88,13 @@ export function ItemPriceHistory({ itemId, canEdit }: { itemId: string; canEdit:
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-md rounded-xl bg-white shadow-xl">
             <div className="flex items-center justify-between border-b p-4"><div><h3 className="font-semibold">Correct purchase price</h3><p className="text-xs text-slate-500">{editing.po?.po_number} · {editing.purchase_date} · PO price {peso(editing.po_unit_price)}</p></div><button type="button" className="button-secondary" onClick={() => setEditing(null)}>Close</button></div>
-            <form action={(fd) => act(() => adjustPurchasePriceAction(fd))} className="grid gap-3 p-4">
+            <Form action={(fd) => act(() => adjustPurchasePriceAction(fd))} className="grid gap-3 p-4">
               <input type="hidden" name="history_id" value={editing.id} />
               <label className="text-sm">Invoice price (per unit)<input className="input mt-1 w-full" name="invoice_unit_price" type="number" min="0" step="0.01" defaultValue={editing.invoice_unit_price ?? editing.po_unit_price} required /></label>
               <label className="text-sm">Supplier invoice / reference<input className="input mt-1 w-full" name="invoice_reference" defaultValue={editing.invoice_reference ?? ''} placeholder="e.g. SI-12345" /></label>
               <label className="text-sm">Reason (required)<textarea className="input mt-1 w-full" name="adjustment_note" required defaultValue={editing.adjustment_note ?? ''} placeholder="Why the billed price differs from the PO" /></label>
               <button className="button" disabled={pending}>Save price</button>
-            </form>
+            </Form>
           </div>
         </div>
       )}

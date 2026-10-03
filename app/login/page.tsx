@@ -1,6 +1,7 @@
 // app/login/page.tsx
 'use client';
 
+import { Form } from '@/core/ui/Form';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/core/auth/supabaseClient';
@@ -31,7 +32,7 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-100">
-      <form onSubmit={handleSubmit} className="bg-white shadow-md rounded-lg p-8 w-full max-w-sm space-y-4">
+      <Form onSubmit={handleSubmit} className="bg-white shadow-md rounded-lg p-8 w-full max-w-sm space-y-4">
         <div className="flex items-center gap-3">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/brand/5h13-logo.jpg" alt="5H13" className="h-14 w-14 rounded-xl object-cover" />
@@ -75,7 +76,7 @@ export default function LoginPage() {
         <p className="text-xs text-slate-500 pt-3 border-t text-center">
           Welcome to 5H13 Business Solutions. Sign in with the account your administrator gave you.
         </p>
-      </form>
+      </Form>
     </div>
   );
 }

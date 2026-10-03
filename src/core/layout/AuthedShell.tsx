@@ -31,6 +31,9 @@ export async function AuthedShell({ profile, children }: { profile: SessionProfi
   // individual page needs to know about notifications for the bell to work
   // everywhere the shell renders.
   const notifications = await listMyNotificationsAction().catch(() => []);
+  // Build 82 — the user's 5H13 Shortcuts
+  const { data: sc } = await db.from('user_shortcuts').select('items').eq('user_id', profile.user.id).maybeSingle();
+  const shortcuts: string[] = Array.isArray(sc?.items) ? (sc!.items as string[]) : [];
 
   // Build 63 — the store's theme (businesses.branding.theme) re-colours the
   // whole app for everyone working in that business (and for the Super Admin
@@ -58,7 +61,7 @@ export async function AuthedShell({ profile, children }: { profile: SessionProfi
         <Header profile={profile} businesses={businesses} notifications={notifications} />
       </div>
       <div className="flex md:flex-1 md:min-h-0">
-        <ResponsiveNav profile={profile} />
+        <ResponsiveNav profile={profile} shortcuts={shortcuts} />
         <main className="flex-1 min-w-0 md:overflow-y-auto">
           {/* U035: extra top padding on mobile clears the fixed hamburger button ResponsiveNav renders there. */}
           <div className="max-w-5xl mx-auto p-6 pt-16 md:pt-6">{children}</div>

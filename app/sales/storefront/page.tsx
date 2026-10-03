@@ -13,7 +13,10 @@ export const dynamic = 'force-dynamic';
 
 const manilaToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila' }).format(new Date());
 
-export default async function StorefrontPage({ searchParams }: { searchParams?: { date?: string; tab?: string; q?: string } }) {
+export default async function StorefrontPage(
+  props: { searchParams?: Promise<{ date?: string; tab?: string; q?: string }> }
+) {
+  const searchParams = await props.searchParams;
   const profile = await getSessionProfile();
   if (!profile) redirect('/login');
   const sales = hasSectionAccess(profile, 'sales');

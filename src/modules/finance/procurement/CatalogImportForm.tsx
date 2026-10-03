@@ -1,4 +1,5 @@
 'use client';
+import { Form } from '@/core/ui/Form';
 // CAT-07 (Build 77) — the file may be CSV or Excel (.xlsx). "Preview" reads
 // and validates the whole file and shows what it would change (new items,
 // updated items, Supplier Cost changes, price changes per business, opening
@@ -39,7 +40,7 @@ export function CatalogImportForm({ pending, run, onDone }: { pending: boolean; 
   const all = targets ?? [];
 
   return (
-    <form ref={formRef} onChange={reset} action={(fd) => { setPreviewError(''); startPreview(async () => { try { setPreview({ fd, result: await previewCatalogImportAction(fd) }); } catch (e) { setPreview(null); setPreviewError(errorText(e) || 'Unable to read the file.'); } }); }} className="space-y-3">
+    <Form ref={formRef} onChange={reset} action={(fd) => { setPreviewError(''); startPreview(async () => { try { setPreview({ fd, result: await previewCatalogImportAction(fd) }); } catch (e) { setPreview(null); setPreviewError(errorText(e) || 'Unable to read the file.'); } }); }} className="space-y-3">
       <input className="text-sm" type="file" name="catalog_file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required />
       <p className="text-xs text-slate-500">CSV or Excel workbook (.xlsx — the first sheet is read).</p>
       <fieldset className="rounded border p-3">
@@ -91,7 +92,7 @@ export function CatalogImportForm({ pending, run, onDone }: { pending: boolean; 
         )}
       </div>
       {preview && <p className="text-xs text-slate-500">Nothing has been saved yet. The file is checked again when you confirm; if anything changed meanwhile and a row fails, nothing is imported.</p>}
-    </form>
+    </Form>
   );
 }
 

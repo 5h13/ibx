@@ -12,7 +12,8 @@ export const dynamic = 'force-dynamic';
 const PAGE = 50;
 type SP = { q?: string; category?: string; brand?: string; supplier?: string; page?: string; tab?: string };
 
-export default async function PriceReviewPage({ searchParams }: { searchParams?: SP }) {
+export default async function PriceReviewPage(props: { searchParams?: Promise<SP> }) {
+  const searchParams = await props.searchParams;
   const profile = await getSessionProfile();
   if (!profile) redirect('/login');
   const db = createClient();

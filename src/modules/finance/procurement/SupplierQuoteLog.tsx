@@ -1,4 +1,5 @@
 'use client';
+import { Form } from '@/core/ui/Form';
 import { errorText } from '@/core/errors/appError';
 
 // Build 56 — Supplier quote log (DOC-14) + "Set as current cost" (DOC-04).
@@ -53,7 +54,7 @@ export default function SupplierQuoteLog({ quotes, suppliers, canManage }: { quo
         <ActionBar>
           <PopupAction label="Record supplier quote" title="Record a supplier quote" notice={message} wide>
             {(close) => (
-          <form key={formKey} action={(fd) => run(async () => { await createSupplierQuoteAction(fd); setFormKey((k) => k + 1); setSupplierId(''); close(); }, 'Supplier quote recorded.')} className="grid gap-3 md:grid-cols-6">
+          <Form key={formKey} action={(fd) => run(async () => { await createSupplierQuoteAction(fd); setFormKey((k) => k + 1); setSupplierId(''); close(); }, 'Supplier quote recorded.')} className="grid gap-3 md:grid-cols-6">
             <div className="md:col-span-2"><label className="label">Item</label><CatalogItemPicker name="item_id" required /></div>
             <div className="md:col-span-2"><label className="label">Supplier</label>
               <select className="input w-full" name="supplier_id" required value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
@@ -67,7 +68,7 @@ export default function SupplierQuoteLog({ quotes, suppliers, canManage }: { quo
             <div className="md:col-span-2"><label className="label">Lead time</label><input className="input w-full" name="lead_time" defaultValue="Within the day" /></div>
             <label className="flex items-center gap-2 text-sm md:col-span-3"><input type="checkbox" name="set_as_current" /> Also set as the item's current cost</label>
             <div className="md:col-span-1 md:col-start-6"><button className="button w-full" disabled={pending}>Save quote</button></div>
-          </form>
+          </Form>
             )}
           </PopupAction>
         </ActionBar>
@@ -122,14 +123,14 @@ export default function SupplierQuoteLog({ quotes, suppliers, canManage }: { quo
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-md rounded-xl bg-white shadow-xl">
             <div className="flex items-center justify-between border-b p-4"><div><h3 className="font-semibold">Edit supplier quote</h3><p className="text-xs text-slate-500">{editing.item?.item_code} — {editing.supplier?.legal_name}</p></div><button className="button-secondary" onClick={() => setEditing(null)}>Close</button></div>
-            <form action={(fd) => run(async () => { await updateSupplierQuoteAction(fd); setEditing(null); }, 'Supplier quote updated.')} className="grid gap-3 p-4">
+            <Form action={(fd) => run(async () => { await updateSupplierQuoteAction(fd); setEditing(null); }, 'Supplier quote updated.')} className="grid gap-3 p-4">
               <input type="hidden" name="quote_id" value={editing.id} />
               <label className="text-sm">Price (per unit)<input className="input mt-1 w-full" name="unit_price" type="number" min="0" step="0.01" defaultValue={editing.unit_price} required /></label>
               <label className="text-sm">Validity<select className="input mt-1 w-full" name="validity" defaultValue={editing.validity}><option value="while_supply_lasts">While supply lasts</option><option value="fixed_price">Fixed price</option></select></label>
               <label className="text-sm">Lead time<input className="input mt-1 w-full" name="lead_time" defaultValue={editing.lead_time} /></label>
               {editing.item?.cost_source_quote_id === editing.id && <p className="text-xs text-amber-700">This quote is the item's current cost, so saving a new price also updates the current cost (for every business).</p>}
               <button className="button" disabled={pending}>Save</button>
-            </form>
+            </Form>
           </div>
         </div>
       )}

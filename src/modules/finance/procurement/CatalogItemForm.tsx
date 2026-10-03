@@ -1,4 +1,5 @@
 'use client';
+import { Form } from '@/core/ui/Form';
 import { errorText } from '@/core/errors/appError';
 
 // Build 60 — add / edit a catalog item in the user's column layout. Add on,
@@ -77,7 +78,7 @@ export function CatalogItemForm({
   }
 
   return (
-    <form ref={form} action={submit} className="space-y-4">
+    <Form ref={form} action={submit} className="space-y-4">
       {!item && <p className="text-sm text-slate-500">Item code is assigned by the system and cannot be edited.</p>}
       <div className="grid gap-3 md:grid-cols-4">
         <div className="md:col-span-2"><L l="STANDARD ITEM NAME" hint="Full name, e.g. AC FILTER DRIER, GENESSO 1/2 FLARE TYPE 164FT"><input className="input" name="item_name" required defaultValue={item?.item_name ?? ''} /></L></div>
@@ -158,6 +159,6 @@ export function CatalogItemForm({
 
       {error && <div className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
       <button disabled={pending} className="button">{pending ? 'Saving…' : item ? 'Save changes' : 'Save catalog item'}</button>
-    </form>
+    </Form>
   );
 }

@@ -10,7 +10,8 @@ import { pesoDoc as peso, requireAnySection } from '@/shared/documents/access';
 export const dynamic = 'force-dynamic';
 const METHOD: Record<string, string> = { cash: 'Cash', gcash: 'GCash', maya: 'Maya', card: 'Card', bank_transfer: 'Bank transfer', check: 'Check' };
 
-export default async function CollectionReceiptPage({ params }: { params: { id: string } }) {
+export default async function CollectionReceiptPage(props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   await requireAnySection(['sales', 'finance']);
   const db = createClient();
   const { data: pay } = await db.from('storefront_payments').select('business_id').eq('id', params.id).maybeSingle();

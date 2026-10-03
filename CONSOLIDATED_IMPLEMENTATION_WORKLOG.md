@@ -1143,3 +1143,20 @@ Owner, 2026-10-03: AR must refer to both DRs and SIs (some sales issue no SI); t
 
 ## Build 81b — 5H13 branding (2026-10-03, app only)
 - At the 5H13 level (Super Admin with no store chosen in "Acting as"): the 5H13 logo (`public/brand/5h13-logo.jpg`) in the header, subtitle "Business Management System" (was "Commission & Sales Management System"), a PH tricolour stripe under the header, and the new **PH accent** theme (PH blue header, blue accent) across the app. The theme is also offered as a preset in System → Businesses for any store. No database change.
+
+## Build 82 — 5H13 Shortcuts (2026-10-03)
+Owner: a "5H13 Shortcuts" panel at the top of the sidebar, chosen by each user from the features they can access. Migration `20261214_user_shortcuts.sql`.
+- `user_shortcuts` (one row per user, ordered jsonb list of keys; RLS: own row only). `saveShortcutsAction`.
+- Sidebar menu definition moved to `src/core/layout/navConfig.ts`; `shortcuts.ts` builds the user's choices: General pages, every page of the departments the user can open (same rules as the sidebar), and actions that open a page with its form showing — New quotation, New sale, Receive AR payment, New purchase order, Record supplier invoice, Add expense (per department).
+- `ShortcutsPanel.tsx`: the panel ("+ Add shortcuts" when empty, Edit → tick by department, order with ↑ ↓, Save). `PopupAction` gains `openParam` (opens on `?new=<key>`); revenue pipeline and AP open the right tab from `?tab=`.
+- Verified: `proof82.sql` (5 checks); typecheck and production build pass. Not run in a browser.
+
+## Build 83 — Next.js 16 upgrade (2026-10-03, app only)
+Owner: security update before outside users log in. 14.2.35 (last 14.x) still had two dozen open advisories (version 14 no longer patched); upgraded to **Next.js 16.3.8 + React 19** — `npm audit`: 0 vulnerabilities.
+- `next-async-request-api` codemod: pages / routes now await `params` / `searchParams` (30 files); `cookies()` / `headers()` awaited (`actingBusiness`, `users/actions` siteUrl).
+- `src/core/auth/supabaseServer.ts`: `createClient()` stays synchronous for its ~115 callers; the cookie store promise is awaited inside @supabase/ssr's `getAll` / `setAll`.
+- `middleware.ts` → `proxy.ts` (Next 16 rename, function `proxy`).
+- Server-action files: arrow-function exports turned into `async function` (Turbopack requires it) — `revenueActions.ts`, `warehouseDeliveryActions.ts`.
+- **React 19 form reset:** React 19 resets `<form action={fn}>` when the action's transition ends, even when the save was refused — fields cleared and PopupAction closed on errors (confirmed in a headless browser). New `src/core/ui/Form.tsx` keeps the old behaviour (calls the action with the form data on submit; the page resets after a successful save); every client form uses `<Form>` (46 files). Verified in a headless browser: refused save keeps the typed values, successful save resets once.
+- `package.json`: `lint` script is now `tsc --noEmit` (`next lint` removed in 16). `tsconfig.json` / `next-env.d.ts` updated by Next.
+- Verified: typecheck and production build (Turbopack, 58 pages); login page renders in a headless browser; authenticated pages not run here (no Supabase connection in the build workspace).

@@ -8,7 +8,8 @@ import { isAdminTier } from '@/core/auth/types';
 import { AuthedShell } from '@/core/layout/AuthedShell';
 import TimekeepingManagement from '@/modules/admin/timekeeping/TimekeepingManagement';
 
-export default async function TimekeepingPage({searchParams}:{searchParams?:{tab?:string}}){
+export default async function TimekeepingPage(props:{searchParams?: Promise<{tab?:string}>}) {
+ const searchParams = await props.searchParams;
  const profile=await getSessionProfile();
  if(!profile) redirect('/login');
  const can=isAdminTier(profile)||profile.user.section_code==='admin'||profile.access.some(a=>a.section_code==='admin');

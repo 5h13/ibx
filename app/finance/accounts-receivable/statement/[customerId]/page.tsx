@@ -10,7 +10,8 @@ import { pesoDoc as peso, requireAnySection } from '@/shared/documents/access';
 export const dynamic = 'force-dynamic';
 const METHOD: Record<string, string> = { cash: 'Cash', gcash: 'GCash', maya: 'Maya', card: 'Card', bank_transfer: 'Bank transfer', check: 'Check' };
 
-export default async function StatementPage({ params }: { params: { customerId: string } }) {
+export default async function StatementPage(props: { params: Promise<{ customerId: string }> }) {
+  const params = await props.params;
   await requireAnySection(['sales', 'finance']);
   const db = createClient();
   const { data: cust } = await db.from('finance_customers').select('business_id,customer_code').eq('id', params.customerId).maybeSingle();
@@ -20,7 +21,7 @@ export default async function StatementPage({ params }: { params: { customerId: 
     db.from('businesses').select(DOCUMENT_BUSINESS_COLUMNS).eq('id', cust.business_id).maybeSingle(),
   ]);
   if (error || !st) notFound();
-  const s: any = st; const c = s.customer; const a = s.aging;
+  const s: any = st;const c = s.customer;const a = s.aging;
   const docNo = `SOA-${c.code}-${s.as_of}`;
   return (
     <div data-document className={`${DOCUMENT_PAGE_CLASS} mx-auto max-w-3xl p-8 text-sm text-black print:p-0`} style={{ background: '#fff' }}>

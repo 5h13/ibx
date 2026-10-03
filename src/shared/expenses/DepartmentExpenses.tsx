@@ -1,4 +1,5 @@
 'use client';
+import { Form } from '@/core/ui/Form';
 // Build 80 (EXP-01): the one expense page every department uses (Admin,
 // Finance, Logistics, Marketing, Sales) — own department's expenses, any
 // month, prepare → review → approve. Finance then posts and pays from
@@ -66,12 +67,12 @@ export function DepartmentExpenses({ profile, data }: { profile: SessionProfile;
 
       {canPrepare && (
         <ActionBar>
-          <PopupAction label="+ Add expense" title={`Add ${TITLES[section].toLowerCase()} expense`} notice={message} wide>
+          <PopupAction label="+ Add expense" title={`Add ${TITLES[section].toLowerCase()} expense`} notice={message} wide openParam="expense">
             {(close) => (
-              <form action={(fd) => { fd.set('section', section); run(() => createDepartmentExpenseAction(fd), close); }}>
+              <Form action={(fd) => { fd.set('section', section); run(() => createDepartmentExpenseAction(fd), close); }}>
                 <ExpenseFields categories={categories} costCenters={costCenters} suppliers={suppliers} assets={assets} vehicles={vehicles} suggestions={suggestions} />
                 <button disabled={pending} className="button mt-3">{pending ? 'Saving…' : 'Save expense draft'}</button>
-              </form>
+              </Form>
             )}
           </PopupAction>
         </ActionBar>
@@ -125,12 +126,12 @@ export function DepartmentExpenses({ profile, data }: { profile: SessionProfile;
 
       {editing && (
         <div className="fixed inset-0 z-50 bg-black/30 flex items-center justify-center p-4">
-          <form className="w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-xl bg-white p-5 shadow-xl space-y-3"
+          <Form className="w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-xl bg-white p-5 shadow-xl space-y-3"
             action={(fd) => { fd.set('section', section); fd.set('expense_id', editing.id); run(() => updateDepartmentExpenseAction(fd), () => setEditing(null)); }}>
             <h3 className="font-semibold">Edit draft</h3>
             <ExpenseFields row={editing} categories={categories} costCenters={costCenters} suppliers={suppliers} assets={assets} vehicles={vehicles} suggestions={suggestions} />
             <div className="flex gap-2 justify-end"><button type="button" className="button-secondary" onClick={() => setEditing(null)}>Cancel</button><button className="button" disabled={pending}>Save</button></div>
-          </form>
+          </Form>
         </div>
       )}
 
@@ -161,10 +162,10 @@ export function DepartmentExpenses({ profile, data }: { profile: SessionProfile;
                 ))}
               </ul>
               {selected.status === 'draft' && selected.prepared_by === profile.user.id && (
-                <form className="flex flex-wrap items-end gap-2" action={(fd) => { fd.set('expense_id', selected.id); fd.set('pathname', pathname); run(() => uploadExpenseDocumentAction(fd), () => setSelected(null)); }}>
+                <Form className="flex flex-wrap items-end gap-2" action={(fd) => { fd.set('expense_id', selected.id); fd.set('pathname', pathname); run(() => uploadExpenseDocumentAction(fd), () => setSelected(null)); }}>
                   <input className="input" type="file" name="document" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" required />
                   <button className="button-secondary" disabled={pending}>Attach</button>
-                </form>
+                </Form>
               )}
             </div>
           </div>

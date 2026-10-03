@@ -1,4 +1,5 @@
 'use client';
+import { Form } from '@/core/ui/Form';
 // Build 80 (EXP-01): Finance → All expenses.
 import { useMemo, useState, useTransition } from 'react';
 import type { ReactNode } from 'react';
@@ -68,7 +69,7 @@ function AllExpenses({ from, to, rows, categories, banks, schedules, accounts, c
 
   return (
     <div className="space-y-4">
-      <form className="flex flex-wrap items-end gap-2" onSubmit={(e) => { e.preventDefault(); const fd = new FormData(e.currentTarget); router.push(`/finance/expenses/register?from=${fd.get('from')}&to=${fd.get('to')}`); }}>
+      <Form className="flex flex-wrap items-end gap-2" onSubmit={(e) => { e.preventDefault(); const fd = new FormData(e.currentTarget); router.push(`/finance/expenses/register?from=${fd.get('from')}&to=${fd.get('to')}`); }}>
         <Field label="From"><input className="input" type="date" name="from" defaultValue={from} required /></Field>
         <Field label="To"><input className="input" type="date" name="to" defaultValue={to} required /></Field>
         <button className="button-secondary">Show period</button>
@@ -78,7 +79,7 @@ function AllExpenses({ from, to, rows, categories, banks, schedules, accounts, c
         <Field label="Status"><select className="input" value={f.status} onChange={(e) => setF({ ...f, status: e.target.value })}><option value="">All</option>{['draft', 'prepared', 'reviewed', 'approved', 'posted', 'paid'].map((s) => <option key={s} value={s}>{s === 'approved' ? 'approved — to post' : s}</option>)}</select></Field>
         <Field label="Search"><input className="input" value={f.q} onChange={(e) => setF({ ...f, q: e.target.value })} placeholder="description, vendor, reference" /></Field>
         <button type="button" className="button-secondary" onClick={exportCsv} disabled={!shown.length}>Export CSV</button>
-      </form>
+      </Form>
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <Tile title={`${shown.length} expense(s)`} value={total()} />
         <Tile title="In the departments" value={total(['draft', 'prepared', 'reviewed'])} />
@@ -127,16 +128,16 @@ function MapModal({ row, categories, accounts, close }: { row: RegisterRow; cate
         <label className="flex items-center gap-1"><input type="radio" checked={mode === 'existing'} onChange={() => setMode('existing')} /> Use an existing category</label>
       </div>
       {mode === 'existing' ? (
-        <form className="space-y-3" action={(fd) => run(() => setCategoryAction(row.id, String(fd.get('category_id'))), close)}>
+        <Form className="space-y-3" action={(fd) => run(() => setCategoryAction(row.id, String(fd.get('category_id'))), close)}>
           <Field label="Category"><select className="input" name="category_id" required defaultValue=""><option value="">Select</option>{categories.filter((c) => c.active).map((c) => <option key={c.id} value={c.id}>{c.name} ({c.gl_account_code})</option>)}</select></Field>
           <button className="button" disabled={pending}>Save</button>
-        </form>
+        </Form>
       ) : (
-        <form className="space-y-3" action={(fd) => { fd.set('expense_id', row.id); run(() => saveCategoryAction(fd), close); }}>
+        <Form className="space-y-3" action={(fd) => { fd.set('expense_id', row.id); run(() => saveCategoryAction(fd), close); }}>
           <Field label="Category name"><input className="input" name="name" defaultValue={row.suggested_category || ''} required /></Field>
           <Field label="Expense account"><AccountSelect accounts={accounts} /></Field>
           <button className="button" disabled={pending}>Add category and use it</button>
-        </form>
+        </Form>
       )}
     </Modal>
   );
@@ -148,7 +149,7 @@ function PostModal({ row, categories, schedules, close }: { row: RegisterRow; ca
   const open = schedules.filter((s) => s.status === 'active' && (s.kind === 'accrual' || s.kind === 'thirteenth'));
   return (
     <Modal title="Post expense to the books" sub={`${row.section_name} — ${row.description} — ${peso(row.amount)}`} close={close} msg={msg}>
-      <form className="space-y-3" action={(fd) => { fd.set('expense_id', row.id); run(() => postExpenseAction(fd), close); }}>
+      <Form className="space-y-3" action={(fd) => { fd.set('expense_id', row.id); run(() => postExpenseAction(fd), close); }}>
         <Field label="Category (sets the expense account)">
           <select className="input" name="category_id" defaultValue={row.category_id || ''} required>
             <option value="">{row.suggested_category ? `Choose — suggested: ${row.suggested_category}` : 'Choose'}</option>
@@ -168,7 +169,7 @@ function PostModal({ row, categories, schedules, close }: { row: RegisterRow; ca
           )}
         <p className="text-xs text-slate-500">Posting books it: debit the expense (or prepaid) account, credit Accounts Payable. It then counts in the dashboards.</p>
         <button className="button" disabled={pending}>{pending ? 'Posting…' : 'Post'}</button>
-      </form>
+      </Form>
     </Modal>
   );
 }
@@ -177,11 +178,11 @@ function PayModal({ row, banks, close }: { row: RegisterRow; banks: Bank[]; clos
   const { pending, msg, run } = useRun();
   return (
     <Modal title="Record payment" sub={`${row.description} — ${peso(row.amount)}`} close={close} msg={msg}>
-      <form className="space-y-3" action={(fd) => { fd.set('expense_id', row.id); run(() => payExpenseAction(fd), close); }}>
+      <Form className="space-y-3" action={(fd) => { fd.set('expense_id', row.id); run(() => payExpenseAction(fd), close); }}>
         <Field label="Paid from"><select className="input" name="bank_account_id" required defaultValue=""><option value="">Select account</option>{banks.map((b) => <option key={b.id} value={b.id}>{b.account_code} — {b.account_name}</option>)}</select></Field>
         <Field label="Payment date"><input className="input" type="date" name="payment_date" defaultValue={new Date().toISOString().slice(0, 10)} required /></Field>
         <button className="button" disabled={pending}>Mark paid</button>
-      </form>
+      </Form>
     </Modal>
   );
 }
@@ -206,13 +207,13 @@ function Categories({ categories, accounts }: { categories: Cat[]; accounts: Acc
       </div>
       {edit && (
         <Modal title={edit === 'new' ? 'Add category' : `Edit ${edit.name}`} close={() => setEdit(null)} msg={msg}>
-          <form className="space-y-3" action={(fd) => { if (edit !== 'new') fd.set('id', edit.id); run(() => saveCategoryAction(fd), () => setEdit(null)); }}>
+          <Form className="space-y-3" action={(fd) => { if (edit !== 'new') fd.set('id', edit.id); run(() => saveCategoryAction(fd), () => setEdit(null)); }}>
             <Field label="Name"><input className="input" name="name" defaultValue={edit === 'new' ? '' : edit.name} required /></Field>
             <Field label="Description"><input className="input" name="description" defaultValue={edit === 'new' ? '' : edit.description || ''} /></Field>
             <Field label="Expense account"><AccountSelect accounts={accounts} value={edit === 'new' ? '5200' : edit.gl_account_code} /></Field>
             {edit !== 'new' && <label className="flex items-center gap-2 text-sm"><input type="hidden" name="active" value="false" /><input type="checkbox" name="active" defaultChecked={edit.active} /> Active (inactive categories are hidden from the departments)</label>}
             <button className="button" disabled={pending}>Save</button>
-          </form>
+          </Form>
         </Modal>
       )}
     </div>
@@ -269,7 +270,7 @@ function Spread({ schedules, categories, canFinance }: { schedules: ScheduleRow[
       </section>
       {newAccrual && (
         <Modal title="New accrual" sub="A year-end cost set aside month by month (e.g. year-end bonus, annual audit fee)." close={() => setNewAccrual(false)} msg={msg}>
-          <form className="space-y-3" action={(fd) => run(() => createAccrualAction(fd), () => setNewAccrual(false))}>
+          <Form className="space-y-3" action={(fd) => run(() => createAccrualAction(fd), () => setNewAccrual(false))}>
             <Field label="Description"><input className="input" name="description" required /></Field>
             <Field label="Category"><select className="input" name="category_id" required defaultValue=""><option value="">Select</option>{categories.filter((c) => c.active).map((c) => <option key={c.id} value={c.id}>{c.name} ({c.gl_account_code})</option>)}</select></Field>
             <div className="grid grid-cols-3 gap-3">
@@ -278,7 +279,7 @@ function Spread({ schedules, categories, canFinance }: { schedules: ScheduleRow[
               <Field label="Starting month"><input className="input" type="month" name="start_month" defaultValue={`${new Date().getFullYear()}-01`} /></Field>
             </div>
             <button className="button" disabled={pending}>Create accrual</button>
-          </form>
+          </Form>
         </Modal>
       )}
     </div>

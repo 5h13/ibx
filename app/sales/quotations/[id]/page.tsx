@@ -10,7 +10,8 @@ import { DocumentActions } from '@/shared/documents/DocumentActions';
 export const dynamic = 'force-dynamic';
 const peso = (v: unknown) => `₱${Number(v ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-export default async function QuotationPrintPage({ params }: { params: { id: string } }) {
+export default async function QuotationPrintPage(props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   await requireSection('sales');
   const db = createClient();
   const { data: q } = await db.from('sales_quotations')
@@ -18,7 +19,7 @@ export default async function QuotationPrintPage({ params }: { params: { id: str
     .eq('id', params.id).maybeSingle();
   if (!q) notFound();
   const { data: items } = await db.from('sales_quotation_items').select('*').eq('quotation_id', q.id).order('created_at').order('id');
-  const biz: any = q.business; const cust: any = q.customer;
+  const biz: any = q.business;const cust: any = q.customer;
   const preparedBy = (q.prepared as any)?.full_name || (q.creator as any)?.full_name || '';
   const approvedBy = (q.approved as any)?.full_name || '';
   const draft = !['approved', 'sent', 'accepted'].includes(q.status);

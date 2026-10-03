@@ -11,8 +11,11 @@ import {DrReleasePanel} from '@/modules/sales/storefront/DrReleasePanel';
 const DATE=/^\d{4}-\d{2}-\d{2}$/;
 const ORDER_STATUSES=['draft','prepared','picked','packed','reviewed','approved','dispatched','delivered','cancelled'];
 const DISPATCH_STATUSES=['planned','loaded','in_transit','delivered','failed','cancelled'];
-export default async function Page({searchParams}:{searchParams?:{from?:string;to?:string;status?:string;dispatch_status?:string}}){
- const profile=await getSessionProfile(); if(!profile?.user.is_active) redirect('/login');
+export default async function Page(
+ props:{searchParams?: Promise<{from?:string;to?:string;status?:string;dispatch_status?:string}>}
+) {
+ const searchParams = await props.searchParams;
+ const profile=await getSessionProfile();if(!profile?.user.is_active) redirect('/login');
  // Build 52: this page had NO section gate at all — any signed-in user of any
  // department could open it — and read through the service-role client, so it
  // showed every business's delivery orders plus drivers' confidential

@@ -1,4 +1,5 @@
 'use client';
+import { Form } from '@/core/ui/Form';
 import { errorText } from '@/core/errors/appError';
 
 import { useState } from 'react';
@@ -180,7 +181,7 @@ function ContactTab({ employee, selfView }: { employee: Employee; selfView: bool
       <ActionBar>
         <PopupAction label="Edit my contact info" title="Edit my contact info" notice={error || null}>
           {(close) => (
-            <form onSubmit={(e) => { e.preventDefault(); submit(new FormData(e.currentTarget), close); }} className="space-y-4">
+            <Form onSubmit={(e) => { e.preventDefault(); submit(new FormData(e.currentTarget), close); }} className="space-y-4">
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 <label className="text-sm">Phone<input name="phone" defaultValue={employee.phone ?? ''} className="mt-1 w-full rounded border px-3 py-2" /></label>
                 <label className="text-sm">Personal email<input name="personal_email" type="email" defaultValue={employee.personal_email ?? ''} className="mt-1 w-full rounded border px-3 py-2" /></label>
@@ -194,7 +195,7 @@ function ContactTab({ employee, selfView }: { employee: Employee; selfView: bool
                 <button disabled={busy} className="rounded bg-slate-900 px-4 py-2 text-sm text-white">{busy ? 'Saving...' : 'Save'}</button>
                 <button type="button" onClick={close} className="rounded border px-4 py-2 text-sm">Cancel</button>
               </div>
-            </form>
+            </Form>
           )}
         </PopupAction>
       </ActionBar>
@@ -238,7 +239,7 @@ function EmergencyTab({ contacts, selfView }: { contacts: EmergencyContact[]; se
         <ActionBar>
           <PopupAction label="+ Add emergency contact" title="Add emergency contact" notice={error || null}>
             {(close) => (
-              <form onSubmit={(e) => { e.preventDefault(); submit(new FormData(e.currentTarget), close); }} className="grid gap-3 sm:grid-cols-2">
+              <Form onSubmit={(e) => { e.preventDefault(); submit(new FormData(e.currentTarget), close); }} className="grid gap-3 sm:grid-cols-2">
                 <label className="text-sm">Name<input name="name" required className="mt-1 w-full rounded border px-3 py-2" /></label>
                 <label className="text-sm">Relationship<input name="relationship" className="mt-1 w-full rounded border px-3 py-2" /></label>
                 <label className="text-sm">Phone<input name="phone" required className="mt-1 w-full rounded border px-3 py-2" /></label>
@@ -247,7 +248,7 @@ function EmergencyTab({ contacts, selfView }: { contacts: EmergencyContact[]; se
                   <button disabled={busy} className="rounded bg-slate-900 px-4 py-2 text-sm text-white">{busy ? 'Saving...' : 'Save'}</button>
                   <button type="button" onClick={close} className="rounded border px-4 py-2 text-sm">Cancel</button>
                 </div>
-              </form>
+              </Form>
             )}
           </PopupAction>
         </ActionBar>
@@ -317,7 +318,7 @@ function GovernmentTab({ employeeId, governmentIds, canViewConfidential }: { emp
       <ActionBar>
         <PopupAction label="+ Add government ID" title="Add government ID" notice={error || null}>
           {(close) => (
-            <form
+            <Form
               onSubmit={(e) => { e.preventDefault(); submit(new FormData(e.currentTarget), close); }}
               className="grid gap-3 sm:grid-cols-2"
             >
@@ -329,7 +330,7 @@ function GovernmentTab({ employeeId, governmentIds, canViewConfidential }: { emp
                 <button disabled={busy} className="rounded bg-slate-900 px-4 py-2 text-sm text-white">{busy ? 'Saving...' : 'Save'}</button>
                 <button type="button" onClick={close} className="rounded border px-4 py-2 text-sm">Cancel</button>
               </div>
-            </form>
+            </Form>
           )}
         </PopupAction>
       </ActionBar>

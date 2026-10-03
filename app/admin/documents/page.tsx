@@ -8,7 +8,8 @@ import { isAdminTier } from '@/core/auth/types';
 import { AuthedShell } from '@/core/layout/AuthedShell';
 import EmployeeDocuments from '@/modules/admin/documents/EmployeeDocuments';
 
-export default async function EmployeeDocumentsPage({ searchParams }: { searchParams?: { employee?: string } }){
+export default async function EmployeeDocumentsPage(props: { searchParams?: Promise<{ employee?: string }> }) {
+ const searchParams = await props.searchParams;
  const profile=await getSessionProfile();
  if(!profile) redirect('/login');
  const canManage=isAdminTier(profile)||profile.user.section_code==='admin'||profile.access.some(a=>a.section_code==='admin');

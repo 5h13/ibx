@@ -1,9 +1,10 @@
 'use client';
+import { Form } from '@/core/ui/Form';
 import { errorText } from '@/core/errors/appError';
 
 // U060 — typeahead picker over the shared catalog (server-side search, see
 // catalogSearch.ts). Drop-in for the old <select> pickers:
-//   - `name` renders a hidden input so plain <form action> submissions still
+//   - `name` renders a hidden input so plain <Form action> submissions still
 //     post the chosen id;
 //   - `onSelect` hands back the full item (or null for "custom item"), so
 //     line editors can fill description/unit/cost as before.

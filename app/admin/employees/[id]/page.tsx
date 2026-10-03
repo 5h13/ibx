@@ -26,7 +26,8 @@ const PROFILE_COLUMNS = [
   'supervisor:employees!supervisor_employee_id(id,employee_no,first_name,last_name,preferred_name)',
 ].join(',');
 
-export default async function EmployeeProfilePage({ params }: { params: { id: string } }) {
+export default async function EmployeeProfilePage(props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const profile = await getSessionProfile();
   if (!profile) redirect('/login');
   const canManage =

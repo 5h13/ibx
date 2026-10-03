@@ -1,5 +1,6 @@
 'use client';
 
+import { Form } from '@/core/ui/Form';
 // Build 78 — lots on every item (U062 / LOG-23).
 //   • TransferForm: each transfer line can name the lot to move; left on
 //     "Oldest first", the posting takes the oldest lots with stock.
@@ -43,7 +44,7 @@ export function TransferForm({ locations, items, pending, run, onSaved }: { loca
     setLines(next);
   }
   return (
-    <form action={(fd) => run(async () => {
+    <Form action={(fd) => run(async () => {
       fd.set('lines', JSON.stringify(lines.map(({ inventory_item_id, quantity, lot_id }) => ({ inventory_item_id, quantity, lot_id: lot_id || null }))));
       await A.createTransferAction(fd); setLines([blank()]); setFrom(''); onSaved();
     })} className="grid gap-3 md:grid-cols-4">
@@ -74,7 +75,7 @@ export function TransferForm({ locations, items, pending, run, onSaved }: { loca
       </div>
       {err && <p className="text-sm text-red-700 md:col-span-4">{err}</p>}
       <div className="md:col-span-4"><button disabled={pending} className="button">Save draft transfer</button></div>
-    </form>
+    </Form>
   );
 }
 
@@ -136,13 +137,13 @@ export function LotsTab({ rows, aging, filters, locations, showCost, base }: { r
         return <div key={b} className="rounded-xl border bg-white p-4"><div className="text-sm text-slate-500">{b}</div><div className="mt-1 text-xl font-semibold">{qty(a?.on_hand ?? 0)}</div>
           <div className="text-xs text-slate-500">{Number(a?.lots ?? 0)} lot(s){showCost && a?.value != null ? ` · ${peso(a.value)}` : ''}</div></div>;
       })}</div>
-      <form method="get" action={base} className="flex flex-wrap items-end gap-2">
+      <Form method="get" action={base} className="flex flex-wrap items-end gap-2">
         <input type="hidden" name="tab" value="lots" />
         <div><label className="label">Search</label><input className="input w-64" name="lot_q" defaultValue={filters.q ?? ''} placeholder="Lot, item, supplier, batch or receipt" /></div>
         <div><label className="label">Location</label><select className="input" name="lot_loc" defaultValue={filters.loc ?? ''}><option value="">All locations</option>{locations.map((l) => <option key={l.id} value={l.id}>{l.location_code} — {l.location_name}</option>)}</select></div>
         <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="lot_all" value="1" defaultChecked={!!filters.all} /> Include lots with no stock left</label>
         <button className="button-secondary">Filter</button>
-      </form>
+      </Form>
       <div className="overflow-x-auto rounded-xl border bg-white">
         <table className="w-full text-sm">
           <thead><tr className="border-b text-left text-slate-500"><th className="p-3">Lot</th><th className="p-3">Item</th><th className="p-3">Received</th><th className="p-3">Age</th><th className="p-3">Supplier</th><th className="p-3">From</th><th className="p-3 text-right">Received qty</th><th className="p-3 text-right">On hand</th>{showCost && <th className="p-3 text-right">Price</th>}<th className="p-3" /></tr></thead>

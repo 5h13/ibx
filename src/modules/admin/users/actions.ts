@@ -14,8 +14,8 @@ const WORKFLOW_ROLES: WorkflowRole[] = ['preparer', 'reviewer', 'approver'];
 
 // Build 72 (U065): where invitation / reset links should land — the site the
 // admin is using (so the live site sends live links), else NEXT_PUBLIC_SITE_URL.
-function siteUrl() {
-  const h = headers();
+async function siteUrl() {
+  const h = await headers();
   const host = h.get('x-forwarded-host') || h.get('host');
   if (host) return `${h.get('x-forwarded-proto') || (host.startsWith('localhost') ? 'http' : 'https')}://${host}`;
   return process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
@@ -163,7 +163,7 @@ export async function createUserAction(formData: FormData) {
   if (!invite && typedPassword && typedPassword.length < 8) throw appError('A temporary password needs at least 8 characters.');
   const temporaryPassword = invite ? null : typedPassword || crypto.randomUUID().slice(0, 8) + 'Aa1!';
   const { data: authData, error: authError } = invite
-    ? await admin.auth.admin.inviteUserByEmail(email, { data: { full_name: fullName }, redirectTo: `${siteUrl()}/auth/accept` })
+    ? await admin.auth.admin.inviteUserByEmail(email, { data: { full_name: fullName }, redirectTo: `${await siteUrl()}/auth/accept` })
     : await admin.auth.admin.createUser({ email, password: temporaryPassword!, email_confirm: true, user_metadata: { full_name: fullName } });
   if (authError || !authData.user) throw appError(friendlyAuthError(authError?.message ?? 'Unable to create auth user.'));
 
@@ -328,7 +328,7 @@ export async function sendPasswordLinkAction(formData: FormData) {
   const admin = createAdminClient();
   const { data: target, error: te } = await admin.auth.admin.getUserById(userId);
   if (te || !target.user?.email) throw appError(te?.message ?? 'User not found.');
-  const redirectTo = `${siteUrl()}/auth/accept`;
+  const redirectTo = `${await siteUrl()}/auth/accept`;
   // never signed in yet → send the invitation again; otherwise a password-reset email
   const { error } = target.user.last_sign_in_at
     ? await createClient().auth.resetPasswordForEmail(target.user.email, { redirectTo })

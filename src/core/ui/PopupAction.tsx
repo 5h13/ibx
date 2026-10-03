@@ -7,7 +7,7 @@
 //
 //   <ActionBar>
 //     <PopupAction label="+ Add supplier" title="Add supplier" notice={message}>
-//       <form …>…</form>
+//       <Form …>…</Form>
 //     </PopupAction>
 //     <PopupAction label="Pricing rules" variant="secondary" wide>…</PopupAction>
 //   </ActionBar>
@@ -29,7 +29,7 @@ export function ActionBar({ children, className = '' }: { children: ReactNode; c
 }
 
 export function PopupAction({
-  label, title, children, variant = 'primary', wide = false, notice, disabled = false, onOpen,
+  label, title, children, variant = 'primary', wide = false, notice, disabled = false, onOpen, openParam,
 }: {
   label: ReactNode;
   title?: string;
@@ -39,6 +39,8 @@ export function PopupAction({
   notice?: string | null;
   disabled?: boolean;
   onOpen?: () => void;
+  /** Build 82: open on arrival when the URL has ?new=<openParam> (5H13 Shortcuts). */
+  openParam?: string;
 }) {
   const [open, setOpen] = useState(false);
   const submitted = useRef(false);
@@ -51,6 +53,16 @@ export function PopupAction({
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [open, close]);
+
+  useEffect(() => {
+    if (!openParam || disabled || typeof window === 'undefined') return;
+    const url = new URL(window.location.href);
+    if (url.searchParams.get('new') !== openParam) return;
+    url.searchParams.delete('new');
+    window.history.replaceState(window.history.state, '', url.pathname + (url.search ? url.search : '') + url.hash);
+    noticeAtOpen.current = notice; submitted.current = false; setOpen(true); onOpen?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openParam, disabled]);
 
   const show = () => { noticeAtOpen.current = notice; submitted.current = false; setOpen(true); onOpen?.(); };
   // only show messages produced while this pop-up is open

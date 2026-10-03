@@ -1,4 +1,5 @@
 'use client';
+import { Form } from '@/core/ui/Form';
 import Link from 'next/link';
 
 type Row=Record<string,any>;
@@ -43,7 +44,7 @@ export function LogisticsReportsDashboard({month,locations,items,summary,balance
  const topFleet=vehicles.map(v=>({vehicle:v,expense:fleetExpenses.filter(x=>x.vehicle_id===v.id).reduce((s,x)=>s+Number(x.amount||0),0)})).filter(x=>x.expense>0).sort((a,b)=>b.expense-a.expense).slice(0,6);
  const tripDistance=trips.reduce((s,t)=>s+(t.starting_odometer!=null&&t.ending_odometer!=null?Number(t.ending_odometer)-Number(t.starting_odometer):0),0);
  return <div className="space-y-6">
-  <div className="flex flex-wrap items-center justify-between gap-3"><div><h1 className="text-2xl font-semibold text-slate-900">Logistics Reporting & Operations Dashboard</h1><p className="text-sm text-slate-500">Operational view for inventory, warehouse, deliveries, fleet and logistics cost.</p></div><form className="flex items-end gap-2"><div><label className="block text-xs font-medium text-slate-600">Reporting month</label><input name="month" type="month" defaultValue={month} className="border rounded px-3 py-2 text-sm"/></div><button className="bg-slate-900 text-white rounded px-4 py-2 text-sm">Apply</button></form></div>
+  <div className="flex flex-wrap items-center justify-between gap-3"><div><h1 className="text-2xl font-semibold text-slate-900">Logistics Reporting & Operations Dashboard</h1><p className="text-sm text-slate-500">Operational view for inventory, warehouse, deliveries, fleet and logistics cost.</p></div><Form className="flex items-end gap-2"><div><label className="block text-xs font-medium text-slate-600">Reporting month</label><input name="month" type="month" defaultValue={month} className="border rounded px-3 py-2 text-sm"/></div><button className="bg-slate-900 text-white rounded px-4 py-2 text-sm">Apply</button></Form></div>
   <p className="text-sm text-slate-600">Figures for <b>{businessLabel}</b> · {month}. Every figure opens the records behind it.</p>
   <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-3">{([
    ['Locations',activeLocations,inv({tab:'locations'})],['Active items',activeItems,inv({tab:'items'})],['Receipts awaiting posting',receiptsApproved,inv({tab:'receipts',receipt_status:'approved',receipt_from:from,receipt_to:to})],['Deliveries',deliveryOrders.length,wd({})],['Delivered',ordersDelivered,wd({status:'delivered'})],['In transit',dispatchInTransit,wd({dispatch_status:'in_transit'})],['On-time',pct(onTimeRate),wd({dispatch_status:'delivered'})],['Fleet cost',money(fleetCost+maintenanceCost),'#fleet-costs']

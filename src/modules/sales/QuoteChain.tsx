@@ -1,5 +1,6 @@
 'use client';
 
+import { Form } from '@/core/ui/Form';
 // Build 69 — Quote → Sales Order → PR (DOC-05/06/07/11/12/13), opened as
 // pop-ups from Sales / Revenue Pipeline:
 //   • QuoteView     — quotation detail, revision history, print, revise.
@@ -153,7 +154,7 @@ export function GoSignalForm({ quote, onDone }: { quote: any; onDone: (msg: stri
   const sourcing = Object.values(choice).filter((v) => v === 'source').length;
 
   return (
-    <form className="space-y-4 text-sm" action={(fd) => {
+    <Form className="space-y-4 text-sm" action={(fd) => {
       setError('');
       fd.set('quotation_id', quote.id);
       fd.set('lines', JSON.stringify(Object.entries(choice).map(([quotation_item_id, fulfilment]) => ({ quotation_item_id, fulfilment }))));
@@ -208,7 +209,7 @@ export function GoSignalForm({ quote, onDone }: { quote: any; onDone: (msg: stri
       </section>
       <ErrorBox text={error} />
       <div className="flex justify-end"><button className="button" disabled={pending || !lines}>{pending ? 'Saving…' : 'Create sales order'}</button></div>
-    </form>
+    </Form>
   );
 }
 

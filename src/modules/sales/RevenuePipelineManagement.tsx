@@ -1,8 +1,9 @@
 "use client";
+import { Form } from '@/core/ui/Form';
 import { errorText } from "@/core/errors/appError";
 import { CatalogItemPicker } from "@/shared/catalog/CatalogItemPicker";
 import { costAgeLabel } from "@/modules/finance/procurement/supplierQuoteAccess";
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useDialog } from "@/core/ui/Dialog";
 import { ActionBar, PopupAction, usePopupClose } from "@/core/ui/PopupAction";
 import {
@@ -58,6 +59,8 @@ export default function RevenuePipelineManagement({
 }) {
   const dialog = useDialog();
   const [tab, setTab] = useState("pipeline");
+  // Build 82: ?tab=quotations (5H13 Shortcuts)
+  useEffect(() => { const t = new URLSearchParams(window.location.search).get('tab'); if (t === 'quotations') setTab('quotations'); }, []);
   const [pending, start] = useTransition();
   const [message, setMessage] = useState("");
   const [showSuperseded, setShowSuperseded] = useState(false);
@@ -112,7 +115,7 @@ export default function RevenuePipelineManagement({
           <ActionBar>
             <PopupAction label="+ Create opportunity" title="Create opportunity" wide>
               {(close) => (
-                <form
+                <Form
                   action={(fd) =>
                     run(async () => {
                       await createOpportunityAction(fd);
@@ -166,7 +169,7 @@ export default function RevenuePipelineManagement({
                       Save opportunity
                     </button>
                   </div>
-                </form>
+                </Form>
               )}
             </PopupAction>
           </ActionBar>
@@ -207,7 +210,7 @@ export default function RevenuePipelineManagement({
       {tab === "quotations" && (
         <>
           <ActionBar>
-            <PopupAction label="+ Create quotation" title="Create quotation" wide>
+            <PopupAction label="+ Create quotation" title="Create quotation" wide openParam="quote">
               <QuotationForm
                 customers={customers}
                 opportunities={opportunities}
@@ -469,7 +472,7 @@ export default function RevenuePipelineManagement({
           <ActionBar>
             <PopupAction label="+ Create commission" title="Create commission" wide>
               {(close) => (
-                <form
+                <Form
                   action={(fd) =>
                     run(async () => {
                       await createCommissionAction(fd);
@@ -512,7 +515,7 @@ export default function RevenuePipelineManagement({
                       Save commission
                     </button>
                   </div>
-                </form>
+                </Form>
               )}
             </PopupAction>
           </ActionBar>
@@ -600,7 +603,7 @@ function QuotationForm({
     );
   };
   return (
-    <form
+    <Form
       action={(fd) => {
         fd.set(
           "lines",
@@ -775,7 +778,7 @@ function QuotationForm({
       <button className="button" disabled={pending}>
         Save quotation
       </button>
-    </form>
+    </Form>
   );
 }
 function Card({ title, children }: { title: string; children: any }) {

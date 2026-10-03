@@ -6,7 +6,8 @@ import { PriceRequests } from '@/modules/finance/price-requests/PriceRequests';
 
 export const dynamic = 'force-dynamic';
 
-export default async function PriceRequestsPage({ searchParams }: { searchParams?: { answered?: string } }) {
+export default async function PriceRequestsPage(props: { searchParams?: Promise<{ answered?: string }> }) {
+  const searchParams = await props.searchParams;
   const profile = await requireSection('finance');
   const db = createClient();
   const showAnswered = searchParams?.answered === '1';

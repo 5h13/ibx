@@ -10,7 +10,8 @@ import { pesoDoc as peso, requireAnySection } from '@/shared/documents/access';
 
 export const dynamic = 'force-dynamic';
 
-export default async function SupplierStatementPage({ params }: { params: { supplierId: string } }) {
+export default async function SupplierStatementPage(props: { params: Promise<{ supplierId: string }> }) {
+  const params = await props.params;
   await requireAnySection(['finance']);
   const db = createClient();
   const profile = await getSessionProfile();
@@ -19,7 +20,7 @@ export default async function SupplierStatementPage({ params }: { params: { supp
     db.from('businesses').select(DOCUMENT_BUSINESS_COLUMNS).eq('id', profile?.user.business_id ?? '').maybeSingle(),
   ]);
   if (error || !st) notFound();
-  const s: any = st; const sup = s.supplier; const a = s.aging;
+  const s: any = st;const sup = s.supplier;const a = s.aging;
   const docNo = `SUPSTMT-${sup.code}-${s.as_of}`;
   return (
     <div data-document className={`${DOCUMENT_PAGE_CLASS} mx-auto max-w-3xl p-8 text-sm text-black print:p-0`} style={{ background: '#fff' }}>

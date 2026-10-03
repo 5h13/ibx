@@ -1,5 +1,6 @@
 'use client';
 
+import { Form } from '@/core/ui/Form';
 // Build 78 — quick price review (CAT-36). One row per item: supplier cost →
 // category add-on → acquisition cost → markup → store price. Type a new markup
 // or a new store price and save the row (the store price sets the markup);
@@ -118,14 +119,14 @@ export function PriceReview({ rows, categories, suppliers, brands, changes, filt
       {msg && <div className={`rounded border p-3 text-sm ${msg.ok ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-red-200 bg-red-50 text-red-700'}`}>{msg.t}</div>}
 
       {tab === 'items' && <>
-        <form method="get" className="flex flex-wrap items-end gap-2">
+        <Form method="get" className="flex flex-wrap items-end gap-2">
           <div><label className="label">Search</label><input className="input w-56" name="q" defaultValue={filters.q} placeholder="Item name or code" /></div>
           <div><label className="label">Category</label><select className="input" name="category" defaultValue={filters.category}><option value="">All</option>{categories.map((c) => <option key={c.category_id} value={c.name}>{c.name}</option>)}</select></div>
           <div><label className="label">Brand</label><select className="input" name="brand" defaultValue={filters.brand}><option value="">All</option>{brands.map((b) => <option key={b} value={b}>{b}</option>)}</select></div>
           <div><label className="label">Supplier</label><select className="input" name="supplier" defaultValue={filters.supplier}><option value="">All</option>{suppliers.map((s) => <option key={s.supplier_id} value={s.supplier_id}>{s.name}</option>)}</select></div>
           <button className="button-secondary">Filter</button>
           {(filters.q || filters.category || filters.brand || filters.supplier) && <Link className="button-secondary" href="?">Clear</Link>}
-        </form>
+        </Form>
         <div className="max-h-[70vh] overflow-auto rounded-lg border bg-white">
           <table className="w-full text-sm">
             <thead className="sticky top-0 bg-slate-50"><tr className="border-b text-left text-xs uppercase text-slate-500"><th className="p-2">Item</th><th className="p-2">Supplier</th><th className="p-2 text-right">Supplier cost</th><th className="p-2 text-right">Add-on</th><th className="p-2 text-right">Acquisition</th><th className="p-2">Markup</th><th className="p-2">Store price</th></tr></thead>

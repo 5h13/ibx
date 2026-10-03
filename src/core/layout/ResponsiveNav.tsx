@@ -15,7 +15,7 @@ import { usePathname } from 'next/navigation';
 import type { SessionProfile } from '@/core/auth/types';
 import { Sidebar } from './Sidebar';
 
-export function ResponsiveNav({ profile }: { profile: SessionProfile }) {
+export function ResponsiveNav({ profile, shortcuts = [] }: { profile: SessionProfile; shortcuts?: string[] }) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
 
@@ -53,7 +53,7 @@ export function ResponsiveNav({ profile }: { profile: SessionProfile }) {
           open ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
-        <Sidebar profile={profile} />
+        <Sidebar profile={profile} shortcuts={shortcuts} />
       </div>
     </>
   );

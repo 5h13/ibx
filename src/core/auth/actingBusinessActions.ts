@@ -14,7 +14,7 @@ async function saveActingBusiness(businessId: string | null) {
   const db = createClient();
   const { error } = await db.rpc('set_acting_business', { p_business_id: businessId });
   if (error) throw appError(error.message);
-  cookies().delete(actingBusinessCookieName()); // legacy cookie no longer used
+  (await cookies()).delete(actingBusinessCookieName()); // legacy cookie no longer used
   revalidatePath('/', 'layout');
   return { ok: true };
 }

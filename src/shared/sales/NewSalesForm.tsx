@@ -1,6 +1,7 @@
 // src/shared/sales/NewSalesForm.tsx
 'use client';
 
+import { Form } from '@/core/ui/Form';
 import { useRef, useTransition } from 'react';
 import { createSalesDraftAction } from './actions';
 
@@ -9,7 +10,7 @@ export function NewSalesForm({ monthId }: { monthId: string }) {
   const [isPending, startTransition] = useTransition();
 
   return (
-    <form
+    <Form
       ref={formRef}
       action={(formData) =>
         startTransition(async () => {
@@ -45,6 +46,6 @@ export function NewSalesForm({ monthId }: { monthId: string }) {
       >
         Save draft
       </button>
-    </form>
+    </Form>
   );
 }

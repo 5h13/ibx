@@ -1,5 +1,6 @@
 'use client';
 
+import { Form } from '@/core/ui/Form';
 // Build 67 — Storefront / Counter Sales (DOC-15), counter sale screen.
 // Layout rule (Build 65): the page opens on the day's figures and the sales
 // register; "+ New sale" and store settings open in pop-ups.
@@ -381,10 +382,10 @@ export function StorefrontManagement({ ctx, date, today, sales, open, items, pay
 
       {!ro && (
       <ActionBar>
-        <PopupAction label="+ New sale" title="New counter sale" wide disabled={!ctx.location_id}>
+        <PopupAction label="+ New sale" title="New counter sale" wide disabled={!ctx.location_id} openParam="sale">
           {(close) => <SaleForm ctx={ctx} customers={customers} onDone={(m) => { setMessage(m); close(); }} />}
         </PopupAction>
-        <PopupAction label="Receive AR payment" title="Receive payment on an existing invoice" variant="secondary" wide>
+        <PopupAction label="Receive AR payment" title="Receive payment on an existing invoice" variant="secondary" wide openParam="arpay">
           {(close) => <ArCollectionForm customers={customers} walkInId={ctx.walk_in_customer_id} onDone={(m) => { setMessage(m); close(); }} />}
         </PopupAction>
         <PopupAction label="Return / refund" title="Return / refund" variant="secondary" wide disabled={!ctx.location_id}>
@@ -434,12 +435,12 @@ export function StorefrontManagement({ ctx, date, today, sales, open, items, pay
 
       {tab === 'register' && (
         <section className="space-y-3 rounded-xl border bg-white p-4">
-          <form method="get" className="flex flex-wrap items-center gap-2 text-sm">
+          <Form method="get" className="flex flex-wrap items-center gap-2 text-sm">
             <label>Date <input className="input w-auto" type="date" name="date" defaultValue={date} /></label>
             <input className="input w-64" name="q" defaultValue={search} placeholder="Or search all dates: sale / DR / SI / hardcopy DR no., customer" />
             <button className="button-secondary">Show</button>
             {search && <a className="text-slate-500 underline" href="/sales/storefront">Clear search</a>}
-          </form>
+          </Form>
           {search && <p className="text-xs text-slate-500">Sales matching “{search}” on any date (latest 100).</p>}
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -472,7 +473,7 @@ export function StorefrontManagement({ ctx, date, today, sales, open, items, pay
 
       {tab === 'returns' && (
         <section className="space-y-3 rounded-xl border bg-white p-4">
-          <form method="get" className="flex flex-wrap items-center gap-2 text-sm"><input type="hidden" name="tab" value="returns" /><label>Date <input className="input w-auto" type="date" name="date" defaultValue={date} /></label><button className="button-secondary">Show</button></form>
+          <Form method="get" className="flex flex-wrap items-center gap-2 text-sm"><input type="hidden" name="tab" value="returns" /><label>Date <input className="input w-auto" type="date" name="date" defaultValue={date} /></label><button className="button-secondary">Show</button></Form>
           <ReturnsTab returns={returns} payments={dayPayments} />
         </section>
       )}

@@ -62,7 +62,8 @@ function Layer({ n, title, note, children }: { n: number; title: string; note: s
   );
 }
 
-export default async function DashboardPage({ searchParams }: { searchParams?: { month?: string; year?: string } }) {
+export default async function DashboardPage(props: { searchParams?: Promise<{ month?: string; year?: string }> }) {
+  const searchParams = await props.searchParams;
   const profile = await getSessionProfile();
   if (!profile) redirect('/login');
   const supabase = createClient();

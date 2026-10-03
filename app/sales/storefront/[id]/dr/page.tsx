@@ -13,7 +13,8 @@ import { DocumentActions } from '@/shared/documents/DocumentActions';
 export const dynamic = 'force-dynamic';
 const peso = (v: unknown) => `₱${Number(v ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-export default async function StorefrontDrPage({ params }: { params: { id: string } }) {
+export default async function StorefrontDrPage(props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   // SF-20: Sales and Finance (read-only) may open a DR
   const profile = await getSessionProfile();
   if (!profile) redirect('/login');
@@ -24,7 +25,7 @@ export default async function StorefrontDrPage({ params }: { params: { id: strin
     .eq('id', params.id).maybeSingle();
   if (!sale || !sale.dr_number) notFound();
   const { data: items } = await db.from('storefront_sale_items').select('*').eq('sale_id', sale.id).order('description');
-  const biz: any = sale.business; const cust: any = sale.customer;
+  const biz: any = sale.business;const cust: any = sale.customer;
   return (
     <div data-document className={`${DOCUMENT_PAGE_CLASS} mx-auto max-w-3xl p-8 text-sm text-black print:p-0`} style={{ background: '#fff' }}>
       <DocumentPrintStyles />

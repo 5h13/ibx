@@ -9,7 +9,8 @@ export const dynamic = 'force-dynamic';
 const CONDITION: Record<string, string> = { back_to_stock: 'Back to stock', damaged: 'Damaged', wrong_item: 'Wrong item' };
 const METHOD: Record<string, string> = { cash: 'Cash', gcash: 'GCash', maya: 'Maya', card: 'Card', bank_transfer: 'Bank transfer' };
 
-export default async function ReturnSlipPage({ params }: { params: { id: string } }) {
+export default async function ReturnSlipPage(props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   await requireAnySection(['sales', 'finance']);
   const db = createClient();
   const { data: ret } = await db.from('storefront_returns')
@@ -20,7 +21,7 @@ export default async function ReturnSlipPage({ params }: { params: { id: string 
     db.from('storefront_return_items').select('quantity,unit_price,line_total,condition,sale_item:storefront_sale_items(description,unit,item_code)').eq('return_id', ret.id),
     db.from('storefront_payments').select('payment_number,method,amount,reference_number').eq('return_id', ret.id).eq('kind', 'refund'),
   ]);
-  const sale: any = ret.sale; const cust: any = sale?.customer;
+  const sale: any = ret.sale;const cust: any = sale?.customer;
   return (
     <div data-document className={`${DOCUMENT_PAGE_CLASS} mx-auto max-w-3xl p-8 text-sm text-black print:p-0`} style={{ background: '#fff' }}>
       <DocumentPrintStyles />

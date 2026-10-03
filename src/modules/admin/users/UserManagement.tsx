@@ -1,4 +1,5 @@
 'use client';
+import { Form } from '@/core/ui/Form';
 import { errorText } from '@/core/errors/appError';
 
 import { useState } from 'react';
@@ -77,7 +78,7 @@ export default function UserManagement({ sections, users, businesses, actingRole
       return { ...g, [sectionId]: current.includes(wr) ? current.filter(x => x !== wr) : [...current, wr] };
     });
 
-    return <form className="space-y-5" onSubmit={async e => { e.preventDefault(); setFormError(''); if (role !== 'super_admin' && !businessId) { setFormError('Select a business for this user.'); return; } const form = e.currentTarget; form.querySelectorAll('input[data-generated]').forEach(n => n.remove()); const add = (name: string, value: string) => { const i=document.createElement('input'); i.type='hidden'; i.name=name; i.value=value; i.dataset.generated='true'; form.appendChild(i); }; add('section_ids', JSON.stringify(role === 'super_admin' ? [] : selected)); add('grants', JSON.stringify(role === 'super_admin' ? {} : grants)); add('role', role); add('is_active', String(active)); if (role !== 'super_admin') add('business_id', businessId); if (user) add('user_id', user.id); try { await submit(form, user ? updateUserAction : createUserAction, onClose); } catch (err) { setFormError(err instanceof Error ? errorText(err) : 'Operation failed.'); } }}>
+    return <Form className="space-y-5" onSubmit={async e => { e.preventDefault(); setFormError(''); if (role !== 'super_admin' && !businessId) { setFormError('Select a business for this user.'); return; } const form = e.currentTarget; form.querySelectorAll('input[data-generated]').forEach(n => n.remove()); const add = (name: string, value: string) => { const i=document.createElement('input'); i.type='hidden'; i.name=name; i.value=value; i.dataset.generated='true'; form.appendChild(i); }; add('section_ids', JSON.stringify(role === 'super_admin' ? [] : selected)); add('grants', JSON.stringify(role === 'super_admin' ? {} : grants)); add('role', role); add('is_active', String(active)); if (role !== 'super_admin') add('business_id', businessId); if (user) add('user_id', user.id); try { await submit(form, user ? updateUserAction : createUserAction, onClose); } catch (err) { setFormError(err instanceof Error ? errorText(err) : 'Operation failed.'); } }}>
       <div className="grid md:grid-cols-2 gap-4">
         <label className="block text-sm"><span className="text-slate-600">Full name</span><input name="full_name" required defaultValue={user?.full_name ?? ''} className="mt-1 w-full rounded border p-2" /></label>
         <label className="block text-sm"><span className="text-slate-600">Email</span><input name="email" type="email" required={!user} disabled={!!user} defaultValue={user?.email ?? ''} className="mt-1 w-full rounded border p-2 disabled:bg-slate-100" /></label>
@@ -97,7 +98,7 @@ export default function UserManagement({ sections, users, businesses, actingRole
       {(formError || message) && <div className="rounded bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800">{formError || message}</div>}
       {password && user === undefined && message === '' && onboarding === 'password' && <div className="rounded bg-emerald-50 border border-emerald-200 p-3 text-sm"><strong>Temporary password:</strong> {password}<div className="text-xs mt-1">Give this to the user securely. It will not be shown again; they must change it at their first sign-in.</div></div>}
       <div className="flex gap-2"><button disabled={busy} className="rounded bg-slate-900 text-white px-4 py-2 text-sm disabled:opacity-50">{busy ? 'Saving…' : user ? 'Save changes' : 'Create user'}</button><button type="button" onClick={() => {setEditing(null);setCreating(false);setMessage('');onClose?.()}} className="rounded border px-4 py-2 text-sm">Cancel</button></div>
-    </form>;
+    </Form>;
   }
 
   async function run(action: (fd: FormData) => Promise<any>, userId: string, confirmText: string) {

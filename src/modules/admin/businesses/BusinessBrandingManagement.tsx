@@ -1,4 +1,5 @@
 'use client';
+import { Form } from '@/core/ui/Form';
 import { errorText } from '@/core/errors/appError';
 
 // U033 — Business Branding admin UI. Global Super Admin only (see actions.ts).
@@ -134,7 +135,7 @@ export default function BusinessBrandingManagement({ businesses }: { businesses:
         <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4">
           <div className="my-8 w-full max-w-4xl rounded bg-white p-6 shadow-lg">
             <h2 className="mb-4 text-lg font-semibold">Branding — {editing.trade_name || editing.legal_name}</h2>
-            <form action={(fd) => save(fd)} className="grid gap-6 lg:grid-cols-2">
+            <Form action={(fd) => save(fd)} className="grid gap-6 lg:grid-cols-2">
               <input type="hidden" name="business_id" value={editing.id} />
               <div className="space-y-4">
                 <div className="text-sm">
@@ -224,7 +225,7 @@ export default function BusinessBrandingManagement({ businesses }: { businesses:
                 <button type="button" onClick={() => setEditing(null)} className="rounded border px-3 py-2 text-sm">Cancel</button>
                 <button type="submit" disabled={busy} className="button">{busy ? 'Saving…' : 'Save'}</button>
               </div>
-            </form>
+            </Form>
           </div>
         </div>
       )}

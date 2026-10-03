@@ -15,7 +15,8 @@ const PAGE = 24;
 const peso = (v: unknown) => (v == null ? '—' : `₱${Number(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
 const qty = (v: unknown) => Number(v ?? 0).toLocaleString(undefined, { maximumFractionDigits: 3 });
 
-export default async function ProductSearchPage({ searchParams }: { searchParams?: SP }) {
+export default async function ProductSearchPage(props: { searchParams?: Promise<SP> }) {
+  const searchParams = await props.searchParams;
   const profile = await requireSignedIn();
   if (!canViewProductSearch(profile)) {
     return <AuthedShell profile={profile}><div className="rounded border bg-white p-6 text-slate-600">Product Search is available to Finance, Sales, Logistics and admins.</div></AuthedShell>;

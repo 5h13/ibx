@@ -22,7 +22,11 @@ function specRows(spec: string) {
   });
 }
 
-export default async function ProductDetailPage({ params, searchParams }: { params: { id: string }; searchParams?: { back?: string } }) {
+export default async function ProductDetailPage(
+  props: { params: Promise<{ id: string }>; searchParams?: Promise<{ back?: string }> }
+) {
+  const searchParams = await props.searchParams;
+  const params = await props.params;
   const profile = await requireSignedIn();
   if (!canViewProductSearch(profile)) notFound();
   const { data, error } = await createClient().rpc('catalog_product_detail', { p_item: params.id });

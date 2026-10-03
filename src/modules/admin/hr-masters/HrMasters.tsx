@@ -1,4 +1,5 @@
 'use client';
+import { Form } from '@/core/ui/Form';
 import { errorText } from '@/core/errors/appError';
 
 import { useState } from 'react';
@@ -50,14 +51,14 @@ function MasterList({ table, label, hint, rows }: { table: Table; label: string;
         <ActionBar>
           <PopupAction label={`+ Add ${label.toLowerCase().replace(/s$/, '')}`} title={`Add ${label.toLowerCase().replace(/s$/, '')}`} notice={error || null} disabled={busy}>
             {(close) => (
-              <form
+              <Form
                 onSubmit={(e) => { e.preventDefault(); const fd = new FormData(e.currentTarget); fd.set('table', table); run(async () => { await createHrMasterAction(fd); close(); }); }}
                 className="flex gap-2"
               >
                 <input name="name" required autoFocus placeholder={`New ${label.toLowerCase().replace(/s$/, '')} name`} className="flex-1 rounded border px-2 py-1 text-sm" />
                 <button disabled={busy} className="rounded bg-slate-900 px-3 py-1 text-sm text-white">Save</button>
                 <button type="button" onClick={close} className="rounded border px-3 py-1 text-sm">Cancel</button>
-              </form>
+              </Form>
             )}
           </PopupAction>
         </ActionBar>
@@ -68,14 +69,14 @@ function MasterList({ table, label, hint, rows }: { table: Table; label: string;
         {rows.map((r) => (
           <li key={r.id} className="flex items-center justify-between rounded px-2 py-1.5 text-sm hover:bg-slate-50">
             {editingId === r.id ? (
-              <form
+              <Form
                 onSubmit={(e) => { e.preventDefault(); const fd = new FormData(e.currentTarget); fd.set('table', table); fd.set('id', r.id); run(() => renameHrMasterAction(fd)).then(() => setEditingId(null)); }}
                 className="flex flex-1 gap-2"
               >
                 <input name="name" defaultValue={r.name} required autoFocus className="flex-1 rounded border px-2 py-1 text-sm" />
                 <button disabled={busy} className="rounded bg-slate-900 px-2 py-1 text-xs text-white">Save</button>
                 <button type="button" onClick={() => setEditingId(null)} className="rounded border px-2 py-1 text-xs">Cancel</button>
-              </form>
+              </Form>
             ) : (
               <>
                 <span className={r.active ? '' : 'text-slate-400 line-through'}>{r.name}</span>

@@ -17,7 +17,8 @@ function monthBounds(value?: string) {
   return {month,start,end};
 }
 
-export default async function LogisticsReportsPage({searchParams}:{searchParams:{month?:string}}){
+export default async function LogisticsReportsPage(props:{searchParams: Promise<{month?:string}>}) {
+ const searchParams = await props.searchParams;
  const profile=await getSessionProfile();
  if(!profile?.user.is_active) return null;
  const allowed=isAdminTier(profile)||profile.user.role==='logistics'||profile.access.some(a=>a.section_code==='logistics');

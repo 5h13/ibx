@@ -13,7 +13,10 @@ async function fetchAll<T>(page:(from:number,to:number)=>PromiseLike<{data:T[]|n
  return out;
 }
 
-export default async function LogisticsInventoryPage({searchParams}:{searchParams?:LedgerSearchParams&{tab?:string;lot_q?:string;lot_loc?:string;lot_all?:string;lot_page?:string;receipt_view?:string;receipt_status?:string;receipt_from?:string;receipt_to?:string;low?:string;transfer_status?:string;receipt?:string}}){
+export default async function LogisticsInventoryPage(
+ props:{searchParams?: Promise<LedgerSearchParams&{tab?:string;lot_q?:string;lot_loc?:string;lot_all?:string;lot_page?:string;receipt_view?:string;receipt_status?:string;receipt_from?:string;receipt_to?:string;low?:string;transfer_status?:string;receipt?:string}>}
+) {
+ const searchParams = await props.searchParams;
  const profile=await requireSection('logistics');const db=createClient();
  const sp=searchParams??{};
  // LOG-39 / RA-08: Logistics screens show quantities, not costs.
@@ -55,5 +58,5 @@ export default async function LogisticsInventoryPage({searchParams}:{searchParam
   if(le||ae)throw new Error((le||ae)!.message);
   lots={rows:lr??[],aging:ag??[],filters};
  }
- return <AuthedShell profile={profile}><LogisticsInventoryManagement lots={lots} profile={profile} showCost={showCost} initialTab={sp.tab} view={{receipt_view:sp.receipt_view,receipt_status:sp.receipt_status,receipt_from:/^\d{4}-\d{2}-\d{2}$/.test(sp.receipt_from??'')?sp.receipt_from:undefined,receipt_to:/^\d{4}-\d{2}-\d{2}$/.test(sp.receipt_to??'')?sp.receipt_to:undefined,low:sp.low==='1',transfer_status:sp.transfer_status,receipt:sp.receipt}} kpis={(kpis??[]) as any[]} ledger={ledger} balances={balances} locations={locations??[]} items={items??[]} receipts={receipts??[]} receiptItems={(receiptItems??[]) as any[]} transfers={transfers??[]} transferItems={transferItems??[]} orders={orders??[]} poItems={(poItems??[]) as any[]} suppliers={suppliers??[]} catalogItems={[]} locationSettings={locationSettings??[]} locationUsage={locationUsage}/></AuthedShell>
+ return <AuthedShell profile={profile}><LogisticsInventoryManagement lots={lots} profile={profile} showCost={showCost} initialTab={sp.tab} view={{receipt_view:sp.receipt_view,receipt_status:sp.receipt_status,receipt_from:/^\d{4}-\d{2}-\d{2}$/.test(sp.receipt_from??'')?sp.receipt_from:undefined,receipt_to:/^\d{4}-\d{2}-\d{2}$/.test(sp.receipt_to??'')?sp.receipt_to:undefined,low:sp.low==='1',transfer_status:sp.transfer_status,receipt:sp.receipt}} kpis={(kpis??[]) as any[]} ledger={ledger} balances={balances} locations={locations??[]} items={items??[]} receipts={receipts??[]} receiptItems={(receiptItems??[]) as any[]} transfers={transfers??[]} transferItems={transferItems??[]} orders={orders??[]} poItems={(poItems??[]) as any[]} suppliers={suppliers??[]} catalogItems={[]} locationSettings={locationSettings??[]} locationUsage={locationUsage}/></AuthedShell>;
 }

@@ -1,4 +1,5 @@
 'use client';
+import { Form } from '@/core/ui/Form';
 // Build 77 — DOC-03 (Procurement side). Sales flags quotation lines "awaiting
 // supplier price"; Procurement compares suppliers outside the system and
 // records only the decision here: chosen supplier, price, validity, lead time
@@ -74,7 +75,7 @@ function AnswerForm({ r, suppliers, onDone }: { r: Req; suppliers: any[]; onDone
   const [log, setLog] = useState(true);
   const terms = suppliers.find((s) => s.id === supplierId)?.payment_terms ?? '';
   return (
-    <form className="space-y-3 text-sm" action={(fd) => {
+    <Form className="space-y-3 text-sm" action={(fd) => {
       setError('');
       fd.set('quotation_item_id', r.quotation_item_id);
       start(async () => {
@@ -104,6 +105,6 @@ function AnswerForm({ r, suppliers, onDone }: { r: Req; suppliers: any[]; onDone
       <label className={`flex items-center gap-2 ${log ? '' : 'opacity-50'}`}><input type="checkbox" name="set_current_cost" value="1" disabled={!log} /> Set as the item&apos;s current cost (shared by all businesses)</label>
       {error && <div className="rounded border border-red-200 bg-red-50 p-3 text-red-700">{error}</div>}
       <div className="flex justify-end"><button className="button" disabled={pending}>{pending ? 'Saving…' : 'Record and notify Sales'}</button></div>
-    </form>
+    </Form>
   );
 }

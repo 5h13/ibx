@@ -4,7 +4,8 @@ import { AuthedShell } from '@/core/layout/AuthedShell';
 import { DepartmentExpenses } from '@/shared/expenses/DepartmentExpenses';
 import { loadDepartmentExpenses } from '@/shared/expenses/loadDepartmentExpenses';
 
-export default async function ExpensesPage({ searchParams }: { searchParams?: { month?: string } }) {
+export default async function ExpensesPage(props: { searchParams?: Promise<{ month?: string }> }) {
+  const searchParams = await props.searchParams;
   const profile = await requireSection('admin');
   const data = await loadDepartmentExpenses(profile, 'admin', searchParams?.month);
   return <AuthedShell profile={profile}><DepartmentExpenses profile={profile} data={data} /></AuthedShell>;

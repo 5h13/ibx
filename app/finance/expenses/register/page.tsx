@@ -6,7 +6,8 @@ import { createClient } from '@/core/auth/supabaseServer';
 import { ExpenseRegister } from '@/modules/finance/expenses/ExpenseRegister';
 import type { RegisterRow, ScheduleRow } from '@/modules/finance/expenses/actions';
 
-export default async function ExpenseRegisterPage({ searchParams }: { searchParams?: { from?: string; to?: string } }) {
+export default async function ExpenseRegisterPage(props: { searchParams?: Promise<{ from?: string; to?: string }> }) {
+  const searchParams = await props.searchParams;
   const profile = await requireSection('finance');
   const db = createClient();
   const today = new Date();

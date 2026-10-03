@@ -32,7 +32,7 @@ export async function getActingBusinessId(): Promise<string | null> {
   const { data, error } = await db.rpc('super_admin_view_business');
   if (!error) return (data as string | null) ?? null;
   // Migration 20261112 not applied yet: fall back to the old cookie.
-  const raw = cookies().get(COOKIE_NAME)?.value;
+  const raw = (await cookies()).get(COOKIE_NAME)?.value;
   if (!raw) return null;
   const { data: b } = await db.from('businesses').select('id').eq('id', raw).eq('is_active', true).maybeSingle();
   return b?.id ?? null;
