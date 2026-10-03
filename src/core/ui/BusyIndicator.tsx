@@ -2,7 +2,7 @@
 // Build 83b — loading indicator (owner: "after clicking a button it seems
 // nothing is happening"). Every page change and every save goes through
 // fetch (server actions, page data, Supabase), so fetch is wrapped once and
-// the 5H13 logo is shown, spinning, whenever a request has been running for
+// the 5H13 logo is shown (Build 87: inside a turning ring) whenever a request has been running for
 // more than a moment. No change is needed on individual pages.
 import { useEffect, useState } from 'react';
 
@@ -31,8 +31,11 @@ export function BusyIndicator() {
   return (
     <div className="pointer-events-none fixed inset-x-0 top-3 z-[100] flex justify-center" role="status" aria-live="polite">
       <div className="flex items-center gap-3 rounded-full bg-white/95 px-4 py-2 shadow-lg ring-1 ring-black/10">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/brand/5h13-logo.jpg" alt="" className="ibx-busy-logo h-8 w-8 rounded-lg object-cover" />
+        {/* Build 87: still logo inside a turning blue / red ring (owner chose option C) */}
+        <span className="ibx-busy-ring relative grid h-9 w-9 place-items-center">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/brand/5h13-logo.jpg" alt="" className="h-6 w-6 rounded-md object-cover" />
+        </span>
         <span className="text-sm font-medium text-slate-700">Working…</span>
       </div>
     </div>
