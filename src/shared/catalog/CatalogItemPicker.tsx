@@ -18,11 +18,13 @@ import { searchCatalogItemsAction, getCatalogItemsByIdAction, getCatalogFilterOp
 
 const labelCache = new Map<string, CatalogSearchItem>();
 type FilterOptions = { categories: string[]; items: string[]; brands: string[] };
-let filterOptionsPromise: Promise<FilterOptions> | null = null;
-/** Loaded once per page and shared by every picker on it. */
-function loadFilterOptions() {
-  if (!filterOptionsPromise) filterOptionsPromise = getCatalogFilterOptionsAction().catch((e) => { filterOptionsPromise = null; throw e; });
-  return filterOptionsPromise;
+const filterOptionsCache = new Map<string, Promise<FilterOptions>>();
+/** Build 84: options cascade with the current filters; cached per combination and shared by every picker on the page. */
+function loadFilterOptions(f: { category: string; item: string; brand: string }) {
+  const key = `${f.category}\u0001${f.item}\u0001${f.brand}`;
+  let p = filterOptionsCache.get(key);
+  if (!p) { p = getCatalogFilterOptionsAction(f).catch((e) => { filterOptionsCache.delete(key); throw e; }); filterOptionsCache.set(key, p); }
+  return p;
 }
 const NO_FILTERS = { category: '', item: '', brand: '' };
 
@@ -62,11 +64,11 @@ export function CatalogItemPicker({
   const filtered = Boolean(filters.category || filters.item || filters.brand);
 
   useEffect(() => {
-    if (!open || !showFilters || options) return;
+    if (!open || !showFilters) return;
     let alive = true;
-    loadFilterOptions().then((o) => { if (alive) setOptions(o); }).catch(() => { if (alive) setOptions({ categories: [], items: [], brands: [] }); });
+    loadFilterOptions(filters).then((o) => { if (alive) setOptions(o); }).catch(() => { if (alive) setOptions((cur) => cur ?? { categories: [], items: [], brands: [] }); });
     return () => { alive = false; };
-  }, [open, showFilters, options]);
+  }, [open, showFilters, filters]);
 
   // Controlled usage: follow external value changes.
   useEffect(() => {
@@ -124,8 +126,8 @@ export function CatalogItemPicker({
           {showFilters && (
             <div className="sticky top-0 z-10 border-b bg-slate-50 px-2 py-1.5">
               <div className="grid grid-cols-3 gap-1">
-                <FilterSelect label="Category" value={filters.category} values={options?.categories} onChange={(v) => setFilters((f) => ({ ...f, category: v }))} />
-                <FilterSelect label="Item" value={filters.item} values={options?.items} onChange={(v) => setFilters((f) => ({ ...f, item: v }))} />
+                <FilterSelect label="Category" value={filters.category} values={options?.categories} onChange={(v) => setFilters({ category: v, item: '', brand: '' })} />
+                <FilterSelect label="Item" value={filters.item} values={options?.items} onChange={(v) => setFilters((f) => ({ ...f, item: v, brand: '' }))} />
                 <FilterSelect label="Brand" value={filters.brand} values={options?.brands} onChange={(v) => setFilters((f) => ({ ...f, brand: v }))} />
               </div>
               {filtered && <button type="button" className="mt-1 text-xs text-blue-700 underline" onMouseDown={(e) => e.preventDefault()} onClick={() => setFilters(NO_FILTERS)}>Clear filters</button>}

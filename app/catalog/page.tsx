@@ -7,6 +7,7 @@ import { createClient } from '@/core/auth/supabaseServer';
 import { AuthedShell } from '@/core/layout/AuthedShell';
 import { canViewProductSearch } from '@/modules/catalog/productSearchAccess';
 import { withCatalogPhotoUrls } from '@/modules/finance/procurement/catalogPhotos';
+import { CascadeFilters } from '@/core/ui/CascadeFilters';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,15 +26,17 @@ export default async function ProductSearchPage(props: { searchParams?: Promise<
   const f = { q: (sp.q ?? '').trim(), category: (sp.category ?? '').trim(), item: (sp.item ?? '').trim(), brand: (sp.brand ?? '').trim(), stock: sp.stock === '1' };
   const page = Math.max(1, Number(sp.page ?? 1) || 1);
   const db = createClient();
-  const [{ data: rows, error }, { data: cats }, { data: filterValues }] = await Promise.all([
+  const [{ data: rows, error }, { data: filterValues }] = await Promise.all([
     db.rpc('catalog_product_search', { p_q: f.q || null, p_category: f.category || null, p_item: f.item || null, p_brand: f.brand || null, p_in_stock_only: f.stock, p_limit: PAGE, p_offset: (page - 1) * PAGE }),
-    db.from('finance_catalog_categories').select('name').eq('active', true).order('name'),
-    db.rpc('catalog_filter_values'),
+    // Build 84: pick-lists cascade — each narrows to the other selections.
+    db.rpc('catalog_filter_values', { p_category: f.category || null, p_item: f.item || null, p_brand: f.brand || null }),
   ]);
   if (error) throw new Error(error.message);
   const items = await withCatalogPhotoUrls((rows ?? []) as any[]);
   const total = Number(items[0]?.total_count ?? 0);
   const pages = Math.max(1, Math.ceil(total / PAGE));
+  const categoryOptions = ((filterValues ?? []) as any[]).filter((v) => v.kind === 'category').map((v) => v.value as string);
+  if (f.category && !categoryOptions.some((c) => c.toLowerCase() === f.category.toLowerCase())) categoryOptions.unshift(f.category);
   const itemOptions = ((filterValues ?? []) as any[]).filter((v) => v.kind === 'item').map((v) => v.value as string);
   const brandOptions = ((filterValues ?? []) as any[]).filter((v) => v.kind === 'brand').map((v) => v.value as string);
   const noBusiness = !profile.user.business_id;
@@ -54,15 +57,16 @@ export default async function ProductSearchPage(props: { searchParams?: Promise<
         {noBusiness && <div className="rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">Select a business in &quot;Acting as&quot; to see store prices and stock — they are kept per business.</div>}
 
         <form method="get" className="grid items-end gap-3 rounded-lg border bg-white p-4 md:grid-cols-6">
+          <CascadeFilters />
           <label className="block text-sm md:col-span-2"><span className="mb-1 block font-medium text-slate-700">Search</span>
             <input className="input" name="q" defaultValue={f.q} placeholder="Product name, code or description" autoFocus /></label>
           <label className="block text-sm"><span className="mb-1 block font-medium text-slate-700">Category</span>
-            <select className="input" name="category" defaultValue={f.category}><option value="">All categories</option>{(cats ?? []).map((c: any) => <option key={c.name} value={c.name}>{c.name}</option>)}</select></label>
+            <select className="input" name="category" data-cascade="1" defaultValue={f.category}><option value="">All categories</option>{categoryOptions.map((c) => <option key={c} value={c}>{c}</option>)}</select></label>
           <label className="block text-sm"><span className="mb-1 block font-medium text-slate-700">Item</span>
-            <input className="input" name="item" list="ps-items" defaultValue={f.item} placeholder="All items" /><datalist id="ps-items">{itemOptions.map((v) => <option key={v} value={v} />)}</datalist></label>
+            <input className="input" name="item" data-cascade="2" list="ps-items" defaultValue={f.item} placeholder="All items" /><datalist id="ps-items">{itemOptions.map((v) => <option key={v} value={v} />)}</datalist></label>
           <label className="block text-sm"><span className="mb-1 block font-medium text-slate-700">Brand</span>
-            <input className="input" name="brand" list="ps-brands" defaultValue={f.brand} placeholder="All brands" /><datalist id="ps-brands">{brandOptions.map((v) => <option key={v} value={v} />)}</datalist></label>
-          <label className="flex items-center gap-2 pb-2 text-sm"><input type="checkbox" name="stock" value="1" defaultChecked={f.stock} /> Available only</label>
+            <input className="input" name="brand" data-cascade="3" list="ps-brands" defaultValue={f.brand} placeholder="All brands" /><datalist id="ps-brands">{brandOptions.map((v) => <option key={v} value={v} />)}</datalist></label>
+          <label className="flex items-center gap-2 pb-2 text-sm"><input type="checkbox" name="stock" value="1" data-cascade="0" defaultChecked={f.stock} /> Available only</label>
           <div className="flex gap-2 md:col-span-6"><button className="button">Search</button>{filtered && <a className="button-secondary" href="/catalog">Clear</a>}</div>
         </form>
 

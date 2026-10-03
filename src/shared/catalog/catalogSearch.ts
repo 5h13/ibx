@@ -77,19 +77,17 @@ export async function getCatalogItemsByIdAction(ids: string[]): Promise<CatalogS
 
 /** SF-05 — the catalog page's filter values (Build 61): active categories and
  *  the distinct ITEM / BRAND values of active items (catalog_filter_values). */
-export async function getCatalogFilterOptionsAction(): Promise<{ categories: string[]; items: string[]; brands: string[] }> {
+/*  Build 84: the lists cascade — each narrows to the other current selections. */
+export async function getCatalogFilterOptionsAction(filters?: { category?: string; item?: string; brand?: string }): Promise<{ categories: string[]; items: string[]; brands: string[] }> {
   const profile = await getSessionProfile();
   if (!profile?.user.is_active) throw appError('Authentication required.');
   const db = createClient();
-  const [{ data: cats, error: ce }, { data: values, error: ve }] = await Promise.all([
-    db.from('finance_catalog_categories').select('name').eq('active', true).order('name'),
-    db.rpc('catalog_filter_values'),
-  ]);
-  if (ce) throw appError(ce.message);
+  const v = (x?: string) => String(x ?? '').trim().slice(0, 200) || null;
+  const { data: values, error: ve } = await db.rpc('catalog_filter_values', { p_category: v(filters?.category), p_item: v(filters?.item), p_brand: v(filters?.brand) });
   if (ve) throw appError(ve.message);
   const vals = (values ?? []) as { kind: string; value: string }[];
   return {
-    categories: ((cats ?? []) as { name: string }[]).map((c) => c.name),
+    categories: vals.filter((v) => v.kind === 'category').map((v) => v.value),
     items: vals.filter((v) => v.kind === 'item').map((v) => v.value),
     brands: vals.filter((v) => v.kind === 'brand').map((v) => v.value),
   };
