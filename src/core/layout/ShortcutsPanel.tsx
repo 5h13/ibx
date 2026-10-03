@@ -1,7 +1,8 @@
 'use client';
 // Build 82 — 5H13 Shortcuts at the top of the sidebar. Each user ticks the
 // pages / actions they use most (only what their access allows) and orders them.
-import { useMemo, useState, useTransition } from 'react';
+import { useEffect, useMemo, useState, useTransition } from 'react';
+import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import type { SessionProfile } from '@/core/auth/types';
@@ -18,6 +19,8 @@ export function ShortcutsPanel({ profile, saved }: { profile: SessionProfile; sa
   const [draft, setDraft] = useState<string[]>(saved);
   const [error, setError] = useState('');
   const [pending, start] = useTransition();
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
   const shown = keys.map((k) => byKey.get(k)).filter(Boolean) as ReturnType<typeof availableShortcuts>;
   const groups = Array.from(new Set(all.map((s) => s.group)));
 
@@ -46,7 +49,7 @@ export function ShortcutsPanel({ profile, saved }: { profile: SessionProfile; sa
         );
       })}
 
-      {editing && (
+      {editing && mounted && createPortal(
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={(e) => { if (e.target === e.currentTarget) setEditing(false); }}>
           <div className="flex max-h-[90vh] w-full max-w-3xl flex-col rounded-xl bg-white text-slate-800 shadow-xl">
             <div className="flex items-start justify-between gap-3 border-b p-4">
@@ -58,10 +61,10 @@ export function ShortcutsPanel({ profile, saved }: { profile: SessionProfile; sa
                 {groups.map((g) => (
                   <div key={g}>
                     <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">{g}</div>
-                    <div className="grid gap-1 sm:grid-cols-2">
+                    <div className="flex flex-col gap-0.5">
                       {all.filter((s) => s.group === g).map((s) => (
-                        <label key={s.key} className="flex items-center gap-2 rounded px-2 py-1 text-sm hover:bg-slate-50">
-                          <input type="checkbox" checked={draft.includes(s.key)} onChange={() => toggle(s.key)} />
+                        <label key={s.key} className="flex w-full cursor-pointer items-center gap-2 rounded px-2 py-1 text-left text-sm hover:bg-slate-50">
+                          <input type="checkbox" className="h-4 w-4 shrink-0" checked={draft.includes(s.key)} onChange={() => toggle(s.key)} />
                           <span>{s.action ? <b>+ </b> : null}{s.label}</span>
                         </label>
                       ))}
@@ -87,10 +90,11 @@ export function ShortcutsPanel({ profile, saved }: { profile: SessionProfile; sa
             <div className="flex items-center justify-end gap-2 border-t p-4">
               {error && <span className="mr-auto text-sm text-red-600">{error}</span>}
               <button type="button" className="button-secondary" onClick={() => setEditing(false)}>Cancel</button>
-              <button type="button" className="button" disabled={pending} onClick={save}>{pending ? 'Saving…' : 'Save shortcuts'}</button>
+              <button type="button" className="button" disabled={pending} onClick={save}>{pending ? 'Saving…' : 'Save'}</button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

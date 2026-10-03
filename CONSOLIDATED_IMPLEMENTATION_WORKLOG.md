@@ -1160,3 +1160,10 @@ Owner: security update before outside users log in. 14.2.35 (last 14.x) still ha
 - **React 19 form reset:** React 19 resets `<form action={fn}>` when the action's transition ends, even when the save was refused — fields cleared and PopupAction closed on errors (confirmed in a headless browser). New `src/core/ui/Form.tsx` keeps the old behaviour (calls the action with the form data on submit; the page resets after a successful save); every client form uses `<Form>` (46 files). Verified in a headless browser: refused save keeps the typed values, successful save resets once.
 - `package.json`: `lint` script is now `tsc --noEmit` (`next lint` removed in 16). `tsconfig.json` / `next-env.d.ts` updated by Next.
 - Verified: typecheck and production build (Turbopack, 58 pages); login page renders in a headless browser; authenticated pages not run here (no Supabase connection in the build workspace).
+
+## Build 83a — catalog upload feedback (2026-10-03, app only)
+- Owner: catalog uploads "do not get through", no success message. `app/finance/procurement/page.tsx` exports `maxDuration = 300` (the import is a server action of this page; Vercel's default limit is shorter). Confirm button shows "Importing…" with a note to keep the window open; the result shows as a green (done) or red (failed) banner at the top of the Procurement page.
+- Build 83a also: 5H13 Shortcuts editor opens over the whole page (portal; it was squeezed inside the sidebar), one tick box per line, button "Save". Checked in a headless browser.
+
+## Build 83b — loading indicator (2026-10-03, app only)
+- Owner: no sign of loading after clicking. `src/core/ui/BusyIndicator.tsx` (in the root layout) wraps fetch once and shows the 5H13 logo turning and pulsing with "Working…" at the top of the screen while any request (page change, save, Supabase call) has been running for more than 250 ms; no page changes needed. Animation in `app/globals.css` (off for reduced-motion users). Checked in a headless browser.

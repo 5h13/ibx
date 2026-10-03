@@ -1,4 +1,6 @@
 import { requireSection } from '@/core/auth/requireSection';
+// Build 83a: the full catalog upload runs as a server action of this page; allow it up to 5 minutes (Vercel's default is shorter).
+export const maxDuration = 300;
 import {canExportSupplierSensitive} from '@/modules/finance/procurement/supplierExport';
 import { createClient } from '@/core/auth/supabaseServer';
 import { AuthedShell } from '@/core/layout/AuthedShell';
