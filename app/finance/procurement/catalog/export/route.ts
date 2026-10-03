@@ -32,7 +32,8 @@ export async function GET(req: Request) {
       rows.push([
         x.item_name, x.category, x.generic_item, x.brand, x.description, x.photo_path ? 'Yes' : '',
         x.supplier_name ?? '', x.supplier_item_code ?? '', m(x.supplier_cost),
-        priced && x.addon_percent != null ? Number(Number(x.addon_percent).toFixed(4)) : '',  // Add on as a % (the import reads a percentage) priced && x.item_type !== 'service' ? m(x.acquisition_cost) : '',
+        priced && x.addon_percent != null ? Number(Number(x.addon_percent).toFixed(4)) : '',  // Add on as a % (the import reads a percentage)
+        priced && x.item_type !== 'service' ? m(x.acquisition_cost) : '',
         priced ? m(x.store_price) : '', priced && x.markup_percent != null ? Number(Number(x.markup_percent).toFixed(2)) : '',
         x.item_code, x.unit, x.specification ?? '', '', '', x.stock_type === 'order_only' ? 'Order only' : 'Stock', x.item_type === 'service' ? 'Service' : 'Product', x.active ? 'Active' : 'Inactive',
       ]);

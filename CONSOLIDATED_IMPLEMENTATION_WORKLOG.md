@@ -1174,3 +1174,6 @@ Owner: security update before outside users log in. 14.2.35 (last 14.x) still ha
 
 ## Build 83e — catalog guard fix (2026-10-03, migration `20261215_catalog_value_guard.sql`)
 - The full-catalog upload stopped with "Catalog category is not a controlled active catalog category.": the item guard checked category / unit on every update, so items whose category had been retired could not be deactivated (the upload retires items missing from the file first). The guard now checks only when an item is added, its category / unit changes, or it is reactivated; deactivating, repricing and other edits always work. Messages name the category / unit and the item. Tested on the harness database (reprice and deactivate pass with a retired category; reactivating is refused).
+
+## Build 83f — catalog export column fix (2026-10-03, app only)
+- The catalog export (since Build 79) left out the Acquisition Cost value — the expression had been joined onto the comment line — so STORE PRICE, %Mark up, Item Code and every later column sat one column to the left of their headers. Fixed in `app/finance/procurement/catalog/export/route.ts`.
