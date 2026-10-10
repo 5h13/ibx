@@ -12,6 +12,7 @@ import { catalogAction, productDetailAction, saveOrderAction, saveQuoteAction, t
 import { peso, qty } from './AgentHeader';
 import type { AgentClient } from './AgentClients';
 import { Sheet } from './Sheet';
+import { ShareImageButton, type ShareBrand, type ShareAgent } from './ShareCard';
 
 type Mode = 'client' | '1' | '2' | '3' | '4' | 'custom';
 type Line = { key: number; row: CatalogRow; quantity: string; mode: Mode; price: string };
@@ -39,8 +40,9 @@ function stockBadge(r: { item_type: string; stock_type: string | null; available
   return { t: 'No stock — can be ordered', c: 'bg-amber-50 text-amber-800' };
 }
 
-export function AgentCatalog({ businessId, clients, categories, initialClient, order }: {
+export function AgentCatalog({ businessId, clients, categories, initialClient, order, share }: {
   businessId: string; clients: AgentClient[]; categories: string[]; tiers?: number[]; initialClient: string; order: any | null;
+  share?: { brand: ShareBrand; agent: ShareAgent };
 }) {
   const router = useRouter();
   const storeKey = `ibx-agent-basket:${businessId}`;
@@ -238,7 +240,7 @@ export function AgentCatalog({ businessId, clients, categories, initialClient, o
       )}
 
       {detailId && detailRow && (
-        <ProductSheet businessId={businessId} row={detailRow} clientId={clientId} clientName={client?.legal_name ?? null} onClose={() => setDetailId(null)}
+        <ProductSheet share={share} businessId={businessId} row={detailRow} clientId={clientId} clientName={client?.legal_name ?? null} onClose={() => setDetailId(null)}
           onAdd={(n, mode, price) => { add(detailRow, n, mode, price); setDetailId(null); }} />
       )}
 
@@ -334,8 +336,8 @@ function PriceSelect({ row, clientId, mode, onChange }: { row: CatalogRow | Prod
   );
 }
 
-function ProductSheet({ businessId, row, clientId, clientName, onClose, onAdd }: {
-  businessId: string; row: CatalogRow; clientId: string; clientName: string | null; onClose: () => void; onAdd: (n: number, mode: Mode, price: string) => void;
+function ProductSheet({ share, businessId, row, clientId, clientName, onClose, onAdd }: {
+  share?: { brand: ShareBrand; agent: ShareAgent }; businessId: string; row: CatalogRow; clientId: string; clientName: string | null; onClose: () => void; onAdd: (n: number, mode: Mode, price: string) => void;
 }) {
   const [d, setD] = useState<ProductDetail | null>(null);
   const [err, setErr] = useState('');
@@ -399,6 +401,12 @@ function ProductSheet({ businessId, row, clientId, clientName, onClose, onAdd }:
             </>
           )}
         </div>
+        {share && (() => {
+          // Build 102: the card shows the price picked below (the client's price, a tier, or "My price")
+          const sp = mode === 'custom' ? (priceOk && price.trim() !== '' ? Number(price) : null) : mode === 'client' ? (p.client_price ?? p.list_price) : tierPrice(p, Number(mode));
+          return <ShareImageButton brand={share.brand} agent={share.agent}
+            item={sp == null ? null : { item_code: p.item_code, item_name: p.item_name, unit: p.unit, specification: d?.specification ?? null, photo: photos[0] ?? null, price: Number(sp) }} />;
+        })()}
         {d?.description && <p className="whitespace-pre-line text-sm text-slate-700">{d.description}</p>}
         {d?.specification && <div><div className="text-xs font-medium uppercase text-slate-500">Specification</div><p className="whitespace-pre-line text-sm text-slate-700">{d.specification}</p></div>}
         <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={capital} onChange={(e) => setCapital(e.target.checked)} /> Show capital</label>
