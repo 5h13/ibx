@@ -73,7 +73,7 @@ select proof.ok((proof.get('bo')::jsonb->>'operating_net_income')::numeric = (pr
 -- Build 97h: the agent share plan is gone; a store agent's (% of gross) sales count as the store's own sales
 select proof.fails(format($$select public.bo_commission_setup_save('{"plans":[{"kind":"agent_share","label":"Rod share","rate":1,"agent_id":"%s"}]}')$$, proof.get('rod')), 'was removed', 'the agent share plan can no longer be added');
 select public.sales_agent_commission_setup(proof.get('rod')::uuid, '{"commission_basis":"gross","commission_rate":1}');
-select proof.ok((public.bo_commission_month(proof.get('lm')::date)->>'store_paid_gross')::numeric = 2300000, 'with Rod as a store agent, store gross (paid) = ₱2,000,000 + his ₱300,000');
+select proof.ok((public.bo_commission_month(proof.get('lm')::date)->>'store_paid_gross')::numeric = 2000000, 'store gross (paid) stays the walk-in Store account only, even with Rod as a store agent (workbook rule, Build 98)');
 select public.sales_agent_commission_setup(proof.get('rod')::uuid, '{"commission_basis":"markup"}');
 select proof.ok((select (x->>'amount')::numeric from jsonb_array_elements(proof.get('bo')::jsonb->'plans') x where x->>'kind' = 'sales_staff')
                 = round(greatest(2000000 - (proof.get('bo')::jsonb->>'monthly_expenses')::numeric * 2000000 / (proof.get('bo')::jsonb->>'overall_gross')::numeric, 0) * 0.005, 2),
