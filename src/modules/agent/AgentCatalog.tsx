@@ -6,7 +6,7 @@
 import { useEffect, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { errorText } from '@/core/errors/appError';
-import { catalogAction, saveOrderAction, type CatalogRow } from './agentActions';
+import { catalogAction, saveOrderAction, saveQuoteAction, type CatalogRow } from './agentActions';
 import { peso, qty } from './AgentHeader';
 import type { AgentClient } from './AgentClients';
 
@@ -41,6 +41,8 @@ export function AgentCatalog({ businessId, clients, categories, tiers, initialCl
   const [offset, setOffset] = useState(0);
   const [lines, setLines] = useState<Line[]>([]);
   const [notes, setNotes] = useState(order?.notes ?? '');
+  const [terms, setTerms] = useState('');
+  const [leadTime, setLeadTime] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [pending, start] = useTransition();
@@ -80,7 +82,7 @@ export function AgentCatalog({ businessId, clients, categories, tiers, initialCl
   };
   const set = (k: number, patch: Partial<Line>) => setLines(lines.map((l) => (l.key === k ? { ...l, ...patch } : l)));
 
-  function save(send: boolean) {
+  function save(send: boolean, asQuote = false) {
     setError('');
     if (!clientId) { setError('Choose the client.'); return; }
     if (!lines.length) { setError('Add at least one item.'); return; }
@@ -89,6 +91,15 @@ export function AgentCatalog({ businessId, clients, categories, tiers, initialCl
       const p = linePrice(l);
       if (l.mode === 'custom' && (p == null || p < bottom(l.row))) { setError(`${l.row.item_name}: the lowest price you can give is ${peso(bottom(l.row))} (Tier 4).`); return; }
       if (l.mode === 'custom' && p != null && l.row.list_price != null && p > Number(l.row.list_price)) { setError(`${l.row.item_name}: the price cannot be above the store price.`); return; }
+    }
+    const lineInput = lines.map((l) => ({ item_id: l.row.item_id, quantity: Number(l.quantity), tier: ['1', '2', '3', '4'].includes(l.mode) ? Number(l.mode) : null,
+      unit_price: l.mode === 'custom' ? Number(l.price) : null }));
+    if (asQuote) {
+      start(async () => {
+        try { await saveQuoteAction({ business_id: businessId, customer_id: clientId, notes, payment_terms: terms, delivery_lead_time: leadTime, lines: lineInput }); router.push(`/agent/quotations?b=${businessId}`); }
+        catch (e) { setError(errorText(e)); }
+      });
+      return;
     }
     start(async () => {
       try {
@@ -187,9 +198,16 @@ export function AgentCatalog({ businessId, clients, categories, tiers, initialCl
         <div className="flex justify-between text-sm font-semibold"><span>Total</span><span>{peso(total)}</span></div>
         {error && <p className="text-sm text-red-700">{error}</p>}
         <div className="flex flex-wrap gap-2">
-          <button type="button" className="button" disabled={pending || !lines.length || !clientId} onClick={() => save(true)}>{pending ? 'Saving…' : 'Send to store'}</button>
+          <button type="button" className="button" disabled={pending || !lines.length || !clientId} onClick={() => save(true)}>{pending ? 'Saving…' : 'Send order to store'}</button>
           <button type="button" className="button-secondary" disabled={pending || !lines.length || !clientId} onClick={() => save(false)}>Save draft</button>
         </div>
+        {!order && <details className="rounded border p-2 text-sm"><summary className="cursor-pointer font-medium">Make a quotation instead</summary>
+          <div className="mt-2 space-y-2">
+            <input className="input" placeholder="Payment terms (e.g. 30 days)" value={terms} onChange={(e) => setTerms(e.target.value)} />
+            <input className="input" placeholder="Delivery lead time" value={leadTime} onChange={(e) => setLeadTime(e.target.value)} />
+            <button type="button" className="button-secondary" disabled={pending || !lines.length || !clientId} onClick={() => save(false, true)}>Save as quotation</button>
+            <p className="text-xs text-slate-500">Goes to the Sales approver; you can print it for the client once approved. Valid 15 days.</p>
+          </div></details>}
         <p className="text-xs text-slate-500">The store sees sent orders on the Storefront (Agent orders) and makes the sale. Prices are checked again when saved.</p>
       </aside>
     </div>

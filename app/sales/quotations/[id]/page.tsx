@@ -4,6 +4,8 @@
 import { notFound } from 'next/navigation';
 import { requireSection } from '@/core/auth/requireSection';
 import { createClient } from '@/core/auth/supabaseServer';
+import { createAdminClient } from '@/core/auth/supabaseAdmin';
+import { getSessionProfile } from '@/core/auth/getSessionProfile';
 import { DocumentHeader, DocumentPrintStyles, DOCUMENT_BUSINESS_COLUMNS, DOCUMENT_PAGE_CLASS } from '@/shared/documents';
 import { DocumentActions } from '@/shared/documents/DocumentActions';
 
@@ -12,8 +14,18 @@ const peso = (v: unknown) => `₱${Number(v ?? 0).toLocaleString(undefined, { mi
 
 export default async function QuotationPrintPage(props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
-  await requireSection('sales');
-  const db = createClient();
+  // Build 92: an agent prints his own quotations (read with the service role after the check)
+  const me = await getSessionProfile();
+  let db: any = createClient();
+  if (me?.user.role === 'agent') {
+    const { data: agentId } = await db.rpc('current_agent_id');
+    const admin = createAdminClient();
+    const { data: own } = await admin.from('sales_quotations').select('agent_id').eq('id', params.id).maybeSingle();
+    if (!agentId || !own || own.agent_id !== agentId) notFound();
+    db = admin;
+  } else {
+    await requireSection('sales');
+  }
   const { data: q } = await db.from('sales_quotations')
     .select(`*,customer:finance_customers(legal_name,address,phone,email,tax_id,contact_person),agent:sales_agents(name,kind),business:businesses(${DOCUMENT_BUSINESS_COLUMNS}),prepared:users!sales_quotations_prepared_by_fkey(full_name),approved:users!sales_quotations_approved_by_fkey(full_name),creator:users!sales_quotations_created_by_fkey(full_name)`)
     .eq('id', params.id).maybeSingle();

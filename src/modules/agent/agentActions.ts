@@ -123,3 +123,11 @@ export async function agentPhotoUrlAction(path: string) {
   if (error || !data) throw appError(error?.message || 'Unable to open the photo.');
   return data.signedUrl;
 }
+
+// Build 92 — agent quotations (approved by the Sales approver) and commission.
+export async function saveQuoteAction(input: { business_id: string; customer_id: string; notes?: string; payment_terms?: string; delivery_lead_time?: string; valid_until?: string;
+  lines: OrderLineInput[] }) {
+  const id = await rpc<string>('agent_quote_save', { p: input });
+  refresh();
+  return id;
+}
