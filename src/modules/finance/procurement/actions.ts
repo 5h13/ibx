@@ -257,3 +257,23 @@ export async function purgeUnusedItemsAction(apply:boolean){
  if(apply)revalidatePath('/finance/procurement');
  return (data??[]) as {item_id:string;item_code:string;item_name:string;deleted:boolean;reason:string}[];
 }
+
+/** Build 90a: cost and price of one item in this business (and the customer's discount), so a
+ * pricing rule can be entered either as a percentage or as the price it should give. */
+export async function itemPricingInfoAction(itemId: string, customerId?: string | null) {
+  const p = await finance('catalog.edit');
+  const b = p.user.business_id;
+  if (!b) throw appError('Select a business in "Acting as" first — prices are per business.');
+  const { data, error } = await createAdminClient().rpc('storefront_item_price', { p_item: itemId, p_business: b });
+  if (error) throw appError(error.message);
+  const row = ((data ?? []) as any[])[0];
+  if (!row) throw appError('Item not found.');
+  const db = createClient();
+  const { data: mk } = await db.from('finance_catalog_item_pricing').select('markup_percent').eq('business_id', b).eq('item_id', itemId).eq('active', true).maybeSingle();
+  let discount: number | null = null;
+  if (customerId) {
+    const { data: d } = await db.from('finance_catalog_customer_discounts').select('discount_percent').eq('customer_id', customerId).eq('item_id', itemId).eq('active', true).maybeSingle();
+    discount = d ? Number(d.discount_percent) : null;
+  }
+  return { acquisition_cost: Number(row.acquisition_cost ?? 0), store_price: Number(row.list_price ?? 0), markup_percent: mk ? Number(mk.markup_percent) : null, discount_percent: discount };
+}

@@ -22,10 +22,12 @@ type Filters = { q: string; category: string; brand: string; supplier: string };
 const peso = (v: unknown) => `₱${Number(v ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const pct = (v: unknown) => (v == null ? '—' : `${Number(Number(v).toFixed(2))}%`);
 const r2 = (n: number) => Math.round(n * 100) / 100;
+/** Build 90a: a markup with as many decimals as it needs (up to 8), so a typed price lands exactly. */
+const m8 = (n: number) => String(Math.round(n * 1e8) / 1e8);
 const KIND: Record<string, string> = { item_markup: 'Markup', store_price: 'Store price', category_addon: 'Category add-on' };
 
 function ItemRow({ r, onMessage }: { r: Row; onMessage: (m: string, ok: boolean) => void }) {
-  const [markup, setMarkup] = useState(String(Number(Number(r.markup_percent).toFixed(4))));
+  const [markup, setMarkup] = useState(m8(Number(r.markup_percent)));
   const [price, setPrice] = useState(String(Number(r.store_price).toFixed(2)));
   const [pending, start] = useTransition();
   const [buys, setBuys] = useState<Awaited<ReturnType<typeof itemPurchasesAction>> | null>(null);
@@ -33,16 +35,20 @@ function ItemRow({ r, onMessage }: { r: Row; onMessage: (m: string, ok: boolean)
   const toggleBuys = () => { setShowBuys(!showBuys); if (!buys) itemPurchasesAction(r.item_id).then(setBuys).catch((e) => onMessage(errorText(e), false)); };
   const acq = Number(r.acquisition_cost);
   const m = Number(markup), p = Number(price);
-  const markupChanged = markup.trim() !== '' && Number.isFinite(m) && Math.abs(m - Number(r.markup_percent)) > 0.00005;
-  const priceChanged = price.trim() !== '' && Number.isFinite(p) && Math.abs(p - Number(r.store_price)) >= 0.005;
-  // live preview of the other field
-  const previewPrice = markupChanged ? r2(acq * (1 + m / 100)) : null;
+  // Build 90a: the two fields are linked — typing a price rewrites the markup, typing a markup rewrites the price.
+  const [by, setBy] = useState<'markup' | 'price' | null>(null);
+  const dirty = by === 'markup' ? markup.trim() !== '' && Number.isFinite(m) && Math.abs(m - Number(r.markup_percent)) > 1e-8
+    : by === 'price' ? price.trim() !== '' && Number.isFinite(p) && Math.abs(p - Number(r.store_price)) >= 0.005 : false;
+  const markupChanged = dirty && by === 'markup';
+  const priceChanged = dirty && by === 'price';
   const previewMarkup = priceChanged && acq > 0 ? (p / acq - 1) * 100 : null;
+  const typeMarkup = (v: string) => { setBy('markup'); setMarkup(v); const n = Number(v); if (v.trim() !== '' && Number.isFinite(n)) setPrice(r2(acq * (1 + n / 100)).toFixed(2)); };
+  const typePrice = (v: string) => { setBy('price'); setPrice(v); const n = Number(v); if (v.trim() !== '' && Number.isFinite(n) && acq > 0) setMarkup(m8((n / acq - 1) * 100)); };
   const save = (by: 'markup' | 'price') => start(async () => {
     try {
       const res = await setItemPriceAction(r.item_id, by === 'markup' ? { markup: m } : { store_price: p });
       onMessage(`${r.item_name}: store price ${peso(res.old_store_price)} → ${peso(res.store_price)} (markup ${pct(res.markup_percent)}).`, true);
-      setMarkup(String(Number(Number(res.markup_percent).toFixed(4)))); setPrice(String(Number(res.store_price).toFixed(2)));
+      setMarkup(m8(Number(res.markup_percent))); setPrice(String(Number(res.store_price).toFixed(2))); setBy(null);
     } catch (e) { onMessage(errorText(e), false); }
   });
   return (
@@ -56,13 +62,12 @@ function ItemRow({ r, onMessage }: { r: Row; onMessage: (m: string, ok: boolean)
         {Math.abs(Number(r.cost_basis) - Number(r.supplier_cost)) >= 0.005 && <div className="text-xs font-medium text-sky-800">priced from oldest lot {peso(r.cost_basis)}</div>}</td>
       <td className="p-2 text-right">{pct(r.addon_percent)}</td>
       <td className="p-2 text-right">{peso(acq)}</td>
-      <td className="p-2"><div className="flex w-32 items-center gap-1"><input className={`input text-right ${markupChanged ? 'border-blue-500' : ''}`} type="number" step="0.01" min="0" value={markup} onChange={(e) => setMarkup(e.target.value)} disabled={priceChanged} /><span>%</span></div>
-        {previewPrice != null && <div className="text-xs text-slate-600">→ {peso(previewPrice)}</div>}
+      <td className="p-2"><div className="flex w-32 items-center gap-1"><input className={`input text-right ${dirty ? 'border-blue-500' : ''}`} type="number" step="any" min="0" value={markup} onChange={(e) => typeMarkup(e.target.value)} /><span>%</span></div>
         {markupChanged && <button type="button" className="button mt-1" disabled={pending} onClick={() => save('markup')}>{pending ? '…' : 'Save'}</button>}
         {!markupChanged && r.below_7 && <div className="text-xs text-amber-700">under 7%</div>}</td>
-      <td className="p-2"><div className="w-32"><input className={`input text-right ${priceChanged ? 'border-blue-500' : ''}`} type="number" step="0.01" min="0" value={price} onChange={(e) => setPrice(e.target.value)} disabled={markupChanged || acq <= 0}
+      <td className="p-2"><div className="w-32"><input className={`input text-right ${dirty ? 'border-blue-500' : ''}`} type="number" step="0.01" min="0" value={price} onChange={(e) => typePrice(e.target.value)} disabled={acq <= 0}
           title={acq <= 0 ? 'No supplier cost: set the cost first' : undefined} />
-        {previewMarkup != null && <div className={`text-xs ${previewMarkup < 0 ? 'text-red-700' : 'text-slate-600'}`}>markup {pct(previewMarkup)}{previewMarkup < 0 ? ' — below cost' : ''}</div>}
+        {previewMarkup != null && previewMarkup < 0 && <div className="text-xs text-red-700">below cost</div>}
         {priceChanged && <button type="button" className="button mt-1" disabled={pending || (previewMarkup ?? 0) < 0} onClick={() => save('price')}>{pending ? '…' : 'Save'}</button>}</div></td>
     </tr>
     {showBuys && <tr className="border-b bg-slate-50"><td colSpan={7} className="p-2">
@@ -86,7 +91,7 @@ function CategoryRow({ c, onMessage }: { c: Category; onMessage: (m: string, ok:
     <tr className="border-b">
       <td className="p-2 font-medium">{c.name}</td>
       <td className="p-2 text-right">{Number(c.items).toLocaleString()}</td>
-      <td className="p-2"><div className="flex items-center gap-1"><div className="w-28"><input className={`input text-right ${changed ? 'border-blue-500' : ''}`} type="number" step="0.01" min="0" value={v} onChange={(e) => setV(e.target.value)} /></div><span>%</span>
+      <td className="p-2"><div className="flex items-center gap-1"><div className="w-28"><input className={`input text-right ${changed ? 'border-blue-500' : ''}`} type="number" step="any" min="0" value={v} onChange={(e) => setV(e.target.value)} /></div><span>%</span>
         {changed && <button type="button" className="button ml-2" disabled={pending} onClick={() => start(async () => {
           try { const r = await setCategoryAddonAction(c.category_id, n); onMessage(`${r.category}: add-on ${pct(r.old_addon_percent)} → ${pct(r.addon_percent)}; the acquisition cost and store price of ${r.items_affected} item(s) follow.`, true); }
           catch (e) { onMessage(errorText(e), false); }

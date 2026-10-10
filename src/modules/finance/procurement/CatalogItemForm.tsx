@@ -140,7 +140,7 @@ export function CatalogItemForm({
           ) : <div className="py-2">—</div>}
         </L>
         <L l="%Mark up" hint={canSetPricing ? 'For this business' : 'Markups are set per business'}>
-          <input className="input" name="markup_percent" type="number" step="0.01" min="0" max="1000" value={markup} disabled={!canSetPricing} onChange={(e) => { setStoreEdit(null); setMarkup(e.target.value); }} placeholder="e.g. 30" />
+          <input className="input" name="markup_percent" type="number" step="any" min="0" max="1000" value={markup} disabled={!canSetPricing} onChange={(e) => { setStoreEdit(null); setMarkup(e.target.value); }} placeholder="e.g. 30" />
         </L>
       </div>
 
