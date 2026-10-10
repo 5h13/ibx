@@ -10,7 +10,7 @@ import { ActionBar, PopupAction } from '@/core/ui/PopupAction';
 import { boCloseAction, boSetupAction } from './commissionActions';
 
 const peso = (v: unknown) => `₱${Number(v ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-const KIND: Record<string, string> = { manager: 'Manager (by category)', sales_staff: 'Sales staff (store sales threshold)', agent_share: 'Share of an agent’s net sales', department: 'Department pool (bottomline threshold)' };
+const KIND: Record<string, string> = { manager: 'Manager (by category)', sales_staff: 'Sales staff (store + store agents’ sales threshold)', agent_share: 'Share of an agent’s net sales (removed)', department: 'Department pool (bottomline threshold)' };
 type Emp = { id: string; first_name: string | null; last_name: string | null; department: string | null; position_title: string | null };
 const empName = (e: Emp) => `${e.first_name ?? ''} ${e.last_name ?? ''}`.trim();
 
@@ -47,7 +47,7 @@ function Setup({ data, employees, agents, categories, onDone }: { data: any; emp
           <div key={i} className="space-y-2 rounded border p-2">
             <div className="flex flex-wrap gap-2">
               <input className="input w-48" placeholder="Name (e.g. Logistics)" value={p.label} onChange={(e) => setPlan(i, { label: e.target.value })} />
-              <select className="input" value={p.kind} onChange={(e) => setPlan(i, { kind: e.target.value })}>{Object.entries(KIND).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
+              <select className="input" value={p.kind} onChange={(e) => setPlan(i, { kind: e.target.value })}>{Object.entries(KIND).filter(([k]) => k !== 'agent_share' || p.kind === 'agent_share').map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
               {p.kind !== 'manager' && <label className="flex items-center gap-1">rate %<input className="input w-20" type="number" step="any" value={p.rate} onChange={(e) => setPlan(i, { rate: e.target.value })} /></label>}
               {(p.kind === 'sales_staff' || p.kind === 'department') && <label className="flex items-center gap-1">own threshold ₱<input className="input w-32" type="number" step="any" placeholder="store default" value={p.threshold} onChange={(e) => setPlan(i, { threshold: e.target.value })} /></label>}
               {p.kind === 'agent_share' && <select className="input" value={p.agent_id ?? ''} onChange={(e) => setPlan(i, { agent_id: e.target.value })}><option value="">Agent…</option>{agents.map((a) => <option key={a.id} value={a.id}>{a.name} ({a.agent_code})</option>)}</select>}

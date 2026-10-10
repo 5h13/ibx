@@ -65,13 +65,16 @@ select public.bo_commission_setup_save(jsonb_build_object(
   'plans', jsonb_build_array(
     jsonb_build_object('kind', 'manager', 'label', 'Manager', 'members', jsonb_build_array('00000000-0000-0000-0000-0000000e9301'), 'sort', 1),
     jsonb_build_object('kind', 'sales_staff', 'label', 'Sales staff', 'rate', 0.5, 'members', jsonb_build_array('00000000-0000-0000-0000-0000000e9302'), 'sort', 2),
-    jsonb_build_object('kind', 'agent_share', 'label', 'Rod share', 'rate', 1, 'agent_id', proof.get('rod'), 'members', jsonb_build_array('00000000-0000-0000-0000-0000000e9303'), 'sort', 3),
     jsonb_build_object('kind', 'department', 'label', 'Admin', 'rate', 1, 'members', jsonb_build_array('00000000-0000-0000-0000-0000000e9302', '00000000-0000-0000-0000-0000000e9303'), 'sort', 4))));
 select proof.set('bo', public.bo_commission_month(proof.get('lm')::date)::text);
 select proof.ok((proof.get('bo')::jsonb->>'store_paid_gross')::numeric = 2000000, 'store gross (paid) = the store''s own sales collected: ₱2,000,000');
 select proof.ok((proof.get('bo')::jsonb->>'agent_commission')::numeric = 15600, 'total agent commission ₱15,600 (before expenses / savings)');
 select proof.ok((proof.get('bo')::jsonb->>'operating_net_income')::numeric = (proof.get('bo')::jsonb->>'net_sales')::numeric - (proof.get('bo')::jsonb->>'monthly_expenses')::numeric, 'bottomline = net sales − monthly expenses');
-select proof.ok((select (x->>'amount')::numeric from jsonb_array_elements(proof.get('bo')::jsonb->'plans') x where x->>'kind' = 'agent_share') = 2980, 'Rod share: (₱300,000 paid − ₱2,000 expenses) × 1% = ₱2,980');
+-- Build 97h: the agent share plan is gone; a store agent's (% of gross) sales count as the store's own sales
+select proof.fails(format($$select public.bo_commission_setup_save('{"plans":[{"kind":"agent_share","label":"Rod share","rate":1,"agent_id":"%s"}]}')$$, proof.get('rod')), 'was removed', 'the agent share plan can no longer be added');
+select public.sales_agent_commission_setup(proof.get('rod')::uuid, '{"commission_basis":"gross","commission_rate":1}');
+select proof.ok((public.bo_commission_month(proof.get('lm')::date)->>'store_paid_gross')::numeric = 2300000, 'with Rod as a store agent, store gross (paid) = ₱2,000,000 + his ₱300,000');
+select public.sales_agent_commission_setup(proof.get('rod')::uuid, '{"commission_basis":"markup"}');
 select proof.ok((select (x->>'amount')::numeric from jsonb_array_elements(proof.get('bo')::jsonb->'plans') x where x->>'kind' = 'sales_staff')
                 = round(greatest(2000000 - (proof.get('bo')::jsonb->>'monthly_expenses')::numeric * 2000000 / (proof.get('bo')::jsonb->>'overall_gross')::numeric, 0) * 0.005, 2),
                 'sales staff: (store gross − expenses × store share) × 0.5%');
