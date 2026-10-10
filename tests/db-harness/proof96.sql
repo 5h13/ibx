@@ -46,6 +46,17 @@ select public.sales_client_save(proof.get('c')::uuid, format('{"legal_name":"Pro
 reset role; select proof.as_owner();
 select proof.ok((select agent_id = proof.get('a')::uuid and credit_limit = 20000 and legal_name = 'Proof96 Client Inc' from finance_customers where id = proof.get('c')::uuid), 'the Business Admin edits details, credit limit and agent');
 
+\echo == B2. Super Admin acting as a store sees only that store
+reset role; select proof.as_owner();
+update users set acting_business_id = proof.get('pili')::uuid where id = '00000000-0000-0000-0000-000000000001';
+select proof.as_user('00000000-0000-0000-0000-000000000001');
+select proof.ok(not exists (select 1 from jsonb_array_elements(public.sales_clients_list()->'clients') x where x->>'store' <> 'PILI')
+                and (public.sales_clients_list()->>'business_id') = proof.get('pili'), 'acting as PILI: only PILI clients, and he can add / move');
+reset role; select proof.as_owner();
+update users set acting_business_id = null where id = '00000000-0000-0000-0000-000000000001';
+select proof.as_user('00000000-0000-0000-0000-000000000001');
+select proof.ok((public.sales_clients_list()->>'business_id') is null and not (public.sales_clients_list()->>'can_move')::boolean, '5H13 level: every store, no adding / moving until a store is chosen');
+
 \echo == C. deleting logins
 select proof.as_user('00000000-0000-0000-0000-000000000011');
 select proof.ok(public.user_delete('00000000-0000-0000-0000-000000000063') = 'unused96@test', 'a login with no records is deleted');
