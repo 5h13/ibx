@@ -95,12 +95,14 @@ export function ClientsList({ clients, agents, canMove, canFinance, hasStore, in
   const router = useRouter();
   const [q, setQ] = useState('');
   const [agent, setAgent] = useState(initialAgent);
-  const [inactive, setInactive] = useState(false);
+  const [status, setStatus] = useState<'active' | 'inactive' | 'all'>('active');
+  const [store, setStore] = useState('');
+  const stores = useMemo(() => Array.from(new Set(clients.map((c) => c.store))).sort(), [clients]);
   const [sel, setSel] = useState<string[]>([]);
   const [message, setMessage] = useState('');
   const done = (m: string) => { setMessage(m); setSel([]); router.refresh(); };
-  const shown = useMemo(() => clients.filter((c) => (inactive || c.active) && (!agent || c.agent_id === agent)
-    && (!q.trim() || `${c.legal_name} ${c.trade_name ?? ''} ${c.customer_code} ${c.phone ?? ''} ${c.agent ?? ''}`.toLowerCase().includes(q.trim().toLowerCase()))), [clients, q, agent, inactive]);
+  const shown = useMemo(() => clients.filter((c) => (status === 'all' || (status === 'active') === c.active) && (!store || c.store === store) && (!agent || c.agent_id === agent)
+    && (!q.trim() || `${c.legal_name} ${c.trade_name ?? ''} ${c.customer_code} ${c.phone ?? ''} ${c.agent ?? ''}`.toLowerCase().includes(q.trim().toLowerCase()))), [clients, q, agent, status, store]);
   // filter choices: every active agent, plus any (inactive) agent still holding clients
   const listAgents = useMemo(() => {
     const extra: Agent[] = [];
@@ -130,7 +132,8 @@ export function ClientsList({ clients, agents, canMove, canFinance, hasStore, in
         <select className="input w-56" value={agent} onChange={(e) => { setAgent(e.target.value); setSel([]); }} aria-label="Agent">
           <option value="">All agents</option>{listAgents.map((a) => <option key={a.id} value={a.id}>{agentLabel(a)}</option>)}
         </select>
-        <label className="flex items-center gap-1 text-sm"><input type="checkbox" checked={inactive} onChange={(e) => setInactive(e.target.checked)} /> Show inactive</label>
+        {stores.length > 1 && <select className="input w-40" value={store} onChange={(e) => { setStore(e.target.value); setSel([]); }} aria-label="Store"><option value="">All stores</option>{stores.map((x) => <option key={x} value={x}>{x}</option>)}</select>}
+        <select className="input w-36" value={status} onChange={(e) => { setStatus(e.target.value as 'active' | 'inactive' | 'all'); setSel([]); }} aria-label="Status"><option value="active">Active</option><option value="inactive">Inactive</option><option value="all">All</option></select>
       </ActionBar>
       {!hasStore && <p className="rounded border border-amber-200 bg-amber-50 p-2 text-sm text-amber-800">Showing every store. Choose a store (“Acting as”) to add clients or move them between agents.</p>}
       {message && <div className="rounded border bg-white p-2 text-sm">{message}</div>}

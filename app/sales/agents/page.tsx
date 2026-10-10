@@ -16,20 +16,23 @@ export default async function AgentsPage(props: { searchParams?: Promise<{ from?
   const from = isDate(sp.from) ?? `${to.slice(0, 7)}-01`;
   const db = createClient();
   const [{ data: agents, error }, { data: customers }, { data: sales }] = await Promise.all([
-    db.from('sales_agents').select('id,agent_code,name,kind,business_id,phone,email,gcash_number,notes,active,user_id').order('kind', { ascending: false }).order('name'),
-    db.from('finance_customers').select('agent_id').eq('active', true).limit(20000),
+    db.from('sales_agents').select('id,agent_code,name,kind,business_id,phone,email,gcash_number,notes,active,user_id,commission_basis,commission_rate,gross_less_expenses').order('kind', { ascending: false }).order('name'),
+    db.from('finance_customers').select('agent_id,business_id').eq('active', true).limit(20000),
     db.from('storefront_sales').select('agent_id,total').eq('status', 'completed').gte('sale_date', from).lte('sale_date', to).limit(20000),
   ]);
   if (error) throw new Error(error.message);
   const cust: Record<string, number> = {}; for (const c of (customers ?? []) as any[]) cust[c.agent_id] = (cust[c.agent_id] ?? 0) + 1;
+  // Build 97: the stores where each agent has clients (store filter)
+  const where: Record<string, Set<string>> = {}; for (const c of (customers ?? []) as any[]) if (c.business_id) (where[c.agent_id] ??= new Set()).add(c.business_id);
   const cnt: Record<string, number> = {}; const tot: Record<string, number> = {};
   for (const s of (sales ?? []) as any[]) { cnt[s.agent_id] = (cnt[s.agent_id] ?? 0) + 1; tot[s.agent_id] = (tot[s.agent_id] ?? 0) + Number(s.total); }
   const rows: AgentRow[] = ((agents ?? []) as any[])
     .filter((a) => a.kind === 'freelance' || a.business_id === profile.user.business_id || (!profile.user.business_id && profile.user.role === 'super_admin'))
-    .map((a) => ({ ...a, has_login: !!a.user_id, customers: cust[a.id] ?? 0, sales_count: cnt[a.id] ?? 0, sales_total: tot[a.id] ?? 0 }));
+    .map((a) => ({ ...a, stores: a.kind === 'store' ? [a.business_id] : Array.from(where[a.id] ?? []), has_login: !!a.user_id, customers: cust[a.id] ?? 0, sales_count: cnt[a.id] ?? 0, sales_total: tot[a.id] ?? 0 }));
   // Build 91: price tiers of this store and agent expenses to approve (Business Admin)
   const b = profile.user.business_id;
   const tiers = b ? await Promise.all([2, 3, 4].map(async (t) => Number((await db.rpc('price_tier_give', { p_business: b, p_tier: t })).data ?? 0))) : null;
   const expenses = isAdminTier(profile) && b ? (((await db.rpc('agent_expenses_review')).data ?? []) as any[]) : [];
-  return <AuthedShell profile={profile}><AgentsManagement agents={rows} canEdit={isAdminTier(profile)} from={from} to={to} tiers={tiers} expenses={expenses} /></AuthedShell>;
+  const { data: bizRows } = await db.from('businesses').select('id,code,trade_name').eq('is_active', true).order('code');
+  return <AuthedShell profile={profile}><AgentsManagement businesses={(bizRows ?? []) as any[]} agents={rows} canEdit={isAdminTier(profile)} from={from} to={to} tiers={tiers} expenses={expenses} /></AuthedShell>;
 }
