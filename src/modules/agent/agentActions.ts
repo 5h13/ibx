@@ -148,3 +148,9 @@ export async function productDetailAction(input: { business_id: string; item_id:
   }
   return { ...d, photo_urls: urls };
 }
+
+// Build 96 — notices to the agent (e.g. a client moved to / away from him), from every store.
+export async function agentNoticesReadAction() {
+  await rpc('agent_notifications_read');
+  refresh();
+}

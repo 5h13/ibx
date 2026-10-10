@@ -416,3 +416,20 @@ export async function reactivateUserAction(formData: FormData) {
   revalidatePath('/settings/users');
   return { ok: true };
 }
+
+// Build 96 — delete a login that never did anything in the app. A login with records (prepared,
+// approved, sold, paid…) is refused by the database (user_delete) and must be deactivated instead.
+export async function deleteUserAction(formData: FormData) {
+  const actor = await requireAdminTier();
+  const userId = requiredString(formData.get('user_id'), 'User');
+  if (userId === actor.user.id) throw appError('You cannot delete your own login.');
+  const db = createClient();
+  const target = await assertManageableTarget(actor, db, userId);
+  const { error } = await db.rpc('user_delete', { p_user: userId });
+  if (error) throw appError(error.message);
+  const { error: authError } = await createAdminClient().auth.admin.deleteUser(userId);
+  if (authError && !/not found/i.test(authError.message)) throw appError(`The login was removed from the app, but signing in could not be cleared: ${authError.message}`);
+  await writeAudit(actor.user.id, userId, 'edited', { action: 'deleted', email: target.email });
+  revalidatePath('/settings/users');
+  return { ok: true, deleted: target.email };
+}

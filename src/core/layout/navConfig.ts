@@ -59,6 +59,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { label: 'Price Review', href: '/sales/price-review', show: canReviewPrices, fn: 'catalog.edit' },
       { label: 'Accounts Payable', href: '/finance/accounts-payable', fn: 'finance.ap' },
       { label: 'Accounts Receivable', href: '/finance/accounts-receivable', fn: 'finance.ar' },
+      { label: 'Clients', href: '/sales/clients', fn: 'finance.ar' },   // Build 96
       { label: 'Storefront (view)', href: '/sales/storefront', fn: 'finance.ar' },
       { label: 'Opening Stock', href: '/finance/opening-stock', fn: 'finance.accounting' },
       { label: 'Payroll', href: '/finance/payroll', fn: 'finance.payroll' },
@@ -94,6 +95,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: 'Storefront', href: '/sales/storefront', fn: STOREFRONT_FNS },
       { label: 'Sales / Revenue Pipeline', href: '/sales/revenue', fn: 'sales.quotes' },
+      { label: 'Clients', href: '/sales/clients' },   // Build 96: the client list with agents (like Suppliers)
       { label: 'Agents', href: '/sales/agents', fn: 'sales.agents' },
       { label: 'Supplier Quotes', href: '/finance/procurement/supplier-quotes', fn: 'sales.price_review' },
       { label: 'Price Review', href: '/sales/price-review', show: canReviewPrices, fn: 'sales.price_review' },

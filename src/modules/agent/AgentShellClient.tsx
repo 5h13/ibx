@@ -4,7 +4,7 @@
 import Link from 'next/link';
 import { useEffect, useState, useTransition } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { setAgentStoreAction } from './agentActions';
+import { agentNoticesReadAction, setAgentStoreAction } from './agentActions';
 import type { AgentStore } from './agentContext';
 
 export function AgentStoreSwitch({ stores, store }: { stores: AgentStore[]; store: AgentStore | null }) {
@@ -151,5 +151,41 @@ export function InstallButton() {
         </div>
       )}
     </>
+  );
+}
+
+/** Build 96 — the bell: notices to the agent (e.g. a client moved to him or away from him). Opening it marks them read. */
+export function AgentNotices({ data }: { data: { unread: number; items: { id: string; title: string; message: string | null; store: string; read: boolean; created_at: string }[] } }) {
+  const [open, setOpen] = useState(false);
+  const [unread, setUnread] = useState(Number(data.unread) || 0);
+  useEffect(() => setUnread(Number(data.unread) || 0), [data.unread]);
+  const toggle = () => {
+    const next = !open;
+    setOpen(next);
+    if (next && unread > 0) { setUnread(0); agentNoticesReadAction().catch(() => {}); }
+  };
+  return (
+    <div className="relative">
+      <button type="button" onClick={toggle} className="relative flex h-9 w-9 items-center justify-center rounded-full" style={{ background: 'color-mix(in srgb, currentColor 15%, transparent)' }} aria-label={`Notices${unread ? ` (${unread} new)` : ''}`}>
+        <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 01-3.4 0" /></svg>
+        {unread > 0 && <span className="absolute -right-0.5 -top-0.5 min-w-[1.1rem] rounded-full bg-red-600 px-1 text-center text-[10px] font-bold leading-[1.1rem] text-[#fff]">{unread > 9 ? '9+' : unread}</span>}
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div className="fixed inset-x-3 top-16 z-50 max-h-[70vh] overflow-y-auto rounded-lg border bg-white text-sm text-slate-800 shadow-lg sm:absolute sm:inset-x-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-80">
+            <div className="border-b px-3 py-2 text-xs font-semibold uppercase text-slate-500">Notices</div>
+            {data.items.map((n) => (
+              <div key={n.id} className={`border-b px-3 py-2 last:border-0 ${n.read ? '' : 'bg-blue-50'}`}>
+                <div className="font-medium leading-snug">{n.title}</div>
+                {n.message && <div className="mt-0.5 text-xs text-slate-600">{n.message}</div>}
+                <div className="mt-0.5 text-[11px] text-slate-400">{n.store} · {new Date(n.created_at).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' })}</div>
+              </div>
+            ))}
+            {!data.items.length && <div className="px-3 py-6 text-center text-slate-500">No notices.</div>}
+          </div>
+        </>
+      )}
+    </div>
   );
 }

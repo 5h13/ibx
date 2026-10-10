@@ -5,9 +5,10 @@
 import { redirect } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { createAdminClient } from '@/core/auth/supabaseAdmin';
+import { createClient } from '@/core/auth/supabaseServer';
 import { parseTheme, themeCss, headerBackground } from '@/core/theme/brandTheme';
 import type { AgentContext } from './agentContext';
-import { AgentNav, AgentStoreSwitch, InstallButton, AgentMenu } from './AgentShellClient';
+import { AgentNav, AgentStoreSwitch, InstallButton, AgentMenu, AgentNotices } from './AgentShellClient';
 import { AgentNotLinked } from './AgentHeader';
 
 export async function AgentShell({ ctx, title, hint, children }: { ctx: AgentContext; title: string; hint?: string; children?: ReactNode }) {
@@ -21,6 +22,8 @@ export async function AgentShell({ ctx, title, hint, children }: { ctx: AgentCon
     theme = parseTheme(br.theme);
     logo = br.logo_url ?? null;
   }
+  // Build 96: notices to the agent (clients moved to / away from him), all stores
+  const { data: notices } = ctx.agentId ? await createClient().rpc('agent_notifications') : { data: null };
   const css = themeCss(theme);
   const bg = headerBackground(theme) ?? 'linear-gradient(90deg, #0f172a, #1e293b)';
   const fg = theme?.headerText ?? '#ffffff';   // the store's own "Header & sidebar text" colour
@@ -39,6 +42,7 @@ export async function AgentShell({ ctx, title, hint, children }: { ctx: AgentCon
             <AgentStoreSwitch stores={ctx.stores} store={ctx.store} />
           </div>
           <InstallButton />
+          <AgentNotices data={(notices as any) ?? { unread: 0, items: [] }} />
           <AgentMenu name={ctx.profile.user.full_name || ctx.profile.user.email} />
         </div>
         <AgentNav variant="tabs" />
