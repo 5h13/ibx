@@ -3,7 +3,7 @@
 // (tabs on a computer, a bottom bar on a phone), the app menu and the install button.
 import Link from 'next/link';
 import { useEffect, useState, useTransition } from 'react';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { agentNoticesReadAction, setAgentStoreAction } from './agentActions';
 import type { AgentStore } from './agentContext';
 
@@ -188,4 +188,28 @@ export function AgentNotices({ data }: { data: { unread: number; items: { id: st
       )}
     </div>
   );
+}
+
+// Build 102a — reopen on the last screen. A phone may close the installed app while the agent is in
+// Messenger / Viber; it then restarts at the start page. If that happens within 12 hours, go back to the
+// screen he was on (the catalogue keeps its own search, filters and open product).
+const LAST_KEY = 'ibx-agent-last';
+export function ResumeLastScreen() {
+  const path = usePathname();
+  const sp = useSearchParams();
+  const router = useRouter();
+  const here = `${path}${sp.toString() ? `?${sp.toString()}` : ''}`;
+  useEffect(() => {
+    try {
+      const fresh = !sessionStorage.getItem('ibx-agent-open');
+      sessionStorage.setItem('ibx-agent-open', '1');
+      if (fresh && path === '/agent' && !sp.toString()) {
+        const last = JSON.parse(localStorage.getItem(LAST_KEY) || 'null') as { path: string; t: number } | null;
+        if (last && last.path !== '/agent' && last.path.startsWith('/agent') && Date.now() - last.t < 12 * 3600000) { router.replace(last.path); return; }
+      }
+    } catch { /* storage unavailable */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => { try { localStorage.setItem(LAST_KEY, JSON.stringify({ path: here, t: Date.now() })); } catch { /* */ } }, [here]);
+  return null;
 }

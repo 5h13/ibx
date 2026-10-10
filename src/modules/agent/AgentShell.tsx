@@ -8,7 +8,8 @@ import { createAdminClient } from '@/core/auth/supabaseAdmin';
 import { createClient } from '@/core/auth/supabaseServer';
 import { parseTheme, themeCss, headerBackground } from '@/core/theme/brandTheme';
 import type { AgentContext } from './agentContext';
-import { AgentNav, AgentStoreSwitch, InstallButton, AgentMenu, AgentNotices } from './AgentShellClient';
+import { AgentNav, AgentStoreSwitch, InstallButton, AgentMenu, AgentNotices, ResumeLastScreen } from './AgentShellClient';
+import { Suspense } from 'react';
 import { AgentNotLinked } from './AgentHeader';
 
 export async function AgentShell({ ctx, title, hint, children }: { ctx: AgentContext; title: string; hint?: string; children?: ReactNode }) {
@@ -55,6 +56,7 @@ export async function AgentShell({ ctx, title, hint, children }: { ctx: AgentCon
         {ctx.store ? children : <AgentNotLinked message={ctx.error ?? 'No store is open for agents yet.'} />}
       </main>
       <AgentNav variant="bottom" />
+      <Suspense fallback={null}><ResumeLastScreen /></Suspense>
     </div>
   );
 }

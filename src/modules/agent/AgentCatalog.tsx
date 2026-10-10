@@ -46,10 +46,18 @@ export function AgentCatalog({ businessId, clients, categories, initialClient, o
 }) {
   const router = useRouter();
   const storeKey = `ibx-agent-basket:${businessId}`;
-  const [clientId, setClientId] = useState(initialClient && clients.some((c) => c.customer_id === initialClient) ? initialClient : '');
-  const [q, setQ] = useState('');
-  const [category, setCategory] = useState('');
-  const [inStock, setInStock] = useState(false);
+  // Build 102a: the catalogue remembers its view per store (search, filters, client, open product, scroll) for 12 hours,
+  // so leaving for another screen or another app and coming back shows the same list
+  const viewKey = `ibx-agent-catalog-view:${businessId}`;
+  const [view] = useState<{ q?: string; category?: string; inStock?: boolean; clientId?: string; detailId?: string | null; scroll?: number } | null>(() => {
+    if (typeof window === 'undefined' || order) return null;
+    try { const v = JSON.parse(localStorage.getItem(viewKey) || 'null'); return v && Date.now() - v.t < 12 * 3600000 ? v : null; } catch { return null; }
+  });
+  const viewClient = view?.clientId && clients.some((c) => c.customer_id === view.clientId) ? view.clientId : '';
+  const [clientId, setClientId] = useState(initialClient && clients.some((c) => c.customer_id === initialClient) ? initialClient : viewClient);
+  const [q, setQ] = useState(view?.q ?? '');
+  const [category, setCategory] = useState(view?.category ?? '');
+  const [inStock, setInStock] = useState(view?.inStock ?? false);
   const [rows, setRows] = useState<CatalogRow[]>([]);
   const [lines, setLines] = useState<Line[]>([]);
   const [notes, setNotes] = useState(order?.notes ?? '');
@@ -59,7 +67,7 @@ export function AgentCatalog({ businessId, clients, categories, initialClient, o
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [basketOpen, setBasketOpen] = useState(false);
-  const [detailId, setDetailId] = useState<string | null>(null);
+  const [detailId, setDetailId] = useState<string | null>(view?.detailId ?? null);
   const [toast, setToast] = useState('');
   const [pending, start] = useTransition();
   const restored = useRef(false);
@@ -87,6 +95,23 @@ export function AgentCatalog({ businessId, clients, categories, initialClient, o
   }
   const toSaved = (ls: Line[]): Saved[] => ls.map((l) => ({ item_code: l.row.item_code, item_id: l.row.item_id, quantity: l.quantity, mode: l.mode, price: l.price }));
 
+  // Build 102a: keep the view; put the scroll back once the list is loaded again
+  useEffect(() => {
+    if (order) return;
+    const keep = () => { try { localStorage.setItem(viewKey, JSON.stringify({ q, category, inStock, clientId, detailId, scroll: window.scrollY, t: Date.now() })); } catch { /* */ } };
+    keep();
+    window.addEventListener('scroll', keep, { passive: true }); window.addEventListener('pagehide', keep);
+    document.addEventListener('visibilitychange', keep);
+    return () => { window.removeEventListener('scroll', keep); window.removeEventListener('pagehide', keep); document.removeEventListener('visibilitychange', keep); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q, category, inStock, clientId, detailId]);
+  const scrolled = useRef(false);
+  useEffect(() => {
+    if (scrolled.current || !rows.length) return;
+    scrolled.current = true;
+    if (view?.scroll) requestAnimationFrame(() => window.scrollTo(0, view.scroll!));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows]);
   // search as the agent types (short pause), and when the filters change
   useEffect(() => { const t = setTimeout(() => search(false), q ? 400 : 0); return () => clearTimeout(t); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [clientId, q, category, inStock]);
   // first load: a draft order being edited, or this store's saved basket

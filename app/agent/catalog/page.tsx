@@ -25,13 +25,13 @@ export default async function AgentCatalogPage(props: { searchParams?: Promise<{
   // Build 102: what the shared product image carries — the store's logo, name and colours, and the agent's name and phone
   const admin = createAdminClient();
   const [{ data: biz }, { data: agent }] = await Promise.all([
-    admin.from('businesses').select('name,branding').eq('id', b).maybeSingle(),
+    admin.from('businesses').select('trade_name,legal_name,branding').eq('id', b).maybeSingle(),
     ctx.agentId ? admin.from('sales_agents').select('name,phone').eq('id', ctx.agentId).maybeSingle() : Promise.resolve({ data: null as any }),
   ]);
   const br: any = biz?.branding ?? {};
   const th = parseTheme(br.theme);
   const share = {
-    brand: { name: ctx.store.name || biz?.name || ctx.store.code, logo: br.logo_url ?? null, header: th?.header ?? '#0f172a', headerEnd: th?.headerEnd ?? '#1e293b', headerText: th?.headerText ?? '#ffffff' },
+    brand: { name: ctx.store.name || biz?.trade_name || biz?.legal_name || ctx.store.code, logo: br.logo_url ?? null, header: th?.header ?? '#0f172a', headerEnd: th?.headerEnd ?? '#1e293b', headerText: th?.headerText ?? '#ffffff' },
     agent: { name: agent?.name ?? ctx.profile.user.full_name ?? 'Sales agent', phone: agent?.phone ?? null },
   };
   const order = sp.order ? ((orders.data ?? []) as any[]).find((o) => o.id === sp.order && o.status === 'draft') ?? null : null;
