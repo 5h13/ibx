@@ -18,6 +18,11 @@ type Mode = 'client' | '1' | '2' | '3' | '4' | 'custom';
 type Line = { key: number; row: CatalogRow; quantity: string; mode: Mode; price: string };
 type Saved = { item_code: string; item_id: string; quantity: string; mode: Mode; price: string };
 let lineKey = 0;
+// Build 102b: the catalogue stays as it was while the app is open — moving to Clients / Orders and back
+// shows the same list, basket, open product and scroll at once, with no reload (refreshed after 10 minutes)
+type Memory = { rows: CatalogRow[]; lines: Line[]; q: string; category: string; inStock: boolean; clientId: string; detailId: string | null; notes: string; scroll: number; t: number };
+const memory = new Map<string, Memory>();
+const FRESH = 10 * 60000;
 const r2 = (n: number) => Math.round(n * 100) / 100;
 const PAGE = 40;
 
@@ -53,21 +58,23 @@ export function AgentCatalog({ businessId, clients, categories, initialClient, o
     if (typeof window === 'undefined' || order) return null;
     try { const v = JSON.parse(localStorage.getItem(viewKey) || 'null'); return v && Date.now() - v.t < 12 * 3600000 ? v : null; } catch { return null; }
   });
+  const mem = !order ? memory.get(businessId) ?? null : null;
+  const warm = !!mem && Date.now() - mem.t < FRESH;
   const viewClient = view?.clientId && clients.some((c) => c.customer_id === view.clientId) ? view.clientId : '';
-  const [clientId, setClientId] = useState(initialClient && clients.some((c) => c.customer_id === initialClient) ? initialClient : viewClient);
-  const [q, setQ] = useState(view?.q ?? '');
-  const [category, setCategory] = useState(view?.category ?? '');
-  const [inStock, setInStock] = useState(view?.inStock ?? false);
-  const [rows, setRows] = useState<CatalogRow[]>([]);
-  const [lines, setLines] = useState<Line[]>([]);
-  const [notes, setNotes] = useState(order?.notes ?? '');
+  const [clientId, setClientId] = useState(initialClient && clients.some((c) => c.customer_id === initialClient) ? initialClient : mem ? mem.clientId : viewClient);
+  const [q, setQ] = useState(mem?.q ?? view?.q ?? '');
+  const [category, setCategory] = useState(mem?.category ?? view?.category ?? '');
+  const [inStock, setInStock] = useState(mem?.inStock ?? view?.inStock ?? false);
+  const [rows, setRows] = useState<CatalogRow[]>(warm ? mem!.rows : []);
+  const [lines, setLines] = useState<Line[]>(warm ? mem!.lines : []);
+  const [notes, setNotes] = useState(order?.notes ?? mem?.notes ?? '');
   const [terms, setTerms] = useState('');
   const [leadTime, setLeadTime] = useState('');
   const [kind, setKind] = useState<'order' | 'quote'>('order');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [basketOpen, setBasketOpen] = useState(false);
-  const [detailId, setDetailId] = useState<string | null>(view?.detailId ?? null);
+  const [detailId, setDetailId] = useState<string | null>(mem ? mem.detailId : view?.detailId ?? null);
   const [toast, setToast] = useState('');
   const [pending, start] = useTransition();
   const restored = useRef(false);
@@ -75,8 +82,9 @@ export function AgentCatalog({ businessId, clients, categories, initialClient, o
   const total = r2(lines.reduce((s, l) => s + (linePrice(l) ?? 0) * (Number(l.quantity) || 0), 0));
   const count = lines.length;
 
+  const fetchedAt = useRef(warm ? mem!.t : Date.now());
   const search = useCallback(async (append = false) => {
-    setError(''); setLoading(true);
+    setError(''); setLoading(true); fetchedAt.current = Date.now();
     try {
       const got = await catalogAction({ business_id: businessId, customer_id: clientId || null, q, category, in_stock: inStock, offset: append ? rows.length : 0 });
       setRows(append ? [...rows, ...got] : got);
@@ -105,15 +113,29 @@ export function AgentCatalog({ businessId, clients, categories, initialClient, o
     return () => { window.removeEventListener('scroll', keep); window.removeEventListener('pagehide', keep); document.removeEventListener('visibilitychange', keep); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [q, category, inStock, clientId, detailId]);
+  const latest = useRef<Omit<Memory, 'scroll' | 't'> | null>(null);
+  const scrollY = useRef(mem?.scroll ?? 0);
+  latest.current = { rows, lines, q, category, inStock, clientId, detailId, notes };
+  useEffect(() => {
+    if (order) return;
+    const onScroll = () => { scrollY.current = window.scrollY; };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => { window.removeEventListener('scroll', onScroll); if (latest.current) memory.set(businessId, { ...latest.current, scroll: scrollY.current, t: fetchedAt.current }); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const scrolled = useRef(false);
   useEffect(() => {
     if (scrolled.current || !rows.length) return;
     scrolled.current = true;
-    if (view?.scroll) requestAnimationFrame(() => window.scrollTo(0, view.scroll!));
+    const y = mem ? mem.scroll : view?.scroll;
+    if (y) requestAnimationFrame(() => window.scrollTo(0, y));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rows]);
   // search as the agent types (short pause), and when the filters change
-  useEffect(() => { const t = setTimeout(() => search(false), q ? 400 : 0); return () => clearTimeout(t); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [clientId, q, category, inStock]);
+  const skipFirst = useRef(warm);
+  useEffect(() => {
+    if (skipFirst.current) { skipFirst.current = false; return; }   // list kept from before: no reload
+    const t = setTimeout(() => search(false), q ? 400 : 0); return () => clearTimeout(t); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [clientId, q, category, inStock]);
   // first load: a draft order being edited, or this store's saved basket
   const pendingRestore = useRef<Saved[] | null>(null);
   useEffect(() => {
@@ -122,6 +144,7 @@ export function AgentCatalog({ businessId, clients, categories, initialClient, o
         .then(() => setBasketOpen(true));
       return;
     }
+    if (warm) { restored.current = true; return; }   // Build 102b: basket kept in memory, already priced
     let saved: any = null;
     try { saved = JSON.parse(localStorage.getItem(storeKey) || 'null'); } catch { /* storage unavailable */ }
     if (!saved?.lines?.length) { restored.current = true; return; }
