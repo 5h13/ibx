@@ -15,24 +15,39 @@ export default async function AgentsPage(props: { searchParams?: Promise<{ from?
   const to = isDate(sp.to) ?? today;
   const from = isDate(sp.from) ?? `${to.slice(0, 7)}-01`;
   const db = createClient();
-  const [{ data: agents, error }, { data: customers }, { data: sales }] = await Promise.all([
+  // Build 97d: agent figures never carry over from one store to another. Inside a store (or "Acting as" one)
+  // only that store's clients and sales count; at the 5H13 level each store's figures are kept apart.
+  const scope = profile.user.business_id ?? null;
+  const since = new Date(Date.now() + 8 * 3600000); since.setUTCMonth(since.getUTCMonth() - 3);
+  const sinceDate = since.toISOString().slice(0, 10);
+  const inScope = <T,>(q: T): T => (scope ? (q as any).eq('business_id', scope) : q);
+  const [{ data: agents, error }, { data: customers }, { data: sales }, { data: recent }] = await Promise.all([
     db.from('sales_agents').select('id,agent_code,name,kind,business_id,phone,email,gcash_number,notes,active,user_id,commission_basis,commission_rate,gross_less_expenses').order('kind', { ascending: false }).order('name'),
-    db.from('finance_customers').select('agent_id,business_id').eq('active', true).limit(20000),
-    db.from('storefront_sales').select('agent_id,total').eq('status', 'completed').gte('sale_date', from).lte('sale_date', to).limit(20000),
+    inScope(db.from('finance_customers').select('agent_id,business_id').eq('active', true).limit(20000)),
+    inScope(db.from('storefront_sales').select('agent_id,business_id,total').eq('status', 'completed').gte('sale_date', from).lte('sale_date', to).limit(50000)),
+    inScope(db.from('storefront_sales').select('agent_id,business_id,sale_date').eq('status', 'completed').gte('sale_date', sinceDate).limit(50000)),
   ]);
   if (error) throw new Error(error.message);
-  const cust: Record<string, number> = {}; for (const c of (customers ?? []) as any[]) cust[c.agent_id] = (cust[c.agent_id] ?? 0) + 1;
-  // Build 97: the stores where each agent has clients (store filter)
-  const where: Record<string, Set<string>> = {}; for (const c of (customers ?? []) as any[]) if (c.business_id) (where[c.agent_id] ??= new Set()).add(c.business_id);
-  const cnt: Record<string, number> = {}; const tot: Record<string, number> = {};
-  for (const s of (sales ?? []) as any[]) { cnt[s.agent_id] = (cnt[s.agent_id] ?? 0) + 1; tot[s.agent_id] = (tot[s.agent_id] ?? 0) + Number(s.total); }
+  type Fig = { customers: number; sales_count: number; sales_total: number; last_sale: string | null };
+  const by: Record<string, Record<string, Fig>> = {};
+  const fig = (agent: string, biz: string) => ((by[agent] ??= {})[biz] ??= { customers: 0, sales_count: 0, sales_total: 0, last_sale: null });
+  for (const c of (customers ?? []) as any[]) if (c.agent_id && c.business_id) fig(c.agent_id, c.business_id).customers++;
+  for (const x of (sales ?? []) as any[]) if (x.agent_id && x.business_id) { const f = fig(x.agent_id, x.business_id); f.sales_count++; f.sales_total += Number(x.total); }
+  for (const r of (recent ?? []) as any[]) if (r.agent_id && r.business_id) { const f = fig(r.agent_id, r.business_id); if (!f.last_sale || r.sale_date > f.last_sale) f.last_sale = r.sale_date; }
   const rows: AgentRow[] = ((agents ?? []) as any[])
-    .filter((a) => a.kind === 'freelance' || a.business_id === profile.user.business_id || (!profile.user.business_id && profile.user.role === 'super_admin'))
-    .map((a) => ({ ...a, stores: a.kind === 'store' ? [a.business_id] : Array.from(where[a.id] ?? []), has_login: !!a.user_id, customers: cust[a.id] ?? 0, sales_count: cnt[a.id] ?? 0, sales_total: tot[a.id] ?? 0 }));
+    .filter((a) => a.kind === 'freelance' || a.business_id === scope || (!scope && profile.user.role === 'super_admin'))
+    .map((a) => {
+      const per = by[a.id] ?? {};
+      const own = scope ? per[scope] : undefined;   // inside a store: that store only, never the others
+      return { ...a, has_login: !!a.user_id, by_store: per,
+        sold_in: Object.entries(per).filter(([, f]) => f.last_sale).map(([k]) => k),
+        stores: a.kind === 'store' ? [a.business_id] : Object.entries(per).filter(([, f]) => f.customers > 0).map(([k]) => k),
+        customers: own?.customers ?? 0, sales_count: own?.sales_count ?? 0, sales_total: own?.sales_total ?? 0, last_sale: own?.last_sale ?? null };
+    });
   // Build 91: price tiers of this store and agent expenses to approve (Business Admin)
   const b = profile.user.business_id;
   const tiers = b ? await Promise.all([2, 3, 4].map(async (t) => Number((await db.rpc('price_tier_give', { p_business: b, p_tier: t })).data ?? 0))) : null;
   const expenses = isAdminTier(profile) && b ? (((await db.rpc('agent_expenses_review')).data ?? []) as any[]) : [];
   const { data: bizRows } = await db.from('businesses').select('id,code,trade_name').eq('is_active', true).order('code');
-  return <AuthedShell profile={profile}><AgentsManagement businesses={(bizRows ?? []) as any[]} agents={rows} canEdit={isAdminTier(profile)} from={from} to={to} tiers={tiers} expenses={expenses} /></AuthedShell>;
+  return <AuthedShell profile={profile}><AgentsManagement scope={scope} recentSince={sinceDate} businesses={(bizRows ?? []) as any[]} agents={rows} canEdit={isAdminTier(profile)} from={from} to={to} tiers={tiers} expenses={expenses} /></AuthedShell>;
 }

@@ -9,7 +9,8 @@ import { agentExpensePhotoAction, decideAgentExpenseAction, saveAgentAction, sav
 import { agentCommissionSetupAction } from './commissionActions';
 
 export type AgentRow = { id: string; agent_code: string; name: string; kind: 'store' | 'freelance'; phone: string | null; email: string | null; gcash_number: string | null;
-  notes: string | null; active: boolean; commission_basis?: 'markup' | 'gross' | null; commission_rate?: number | null; gross_less_expenses?: boolean | null; stores?: string[]; business_id?: string | null; customers: number; sales_count: number; sales_total: number; has_login?: boolean };
+  notes: string | null; active: boolean; commission_basis?: 'markup' | 'gross' | null; commission_rate?: number | null; gross_less_expenses?: boolean | null; stores?: string[]; business_id?: string | null; last_sale?: string | null; sold_in?: string[];
+  by_store?: Record<string, { customers: number; sales_count: number; sales_total: number; last_sale: string | null }>; customers: number; sales_count: number; sales_total: number; has_login?: boolean };
 const peso = (v: number) => `₱${Number(v || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 // Build 95c — the agent form asks the type: a store agent (the store's own salesman, paid a % of gross sales
@@ -128,14 +129,33 @@ function ExpenseReview({ expenses, onMessage }: { expenses: any[]; onMessage: (m
   );
 }
 
-export function AgentsManagement({ agents, canEdit, from, to, tiers = null, expenses = [], businesses = [] }: { businesses?: { id: string; code: string; trade_name: string | null }[]; agents: AgentRow[]; canEdit: boolean; from: string; to: string; tiers?: number[] | null; expenses?: any[] }) {
+export function AgentsManagement({ agents, canEdit, from, to, tiers = null, expenses = [], businesses = [], recentSince = '', scope = null }: { scope?: string | null; recentSince?: string; businesses?: { id: string; code: string; trade_name: string | null }[]; agents: AgentRow[]; canEdit: boolean; from: string; to: string; tiers?: number[] | null; expenses?: any[] }) {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [pending, start] = useTransition();
   // Build 97: filters — store (where the agent has clients; shown when several stores are visible) and status
   const [store, setStore] = useState('');
-  const [status, setStatus] = useState<'active' | 'inactive' | 'all'>('active');
-  const shown = agents.filter((a) => (status === 'all' || (status === 'active') === a.active) && (!store || (a.stores ?? []).includes(store)));
+  const [status, setStatus] = useState<'active' | 'selling' | 'idle' | 'inactive' | 'all'>('active');
+  // Build 97d: figures of the chosen store (or of everything this page can see)
+  // Build 97d: figures belong to one store only — the store you are in, or the one picked in the filter.
+  // At the 5H13 level with "All stores", each store's figures are listed on their own line (never added together).
+  const perStore = !scope && !store;
+  const figOf = (a: AgentRow) => (store ? (a.by_store?.[store] ?? { customers: 0, sales_count: 0, sales_total: 0, last_sale: null })
+    : { customers: a.customers, sales_count: a.sales_count, sales_total: a.sales_total, last_sale: a.last_sale ?? null });
+  const bizName = (id: string) => businesses.find((b) => b.id === id)?.code ?? '—';
+  const lines = (a: AgentRow, f: (x: { customers: number; sales_count: number; sales_total: number; last_sale: string | null }) => string | null) => {
+    const out = Object.entries(a.by_store ?? {}).map(([k, x]) => { const t = f(x); return t ? <div key={k}><span className="text-slate-500">{bizName(k)}</span> {t}</div> : null; }).filter(Boolean);
+    return out.length ? out : <span className="text-slate-400">—</span>;
+  };
+  // "selling" = sold in the last 3 months (in the chosen store, when one is picked); "idle" = active but no sale in 3 months
+  const sold = (a: AgentRow) => (store ? (a.sold_in ?? []).includes(store) : scope ? !!a.last_sale : (a.sold_in ?? []).length > 0);
+  const shown = agents.filter((a) => {
+    if (status === 'active' && !a.active) return false;
+    if (status === 'inactive' && a.active) return false;
+    if (status === 'selling' && !sold(a)) return false;
+    if (status === 'idle' && (!a.active || sold(a))) return false;
+    return !store || (a.stores ?? []).includes(store) || (a.sold_in ?? []).includes(store);
+  });
   const toggle = (a: AgentRow) => { setError(''); start(async () => { try { await saveAgentAction(a.id, { name: a.name, phone: a.phone ?? '', email: a.email ?? '', gcash_number: a.gcash_number ?? '', notes: a.notes ?? '', active: !a.active }); setMessage(`${a.name} ${a.active ? 'deactivated' : 'activated'}.`); } catch (e) { setError(errorText(e)); } }); };
   return (
     <div className="space-y-5">
@@ -151,8 +171,10 @@ export function AgentsManagement({ agents, canEdit, from, to, tiers = null, expe
       {error && <p className="rounded border border-red-200 bg-red-50 p-2 text-sm text-red-700">{error}</p>}
       <div className="flex flex-wrap items-center gap-2 text-sm">
         {businesses.length > 1 && <select className="input w-48" value={store} onChange={(e) => setStore(e.target.value)} aria-label="Store"><option value="">All stores</option>{businesses.map((b) => <option key={b.id} value={b.id}>{b.trade_name || b.code}</option>)}</select>}
-        <select className="input w-36" value={status} onChange={(e) => setStatus(e.target.value as 'active' | 'inactive' | 'all')} aria-label="Status"><option value="active">Active</option><option value="inactive">Inactive</option><option value="all">All</option></select>
-        <span className="text-xs text-slate-500">{shown.length} of {agents.length} agent(s){store ? ' · with clients in this store' : ''}</span>
+        <select className="input w-64" value={status} onChange={(e) => setStatus(e.target.value as typeof status)} aria-label="Status">
+          <option value="active">Active (switched on)</option><option value="selling">Selling — sold in the last 3 months</option><option value="idle">Idle — no sale in 3 months</option>
+          <option value="inactive">Inactive (switched off)</option><option value="all">All</option></select>
+        <span className="text-xs text-slate-500">{shown.length} of {agents.length} agent(s){store ? ' · with clients in this store' : ''}{status === 'selling' || status === 'idle' ? ` · sales since ${recentSince}` : ''}</span>
       </div>
       <form method="get" className="flex flex-wrap items-end gap-2 text-sm">
         <label className="block"><span className="mb-1 block text-xs text-slate-600">Sales from</span><input className="input" type="date" name="from" defaultValue={from} /></label>
@@ -161,7 +183,7 @@ export function AgentsManagement({ agents, canEdit, from, to, tiers = null, expe
       </form>
       <div className="overflow-x-auto rounded border bg-white">
         <table className="w-full text-sm">
-          <thead><tr className="border-b bg-slate-50 text-left text-xs uppercase text-slate-500"><th className="p-2">Code</th><th className="p-2">Agent</th><th className="p-2">Type</th><th className="p-2">Contact</th><th className="p-2 text-right">Customers</th><th className="p-2 text-right">Counter sales {from} to {to}</th><th className="p-2">Status</th>{canEdit && <th className="p-2" />}</tr></thead>
+          <thead><tr className="border-b bg-slate-50 text-left text-xs uppercase text-slate-500"><th className="p-2">Code</th><th className="p-2">Agent</th><th className="p-2">Type</th><th className="p-2">Contact</th><th className="p-2 text-right">Customers</th><th className="p-2 text-right">Counter sales {from} to {to}</th><th className="p-2">Last sale</th><th className="p-2">Status</th>{canEdit && <th className="p-2" />}</tr></thead>
           <tbody>
             {shown.map((a) => (
               <tr key={a.id} className="border-b last:border-0">
@@ -169,8 +191,8 @@ export function AgentsManagement({ agents, canEdit, from, to, tiers = null, expe
                 <td className="p-2 font-medium">{a.name}{a.notes && <div className="text-xs text-slate-500">{a.notes}</div>}</td>
                 <td className="p-2">{typeLabel(a)}</td>
                 <td className="p-2 text-xs">{[a.phone, a.email, a.gcash_number && `GCash ${a.gcash_number}`].filter(Boolean).join(' · ') || '—'}</td>
-                <td className="p-2 text-right">{a.customers}</td>
-                <td className="p-2 text-right">{a.sales_count} · {peso(a.sales_total)}</td>
+                <td className="p-2 text-right">{perStore ? <div className="text-xs">{lines(a, (x) => (x.customers ? String(x.customers) : null))}</div> : figOf(a).customers}</td>
+                <td className="p-2 text-right">{perStore ? <div className="text-xs">{lines(a, (x) => (x.sales_count ? `${x.sales_count} · ${peso(x.sales_total)}` : null))}</div> : <>{figOf(a).sales_count} · {peso(figOf(a).sales_total)}</>}</td><td className="p-2 text-xs">{perStore ? lines(a, (x) => x.last_sale) : figOf(a).last_sale ?? <span className="text-slate-400">none in 3 months</span>}</td>
                 <td className="p-2">{a.active ? 'Active' : 'Inactive'}{a.has_login && <div className="text-xs text-emerald-700">has login</div>}</td>
                 {canEdit && <td className="p-2"><div className="flex gap-2">
                   <PopupAction label="Edit" title={`Edit ${a.name}`} variant="secondary">{(close) => <AgentForm agent={a} onDone={(m) => { setMessage(m); close(); }} />}</PopupAction>
