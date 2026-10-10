@@ -12,8 +12,15 @@ type Client = { id: string; store: string; customer_code: string; legal_name: st
   email: string | null; address: string | null; tax_id: string | null; payment_terms: string | null; credit_limit: number | null; notes: string | null; price_tier: number | null;
   active: boolean; agent_id: string | null; agent: string | null; agent_code: string | null; agent_kind: string | null; agent_has_login: boolean;
   open_balance: number; overdue: number; last_sale: string | null };
-type Agent = { id: string; name: string; agent_code: string; kind: string; has_login: boolean };
+type Agent = { id: string; name: string; agent_code: string; kind: string; has_login: boolean; in_store?: boolean };
 const peso = (v: unknown) => `₱${Number(v ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+// Build 97e: this store's agents first; agents of other stores grouped below (to bring one into this store)
+const AgentOptions = ({ agents }: { agents: Agent[] }) => {
+  const own = agents.filter((a) => a.in_store !== false);
+  const other = agents.filter((a) => a.in_store === false);
+  return <>{own.map((a) => <option key={a.id} value={a.id}>{agentLabel(a)}</option>)}
+    {other.length > 0 && <optgroup label="Agents of other stores">{other.map((a) => <option key={a.id} value={a.id}>{agentLabel(a)}</option>)}</optgroup>}</>;
+};
 const agentLabel = (a: Agent) => (a.kind === 'store' ? `${a.name} (walk-ins)` : `${a.name}${a.has_login ? '' : ' · no app login'}`);
 
 function ClientForm({ client, agents, canMove, canFinance, onDone }: { client?: Client; agents: Agent[]; canMove: boolean; canFinance: boolean; onDone: (m: string) => void }) {
@@ -44,7 +51,7 @@ function ClientForm({ client, agents, canMove, canFinance, onDone }: { client?: 
           <label className="block"><span className="mb-1 block text-slate-600">Agent</span>
             <select className="input" value={f.agent_id} onChange={(e) => setF({ ...f, agent_id: e.target.value })}>
               {!client && <option value="">The store (walk-ins)</option>}
-              {agents.map((a) => <option key={a.id} value={a.id}>{agentLabel(a)}</option>)}
+              <AgentOptions agents={agents} />
             </select></label>
           {moving && <input className="input" placeholder="Note to both agents (optional)" value={f.move_note} onChange={(e) => setF({ ...f, move_note: e.target.value })} />}
           {moving && <p className="text-xs text-slate-500">Both agents get a notice in the agent app. Past sales keep the agent they were made under.</p>}
@@ -75,7 +82,7 @@ function MoveForm({ ids, clients, agents, onDone }: { ids: string[]; clients: Cl
     <div className="space-y-3 text-sm">
       <p>Move <b>{chosen.length}</b> client(s) from {from.join(', ')} to:</p>
       <select className="input" value={agent} onChange={(e) => setAgent(e.target.value)}>
-        <option value="">Choose the agent…</option>{agents.map((a) => <option key={a.id} value={a.id}>{agentLabel(a)}</option>)}
+        <option value="">Choose the agent…</option><AgentOptions agents={agents} />
       </select>
       <input className="input" placeholder="Note to the agents (optional, e.g. covers the San Pedro area now)" value={note} onChange={(e) => setNote(e.target.value)} />
       <p className="text-xs text-slate-500">The agents they move from and the agent they move to each get a notice in the agent app. Past sales and commission stay with the agent they were made under; new sales go to the new agent.</p>
@@ -108,7 +115,7 @@ export function ClientsList({ clients, agents, canMove, canFinance, hasStore, in
     const extra: Agent[] = [];
     for (const c of clients) if (c.agent_id && !agents.some((a) => a.id === c.agent_id) && !extra.some((x) => x.id === c.agent_id))
       extra.push({ id: c.agent_id, name: c.agent ?? '—', agent_code: c.agent_code ?? '', kind: c.agent_kind ?? 'freelance', has_login: c.agent_has_login });
-    return [...agents, ...extra];
+    return [...agents.filter((a) => a.in_store !== false), ...extra];
   }, [clients, agents]);
   const tot = shown.reduce((s, c) => s + Number(c.open_balance), 0);
   const od = shown.reduce((s, c) => s + Number(c.overdue), 0);
