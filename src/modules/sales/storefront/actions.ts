@@ -8,6 +8,7 @@ import { appError } from '@/core/errors/appError';
 
 import { revalidatePath } from 'next/cache';
 import { createClient } from '@/core/auth/supabaseServer';
+import { createAdminClient } from '@/core/auth/supabaseAdmin';
 import { getSessionProfile } from '@/core/auth/getSessionProfile';
 import { hasFunction } from '@/core/auth/functions';
 import { notifyWorkflowRole } from '@/shared/notifications/service';
@@ -304,4 +305,38 @@ export async function cancelOrderAction(orderId: string, reason: string) {
   refresh();
   revalidatePath('/sales/revenue');
   return r;
+}
+
+// ---------------------------------------------------------------------------
+// Build 91 — agent orders and agent payment reports at the counter.
+export async function agentOrderDoneAction(orderId: string, saleId: string) {
+  await needFn('sales.counter', 'counter sales');
+  await rpc('storefront_agent_order_done', { p_order: orderId, p_sale: saleId });
+  refresh();
+}
+export async function agentOrderReturnAction(orderId: string, note: string) {
+  await needFn('sales.counter', 'counter sales');
+  await rpc('storefront_agent_order_return', { p_order: orderId, p_note: note });
+  refresh();
+}
+export async function confirmAgentPaymentAction(reportId: string, payment: PaymentInput) {
+  await needFn('sales.ar_collect', 'receiving AR payments');
+  const r = await rpc<{ report_number: string; amount: number; parts: number }>('storefront_confirm_agent_payment', { p_report: reportId, p_payment: payment });
+  refresh();
+  return r;
+}
+export async function rejectAgentPaymentAction(reportId: string, note: string) {
+  await needFn('sales.ar_collect', 'receiving AR payments');
+  await rpc('storefront_reject_agent_payment', { p_report: reportId, p_note: note });
+  refresh();
+}
+/** Photo attached by an agent to a payment report (store staff of that store only). */
+export async function agentReportPhotoAction(reportId: string) {
+  await needFn('sales.ar_collect', 'receiving AR payments');
+  const list = await rpc<any[]>('storefront_agent_payments');
+  const r = (list ?? []).find((x) => x.id === reportId);
+  if (!r?.photo_path) throw appError('No photo on this report.');
+  const { data, error } = await createAdminClient().storage.from('agent-files').createSignedUrl(r.photo_path, 300);
+  if (error || !data) throw appError(error?.message || 'Unable to open the photo.');
+  return data.signedUrl;
 }

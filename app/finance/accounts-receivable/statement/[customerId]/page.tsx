@@ -4,6 +4,8 @@
 // every payment, running and closing balance; then open invoices and aging.
 import { notFound } from 'next/navigation';
 import { createClient } from '@/core/auth/supabaseServer';
+import { createAdminClient } from '@/core/auth/supabaseAdmin';
+import { getSessionProfile } from '@/core/auth/getSessionProfile';
 import { DocumentHeader, DocumentPrintStyles, DOCUMENT_BUSINESS_COLUMNS, DOCUMENT_PAGE_CLASS } from '@/shared/documents';
 import { DocumentActions } from '@/shared/documents/DocumentActions';
 import { pesoDoc as peso, requireAnySection } from '@/shared/documents/access';
@@ -16,15 +18,25 @@ const isDate = (v?: string) => (v && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null);
 export default async function StatementPage(props: { params: Promise<{ customerId: string }>; searchParams?: Promise<{ from?: string; to?: string }> }) {
   const params = await props.params;
   const sp = (await props.searchParams) ?? {};
-  await requireAnySection(['sales', 'finance'], ['finance.ar', 'sales.counter', 'sales.ar_collect', 'sales.quotes']);
+  // Build 91: an agent opens the statement of his own client (checked by agent_customer_statement)
+  const me = await getSessionProfile();
+  const agent = me?.user.role === 'agent';
+  if (!agent) await requireAnySection(['sales', 'finance'], ['finance.ar', 'sales.counter', 'sales.ar_collect', 'sales.quotes']);
   const db = createClient();
-  const { data: cust } = await db.from('finance_customers').select('business_id,customer_code').eq('id', params.customerId).maybeSingle();
-  if (!cust) notFound();
-  const [{ data: st, error }, { data: biz }] = await Promise.all([
-    db.rpc('customer_statement', { p_customer: params.customerId, p_from: isDate(sp.from), p_to: isDate(sp.to) }),
-    db.from('businesses').select(DOCUMENT_BUSINESS_COLUMNS).eq('id', cust.business_id).maybeSingle(),
-  ]);
-  if (error || !st) notFound();
+  let st: any = null; let error: any = null; let businessId: string | null = null;
+  if (agent) {
+    const r = await db.rpc('agent_customer_statement', { p_customer: params.customerId, p_from: isDate(sp.from), p_to: isDate(sp.to) });
+    st = r.data; error = r.error;
+    if (!error && st) businessId = ((await createAdminClient().from('finance_customers').select('business_id').eq('id', params.customerId).maybeSingle()).data as any)?.business_id ?? null;
+  } else {
+    const { data: cust } = await db.from('finance_customers').select('business_id,customer_code').eq('id', params.customerId).maybeSingle();
+    if (!cust) notFound();
+    businessId = cust.business_id;
+    const r = await db.rpc('customer_statement', { p_customer: params.customerId, p_from: isDate(sp.from), p_to: isDate(sp.to) });
+    st = r.data; error = r.error;
+  }
+  if (error || !st || !businessId) notFound();
+  const { data: biz } = await (agent ? createAdminClient() : db).from('businesses').select(DOCUMENT_BUSINESS_COLUMNS).eq('id', businessId).maybeSingle();
   const s: any = st;const c = s.customer;const a = s.aging;
   const docNo = `SOA-${c.code}-${s.from}-to-${s.to}`;
   const lines: any[] = s.lines ?? [];

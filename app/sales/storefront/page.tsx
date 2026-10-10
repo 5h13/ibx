@@ -89,13 +89,18 @@ export default async function StorefrontPage(
   const { data: locations } = (ctx as any).can_setup
     ? await db.from('logistics_locations').select('id,location_code,location_name').eq('active', true).order('location_code')
     : { data: [] };
+  // Build 91: agent orders (counter) and agent payment reports (AR at the counter)
+  const [{ data: agentOrders }, { data: agentPayments }] = await Promise.all([
+    sales && can.counter ? db.rpc('storefront_agent_orders') : Promise.resolve({ data: [] as any[] }),
+    sales && can.ar ? db.rpc('storefront_agent_payments') : Promise.resolve({ data: [] as any[] }),
+  ]);
   return (
     <AuthedShell profile={profile}>
       <StorefrontManagement ctx={ctx as any} date={date} sales={saleRows ?? []} open={open ?? []} items={items ?? []} payments={payments ?? []}
         customers={(customers ?? []) as any} agents={((agents ?? []) as any[]).filter((a) => a.kind === 'freelance' || a.business_id === (ctx as any).business_id)} locations={locations ?? []} initialTab={searchParams?.tab}
         dayPayments={dayPayments ?? []} returns={returns ?? []} closings={closingsWithJournal} today={manilaToday()}
         dayCash={dayCash ?? []} me={profile.user.id} cancelRequests={cancelRequests ?? []} returnItems={returnItems ?? []}
-        checks={checks ?? []} orders={(orders ?? []) as any} search={search} can={can} />
+        checks={checks ?? []} orders={(orders ?? []) as any} search={search} can={can} agentOrders={(agentOrders ?? []) as any[]} agentPayments={(agentPayments ?? []) as any[]} />
     </AuthedShell>
   );
 }

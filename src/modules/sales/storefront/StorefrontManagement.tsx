@@ -11,14 +11,15 @@ import { Form } from '@/core/ui/Form';
 // approver (SF-14), search past sales (SF-19), Orders tab with DRs from sales
 // orders (SF-01), Checks tab (SF-27), read-only view for Finance (SF-20).
 
-import { useMemo, useState, useTransition } from 'react';
+import { useEffect, useMemo, useState, useTransition } from 'react';
 import { errorText } from '@/core/errors/appError';
 import { ActionBar, PopupAction } from '@/core/ui/PopupAction';
 import { CatalogItemPicker } from '@/shared/catalog/CatalogItemPicker';
 import {
   addCustomerAction, approveSaleAction, cancelSaleAction, completeSaleAction, decideCancelAction, priceLinesAction, requestCancelAction,
-  setStoreLocationAction, submitSaleAction, type LotOption, type PriceLine, type StoreOrder,
+  setStoreLocationAction, submitSaleAction, agentOrderDoneAction, type LotOption, type PriceLine, type StoreOrder,
 } from './actions';
+import { AgentOrdersTab, AgentPaymentsTab } from './StorefrontAgentTabs';
 import { CONDITION_LABEL, METHODS, REASON_LABEL, changeDue, lotLabel, methodLabel, num, paysToInput, peso, r2, type Pay } from './storefrontShared';
 import { PayRow } from './PayRow';
 import { OrdersTab } from './StorefrontOrders';
@@ -81,10 +82,12 @@ export function PaymentBlock({ total, pays, setPays, si, setSi, dr, setDr, vatBo
   );
 }
 
-function SaleForm({ ctx, customers: initialCustomers, agents, onDone }: { ctx: Ctx; customers: Customer[]; agents: Agent[]; onDone: (msg: string) => void }) {
+function SaleForm({ ctx, customers: initialCustomers, agents, onDone, fromOrder }: { ctx: Ctx; customers: Customer[]; agents: Agent[]; onDone: (msg: string) => void;
+  /** Build 91: an agent order — customer, items, quantities and the agent's prices are filled in */
+  fromOrder?: any }) {
   const [customers, setCustomers] = useState(initialCustomers);
   const storeAgent = agents.find((a) => a.kind === 'store');
-  const [customerId, setCustomerId] = useState(ctx.walk_in_customer_id);
+  const [customerId, setCustomerId] = useState(fromOrder?.customer_id ?? ctx.walk_in_customer_id);
   const [adding, setAdding] = useState(false);
   const [newCust, setNewCust] = useState({ name: '', phone: '', address: '', tax_id: '', agent_id: '' });
   const custAgentId = customers.find((c) => c.id === customerId)?.agent_id ?? storeAgent?.id ?? '';
@@ -94,7 +97,7 @@ function SaleForm({ ctx, customers: initialCustomers, agents, onDone }: { ctx: C
   const [pays, setPays] = useState<Pay[]>([{ method: 'cash', amount: '', reference: '' }]);
   const [si, setSi] = useState('');
   const [dr, setDr] = useState(true);
-  const [notes, setNotes] = useState('');
+  const [notes, setNotes] = useState(fromOrder ? [`Agent order ${fromOrder.order_number} (${fromOrder.agent})`, fromOrder.notes].filter(Boolean).join(' · ') : '');
   const [saleDate, setSaleDate] = useState(manilaToday());
   const [lateReason, setLateReason] = useState('');
   const [hardcopy, setHardcopy] = useState('');
@@ -112,6 +115,22 @@ function SaleForm({ ctx, customers: initialCustomers, agents, onDone }: { ctx: C
   const below = belowPrice || noCost || late || reservedHit;   // any of these → an approver signs off first
   const short = lines.filter((l) => l.item_type !== 'service' && l.on_hand !== null && (itemQty[l.item_id] ?? 0) > l.on_hand);
   const set = (i: number, patch: Partial<Line>) => setLines(lines.map((l, j) => (j === i ? { ...l, ...patch } : l)));
+
+  // Build 91: fill the agent order's lines once (current stock / lots; the agent's price per line)
+  useEffect(() => {
+    if (!fromOrder?.lines?.length) return;
+    start(async () => {
+      try {
+        const ids = Array.from(new Set<string>(fromOrder.lines.map((l: any) => l.item_id)));
+        const info = await priceLinesAction(ids);
+        setLines(fromOrder.lines.map((l: any) => {
+          const p = info.find((x) => x.item_id === l.item_id);
+          return p ? { ...toLine(p, p.default_lot_id), qty: Number(l.quantity), price: String(Number(l.unit_price)) } : null;
+        }).filter(Boolean) as Line[]);
+      } catch (e) { setError(errorText(e)); }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function addItem(id: string) {
     setError('');
@@ -165,9 +184,11 @@ function SaleForm({ ctx, customers: initialCustomers, agents, onDone }: { ctx: C
           payments: below ? [] : paysToInput(pays),
           si_number: si, issue_dr: dr, sale_date: saleDate, late_reason: late ? lateReason : undefined, hardcopy_dr_no: hardcopy.trim() || undefined,
         });
-        onDone(r.status === 'pending_approval'
+        let linked = '';
+        if (fromOrder) { try { await agentOrderDoneAction(fromOrder.id, r.id); linked = ` Agent order ${fromOrder.order_number} completed.`; } catch (e) { linked = ` (Agent order not marked done: ${errorText(e)})`; } }
+        onDone((r.status === 'pending_approval'
           ? `${r.sale_number} saved and sent for approval (${(r.reasons ?? []).map((x) => REASON_LABEL[x] ?? x).join(', ')}). Take payment when it is approved (Awaiting approval tab).`
-          : `${r.sale_number} completed — ${peso(r.total)}.`);
+          : `${r.sale_number} completed — ${peso(r.total)}.`) + linked);
       } catch (e) { setError(errorText(e)); }
     });
   }
@@ -354,14 +375,15 @@ function SaleDetail({ sale, items, payments, returnItems = [], canRequestCancel 
   );
 }
 
-const TABS = ['register', 'approval', 'orders', 'returns', 'checks', 'closing'] as const;
+const TABS = ['register', 'approval', 'orders', 'returns', 'checks', 'closing', 'agent_orders', 'agent_payments'] as const;
 
 export function StorefrontManagement({ ctx, date, today, sales, open, items, payments, dayPayments, returns, closings, customers, agents = [], locations, initialTab = 'register', dayCash = [], me = '',
-  cancelRequests = [], returnItems = [], checks = [], orders = [], search = '', can = { counter: true, ar: true, closing: true } }: {
+  cancelRequests = [], returnItems = [], checks = [], orders = [], search = '', can = { counter: true, ar: true, closing: true }, agentOrders = [], agentPayments = [] }: {
   ctx: Ctx; date: string; today: string; sales: any[]; open: any[]; items: any[]; payments: any[]; dayPayments: any[]; returns: any[]; closings: any[]; dayCash?: any[]; me?: string;
   customers: Customer[]; agents?: Agent[]; locations: any[]; initialTab?: string; cancelRequests?: any[]; returnItems?: any[]; checks?: any[]; orders?: StoreOrder[]; search?: string;
   /** Build 90: the user's storefront functions */
   can?: { counter: boolean; ar: boolean; closing: boolean };
+  /** Build 91 */ agentOrders?: any[]; agentPayments?: any[];
 }) {
   const [tab, setTab] = useState<(typeof TABS)[number]>((TABS as readonly string[]).includes(initialTab) ? (initialTab as (typeof TABS)[number]) : 'register');
   const [message, setMessage] = useState('');
@@ -445,6 +467,8 @@ export function StorefrontManagement({ ctx, date, today, sales, open, items, pay
         <button className={tab === 'returns' ? 'button' : 'button-secondary'} onClick={() => setTab('returns')}>Returns ({returns.length})</button>
         <button className={tab === 'checks' ? 'button' : 'button-secondary'} onClick={() => setTab('checks')}>Checks{checksDue ? ` (${checksDue} to deposit)` : ''}</button>
         <button className={tab === 'closing' ? 'button' : 'button-secondary'} onClick={() => setTab('closing')}>Daily closings{pendingClosings ? ` (${pendingClosings} to approve)` : ''}</button>
+        {!ro && can.counter && <button className={tab === 'agent_orders' ? 'button' : 'button-secondary'} onClick={() => setTab('agent_orders')}>Agent orders{agentOrders.filter((o) => o.status === 'sent').length ? ` (${agentOrders.filter((o) => o.status === 'sent').length})` : ''}</button>}
+        {!ro && can.ar && <button className={tab === 'agent_payments' ? 'button' : 'button-secondary'} onClick={() => setTab('agent_payments')}>Agent payments{agentPayments.filter((p) => p.status === 'pending').length ? ` (${agentPayments.filter((p) => p.status === 'pending').length})` : ''}</button>}
       </div>
 
       {tab === 'register' && (
@@ -504,6 +528,12 @@ export function StorefrontManagement({ ctx, date, today, sales, open, items, pay
           <ClosingsTab closings={closings} canApprove={ctx.can_approve && !ro} me={me} onMessage={setMessage} />
         </section>
       )}
+
+      {tab === 'agent_orders' && !ro && can.counter && (
+        <AgentOrdersTab orders={agentOrders} canSell={!!ctx.location_id} onMessage={setMessage}
+          renderSale={(o, close) => <SaleForm ctx={ctx} customers={customers} agents={agents} fromOrder={o} onDone={(m) => { setMessage(m); close(); }} />} />
+      )}
+      {tab === 'agent_payments' && !ro && can.ar && <AgentPaymentsTab reports={agentPayments} onMessage={setMessage} />}
 
       {tab === 'approval' && (
         <section className="space-y-3 rounded-xl border bg-white p-4">

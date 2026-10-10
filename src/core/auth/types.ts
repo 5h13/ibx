@@ -2,7 +2,7 @@
 //
 // Mirrors the enums in supabase/schema.sql. Keep in sync with the DB.
 
-export type AppRole = 'super_admin' | 'business_admin' | 'admin' | 'finance' | 'logistics' | 'marketing' | 'sales';
+export type AppRole = 'super_admin' | 'business_admin' | 'admin' | 'finance' | 'logistics' | 'marketing' | 'sales' | 'agent';
 
 export type WorkflowRole = 'preparer' | 'reviewer' | 'approver';
 
@@ -115,4 +115,9 @@ export function isStaffMinimalView(profile: SessionProfile | null, sectionId: st
   // (preparer/reviewer/approver) in that section. Extend this rule here
   // if a distinct "staff" (no workflow role) tier is introduced later.
   return !profile.access.some((a) => a.section_id === sectionId);
+}
+
+/** Build 91 — a freelance agent's login (agent portal only, no department access). */
+export function isAgent(profile: SessionProfile | null): boolean {
+  return profile?.user.role === 'agent';
 }

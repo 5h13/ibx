@@ -66,6 +66,7 @@ export default async function DashboardPage(props: { searchParams?: Promise<{ mo
   const searchParams = await props.searchParams;
   const profile = await getSessionProfile();
   if (!profile) redirect('/login');
+  if (profile.user.role === 'agent') redirect('/agent');   // Build 91: agents land on their portal
   const supabase = createClient();
 
   const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }));

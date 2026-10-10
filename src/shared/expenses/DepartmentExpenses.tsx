@@ -107,7 +107,7 @@ export function DepartmentExpenses({ profile, data }: { profile: SessionProfile;
                     </div>
                   </td>
                   <td className="p-3">{suppliers.find((s: any) => s.id === r.supplier_id)?.legal_name || r.vendor || '—'}</td>
-                  <td className="p-3 text-right font-medium whitespace-nowrap">{peso(r.amount)}</td>
+                  <td className="p-3 text-right font-medium whitespace-nowrap">{peso(r.amount)}{r.allowance_over > 0 && <div className="text-xs font-normal text-amber-700" title={`Monthly allowance ${peso(r.allowance_limit)} for this category`}>person over allowance by {peso(r.allowance_over)}</div>}</td>
                   <td className="p-3"><StatusBadge status={r.status} />{FINANCE_STEP[r.status] && <div className="text-xs text-slate-500 mt-1">{FINANCE_STEP[r.status]}</div>}{r.rejection_reason && r.status === 'draft' && <div className="text-xs text-red-600 mt-1">Returned: {r.rejection_reason}</div>}</td>
                   <td className="p-3 space-x-2 whitespace-nowrap">
                     {canSubmit && <button disabled={pending} className="link" onClick={() => run(() => submitForReviewAction(r.id, pathname))}>Submit</button>}

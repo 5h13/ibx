@@ -1,5 +1,5 @@
 // Sidebar menu definition, shared by the Sidebar and 5H13 Shortcuts (Build 82).
-import { hasSectionWorkflowRole, isAdminTier, type SessionProfile } from '@/core/auth/types';
+import { hasSectionWorkflowRole, isAdminTier, isAgent, type SessionProfile } from '@/core/auth/types';
 
 import { hasAnyFunction } from '@/core/auth/functions';
 
@@ -14,6 +14,18 @@ export const STOREFRONT_FNS = ['sales.counter', 'sales.ar_collect', 'sales.closi
 export type NavGroup = { code: string; label: string; items: NavItem[] };
 
 export const NAV_GROUPS: NavGroup[] = [
+  // Build 91 — the agent portal (Agent logins only)
+  {
+    code: 'agent',
+    label: 'Agent',
+    items: [
+      { label: 'My Clients', href: '/agent', show: isAgent },
+      { label: 'Catalogue & Pricing', href: '/agent/catalog', show: isAgent },
+      { label: 'Orders', href: '/agent/orders', show: isAgent },
+      { label: 'Payments', href: '/agent/payments', show: isAgent },
+      { label: 'Expenses', href: '/agent/expenses', show: isAgent },
+    ],
+  },
   {
     code: 'admin',
     label: 'Admin',
@@ -28,6 +40,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { label: 'Office Supplies', href: '/admin/supplies' },
       { label: 'Internal Requests', href: '/admin/requests' },
       { label: 'Fleet Management', href: '/admin/fleet' },
+      { label: 'Expense Allowances', href: '/admin/allowances', show: isAdminTier },
     ],
   },
   {

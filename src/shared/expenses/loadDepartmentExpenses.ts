@@ -38,10 +38,17 @@ export async function loadDepartmentExpenses(profile: SessionProfile, section: S
   ]);
   if ((rowsRes as any).error) throw new Error((rowsRes as any).error.message);
 
+  // Build 91: employee expenses over the person's monthly allowance (flag only)
+  const baseRows = ((rowsRes as any).data ?? []) as any[];
+  if (baseRows.length) {
+    const { data: flags } = await db.rpc('expense_allowance_flags', { p_ids: baseRows.map((r) => r.id) });
+    const byId = new Map(((flags ?? []) as any[]).map((f) => [f.expense_id, f]));
+    for (const r of baseRows) { const f = byId.get(r.id); if (f && Number(f.over_by) > 0) { r.allowance_limit = Number(f.monthly_limit); r.allowance_over = Number(f.over_by); } }
+  }
   const suggestions = Array.from(new Set(((recent ?? []) as any[]).map((r) => String(r.description || '').trim()).filter(Boolean))).slice(0, 50);
   return {
     section, sectionId: sec?.id ?? '', monthKey, monthLabel,
-    rows: ((rowsRes as any).data ?? []) as any[],
+    rows: baseRows,
     categories: categories ?? [], costCenters: costCenters ?? [], suppliers: suppliers ?? [],
     assets: assets ?? [], vehicles: vehicles ?? [], suggestions,
   };

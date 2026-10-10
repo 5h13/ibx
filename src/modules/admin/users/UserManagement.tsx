@@ -11,6 +11,7 @@ import { APP_FUNCTIONS, functionsOfSection } from '@/core/auth/functions';
 import { createUserAction, updateUserAction, resetUserPasswordAction, deactivateUserAction, reactivateUserAction, sendPasswordLinkAction } from './actions';
 
 type Section = { id: string; code: string; name: string };
+type AgentOpt = { id: string; agent_code: string; name: string; user_id: string | null };
 type Business = { id: string; code: string; legal_name: string; trade_name: string | null; is_active: boolean };
 type GrantMap = Record<string, WorkflowRole[]>;
 type ManagedUser = {
@@ -24,6 +25,7 @@ const roles: { value: AppRole; label: string }[] = [
   { value: 'admin', label: 'Admin' },
   { value: 'finance', label: 'Finance' }, { value: 'logistics', label: 'Logistics' },
   { value: 'marketing', label: 'Marketing' }, { value: 'sales', label: 'Sales' },
+  { value: 'agent', label: 'Agent (freelance — agent portal only)' },
 ];
 const workflowRoles: WorkflowRole[] = ['preparer', 'reviewer', 'approver'];
 
@@ -33,7 +35,7 @@ function grantsFromUser(user?: ManagedUser): GrantMap {
   return map;
 }
 
-export default function UserManagement({ sections, users, businesses, actingRole, currentUserId }: { sections: Section[]; users: ManagedUser[]; businesses: Business[]; actingRole: AppRole; currentUserId: string }) {
+export default function UserManagement({ sections, users, businesses, actingRole, currentUserId, agents = [] }: { sections: Section[]; users: ManagedUser[]; businesses: Business[]; actingRole: AppRole; currentUserId: string; agents?: AgentOpt[] }) {
   const dialog = useDialog();
   const [editing, setEditing] = useState<ManagedUser | null>(null);
   const [creating, setCreating] = useState(false);
@@ -79,6 +81,8 @@ export default function UserManagement({ sections, users, businesses, actingRole
     const [limited, setLimited] = useState<Record<string, boolean>>(() => Object.fromEntries(['finance', 'sales'].map(code => [code, functionsOfSection(code).some(f => initialFns.includes(f.code))])));
     const toggleFn = (code: string) => setFns(f => f.includes(code) ? f.filter(x => x !== code) : [...f, code]);
     const sectionCode = (id: string) => sections.find(x => x.id === id)?.code ?? '';
+    // Build 91 — an Agent login is linked to one freelance agent
+    const [agentId, setAgentId] = useState<string>(agents.find(a => a.user_id && a.user_id === user?.id)?.id ?? '');
 
     const toggleSection = (id: string) => setSelected(s => s.includes(id) ? s.filter(x => x !== id) : [...s, id]);
     const toggleGrant = (sectionId: string, wr: WorkflowRole) => setGrants(g => {
@@ -86,7 +90,7 @@ export default function UserManagement({ sections, users, businesses, actingRole
       return { ...g, [sectionId]: current.includes(wr) ? current.filter(x => x !== wr) : [...current, wr] };
     });
 
-    return <Form className="space-y-5" onSubmit={async e => { e.preventDefault(); setFormError(''); if (role !== 'super_admin' && !businessId) { setFormError('Select a business for this user.'); return; } const form = e.currentTarget; form.querySelectorAll('input[data-generated]').forEach(n => n.remove()); const add = (name: string, value: string) => { const i=document.createElement('input'); i.type='hidden'; i.name=name; i.value=value; i.dataset.generated='true'; form.appendChild(i); }; add('section_ids', JSON.stringify(role === 'super_admin' ? [] : selected)); add('grants', JSON.stringify(role === 'super_admin' ? {} : grants)); const fnSections = selected.map(sectionCode).filter(c => limited[c] && functionsOfSection(c).length); const emptyLimit = fnSections.find(c => !functionsOfSection(c).some(f => fns.includes(f.code))); if (role !== 'super_admin' && role !== 'business_admin' && emptyLimit) { setFormError(`Tick at least one ${emptyLimit === 'finance' ? 'Finance' : 'Sales'} function, or choose "All functions".`); return; } add('functions', JSON.stringify(role === 'super_admin' || role === 'business_admin' ? [] : fns.filter(code => fnSections.some(c => functionsOfSection(c).some(f => f.code === code))))); add('role', role); add('is_active', String(active)); if (role !== 'super_admin') add('business_id', businessId); if (user) add('user_id', user.id); try { await submit(form, user ? updateUserAction : createUserAction, onClose); } catch (err) { setFormError(err instanceof Error ? errorText(err) : 'Operation failed.'); } }}>
+    return <Form className="space-y-5" onSubmit={async e => { e.preventDefault(); setFormError(''); if (role !== 'super_admin' && !businessId) { setFormError('Select a business for this user.'); return; } const form = e.currentTarget; form.querySelectorAll('input[data-generated]').forEach(n => n.remove()); const add = (name: string, value: string) => { const i=document.createElement('input'); i.type='hidden'; i.name=name; i.value=value; i.dataset.generated='true'; form.appendChild(i); }; add('section_ids', JSON.stringify(role === 'super_admin' || role === 'agent' ? [] : selected)); add('grants', JSON.stringify(role === 'super_admin' || role === 'agent' ? {} : grants)); const fnSections = selected.map(sectionCode).filter(c => limited[c] && functionsOfSection(c).length); const emptyLimit = fnSections.find(c => !functionsOfSection(c).some(f => fns.includes(f.code))); if (role !== 'super_admin' && role !== 'business_admin' && role !== 'agent' && emptyLimit) { setFormError(`Tick at least one ${emptyLimit === 'finance' ? 'Finance' : 'Sales'} function, or choose "All functions".`); return; } add('functions', JSON.stringify(role === 'super_admin' || role === 'business_admin' || role === 'agent' ? [] : fns.filter(code => fnSections.some(c => functionsOfSection(c).some(f => f.code === code))))); add('role', role); if (role === 'agent') add('agent_id', agentId); add('is_active', String(active)); if (role !== 'super_admin') add('business_id', businessId); if (user) add('user_id', user.id); try { await submit(form, user ? updateUserAction : createUserAction, onClose); } catch (err) { setFormError(err instanceof Error ? errorText(err) : 'Operation failed.'); } }}>
       <div className="grid md:grid-cols-2 gap-4">
         <label className="block text-sm"><span className="text-slate-600">Full name</span><input name="full_name" required defaultValue={user?.full_name ?? ''} className="mt-1 w-full rounded border p-2" /></label>
         <label className="block text-sm"><span className="text-slate-600">Email</span><input name="email" type="email" required={!user} disabled={!!user} defaultValue={user?.email ?? ''} className="mt-1 w-full rounded border p-2 disabled:bg-slate-100" /></label>
@@ -101,7 +105,8 @@ export default function UserManagement({ sections, users, businesses, actingRole
         <label className="flex items-start gap-2"><input type="radio" checked={onboarding === 'password'} onChange={() => setOnboarding('password')} className="mt-1" /><span><b>Set a temporary password</b> — you give it to the user; they must change it at first sign-in.</span></label>
         {onboarding === 'password' && <label className="block"><span className="text-slate-600">Temporary password <span className="text-slate-400">(leave blank to generate; at least 8 characters)</span></span><input name="password" value={password} onChange={e => setPassword(e.target.value)} className="mt-1 w-full rounded border p-2" /></label>}
       </div>}
-      {role !== 'super_admin' && <div><div className="text-sm font-medium mb-2">Section access & workflow permissions</div><div className="space-y-2">{sections.map(s => <div key={s.id} className="rounded border p-3"><label className="flex items-center gap-2"><input type="checkbox" checked={selected.includes(s.id)} onChange={() => toggleSection(s.id)} /> <span className="font-medium">{s.name}</span></label>{selected.includes(s.id) && <div className="mt-2 ml-6 flex gap-4 text-xs">{workflowRoles.map(wr => <label key={wr} className="flex items-center gap-1"><input type="checkbox" checked={(grants[s.id] ?? []).includes(wr)} onChange={() => toggleGrant(s.id, wr)} /> {wr}</label>)}</div>}{selected.includes(s.id) && role !== 'business_admin' && functionsOfSection(s.code).length > 0 && <div className="mt-3 ml-6 space-y-2 rounded bg-slate-50 p-2 text-xs">
+      {role === 'agent' && <label className="block text-sm"><span className="text-slate-600">Agent this login is for</span><select value={agentId} onChange={e => setAgentId(e.target.value)} className="mt-1 w-full rounded border p-2" required><option value="">Choose the agent…</option>{agents.filter(a => !a.user_id || a.user_id === user?.id).map(a => <option key={a.id} value={a.id}>{a.agent_code} — {a.name}</option>)}</select><span className="text-xs text-slate-400">Freelance agents from Sales → Agents. The agent sees only the agent portal: his clients, the catalogue, orders, payments and expenses.</span></label>}
+      {role !== 'super_admin' && role !== 'agent' && <div><div className="text-sm font-medium mb-2">Section access & workflow permissions</div><div className="space-y-2">{sections.map(s => <div key={s.id} className="rounded border p-3"><label className="flex items-center gap-2"><input type="checkbox" checked={selected.includes(s.id)} onChange={() => toggleSection(s.id)} /> <span className="font-medium">{s.name}</span></label>{selected.includes(s.id) && <div className="mt-2 ml-6 flex gap-4 text-xs">{workflowRoles.map(wr => <label key={wr} className="flex items-center gap-1"><input type="checkbox" checked={(grants[s.id] ?? []).includes(wr)} onChange={() => toggleGrant(s.id, wr)} /> {wr}</label>)}</div>}{selected.includes(s.id) && role !== 'business_admin' && functionsOfSection(s.code).length > 0 && <div className="mt-3 ml-6 space-y-2 rounded bg-slate-50 p-2 text-xs">
         <div className="flex flex-wrap gap-4"><span className="font-medium text-slate-600">Functions:</span>
           <label className="flex items-center gap-1"><input type="radio" checked={!limited[s.code]} onChange={() => setLimited(l => ({ ...l, [s.code]: false }))} /> All of {s.name}</label>
           <label className="flex items-center gap-1"><input type="radio" checked={!!limited[s.code]} onChange={() => setLimited(l => ({ ...l, [s.code]: true }))} /> Only these</label></div>

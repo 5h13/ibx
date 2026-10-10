@@ -9,7 +9,7 @@ import { createClient } from '@/core/auth/supabaseServer';
 import { getSessionProfile } from '@/core/auth/getSessionProfile';
 import { isAdminTier, type AppRole, type WorkflowRole, type SessionProfile } from '@/core/auth/types';
 
-const ROLES: AppRole[] = ['super_admin', 'business_admin', 'admin', 'finance', 'logistics', 'marketing', 'sales'];
+const ROLES: AppRole[] = ['super_admin', 'business_admin', 'admin', 'finance', 'logistics', 'marketing', 'sales', 'agent'];
 const ADMIN_TIER_ROLES: AppRole[] = ['super_admin', 'business_admin'];
 const WORKFLOW_ROLES: WorkflowRole[] = ['preparer', 'reviewer', 'approver'];
 
@@ -80,6 +80,14 @@ async function saveFunctions(db: any, actorId: string, userId: string, codes: st
   if (error) throw appError(error.message);
 }
 
+/** Build 91: an Agent login is tied to one freelance agent record. */
+async function linkAgent(db: any, role: string, userId: string, agentValue: FormDataEntryValue | null) {
+  const agentId = String(agentValue ?? '').trim() || null;
+  if (role === 'agent' && !agentId) throw appError('Choose which agent this login is for.');
+  const { error } = await db.rpc('sales_agent_link_user', { p_agent: role === 'agent' ? agentId : null, p_user: userId });
+  if (error) throw appError(error.message);
+}
+
 function validateRole(role: string): asserts role is AppRole {
   if (!ROLES.includes(role as AppRole)) throw appError('Invalid role.');
 }
@@ -145,7 +153,9 @@ export async function createUserAction(formData: FormData) {
     // Super admins do not need section grants; keeping them empty makes the bypass explicit.
     throw appError('Super Admin accounts do not require section assignments.');
   }
-  if (role !== 'super_admin' && sectionIds.length === 0) {
+  if (role === 'agent' && !String(formData.get('agent_id') ?? '').trim()) throw appError('Choose which agent this login is for.');
+  if (role === 'agent' && sectionIds.length) throw appError('An agent login has no department access; untick the sections.');
+  if (role !== 'super_admin' && role !== 'agent' && sectionIds.length === 0) {
     throw appError('Assign at least one section.');
   }
 
@@ -223,8 +233,9 @@ export async function createUserAction(formData: FormData) {
     }
   }
 
-  const functions = role === 'super_admin' || role === 'business_admin' ? [] : parseFunctions(formData.get('functions'));
+  const functions = role === 'super_admin' || role === 'business_admin' || role === 'agent' ? [] : parseFunctions(formData.get('functions'));
   await saveFunctions(db, actor.user.id, authData.user!.id, functions, false);
+  await linkAgent(db, role, authData.user!.id, formData.get('agent_id'));
   await writeAudit(actor.user.id, authData.user.id, 'created', { email, role, section_ids: sectionIds, functions, onboarding: invite ? 'email_invitation' : 'temporary_password' });
   revalidatePath('/settings/users');
   return invite ? { ok: true, invited: email } : { ok: true, temporaryPassword };
@@ -243,7 +254,8 @@ export async function updateUserAction(formData: FormData) {
     throw appError(`You cannot remove or deactivate your own ${actor.user.role === 'super_admin' ? 'Super Admin' : 'Business Super Admin'} access.`);
   }
   if (role === 'super_admin' && sectionIds.length) throw appError('Super Admin accounts do not require section assignments.');
-  if (role !== 'super_admin' && sectionIds.length === 0) throw appError('Assign at least one section.');
+  if (role === 'agent' && sectionIds.length) throw appError('An agent login has no department access; untick the sections.');
+  if (role !== 'super_admin' && role !== 'agent' && sectionIds.length === 0) throw appError('Assign at least one section.');
 
   // A Business Super Admin can never touch an admin-tier account (their own
   // aside, handled above) nor promote anyone into one — same rule as
@@ -320,8 +332,9 @@ export async function updateUserAction(formData: FormData) {
   if (authUpdate.error) throw appError(authUpdate.error.message);
 
   // Build 90: function limits replace the old ones
-  const functions = role === 'super_admin' || role === 'business_admin' ? [] : parseFunctions(formData.get('functions'));
+  const functions = role === 'super_admin' || role === 'business_admin' || role === 'agent' ? [] : parseFunctions(formData.get('functions'));
   await saveFunctions(db, actor.user.id, userId, functions, true);
+  await linkAgent(db, role, userId, formData.get('agent_id'));
 
   await writeAudit(actor.user.id, userId, 'edited', {
     role,
