@@ -5,7 +5,7 @@
 import { redirect } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { createAdminClient } from '@/core/auth/supabaseAdmin';
-import { parseTheme, themeCss, headerBackground, onAccentHex } from '@/core/theme/brandTheme';
+import { parseTheme, themeCss, headerBackground } from '@/core/theme/brandTheme';
 import type { AgentContext } from './agentContext';
 import { AgentNav, AgentStoreSwitch, InstallButton, AgentMenu } from './AgentShellClient';
 import { AgentNotLinked } from './AgentHeader';
@@ -23,9 +23,11 @@ export async function AgentShell({ ctx, title, hint, children }: { ctx: AgentCon
   }
   const css = themeCss(theme);
   const bg = headerBackground(theme) ?? 'linear-gradient(90deg, #0f172a, #1e293b)';
-  const fg = theme ? onAccentHex(theme) : '#ffffff';
+  const fg = theme?.headerText ?? '#ffffff';   // the store's own "Header & sidebar text" colour
+  const bar = theme?.header ?? '#0f172a';        // phone status bar / installed app bar
   return (
     <div className="agent-app min-h-screen bg-slate-50 pb-24 md:pb-8">
+      <meta name="theme-color" content={bar} />
       {css && <style dangerouslySetInnerHTML={{ __html: css }} />}
       {/* phones: 16px inputs so iOS does not zoom in on every field */}
       <style dangerouslySetInnerHTML={{ __html: '@media (max-width: 767px){.agent-app .input{font-size:16px}}' }} />

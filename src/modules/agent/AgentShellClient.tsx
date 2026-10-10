@@ -21,7 +21,8 @@ export function AgentStoreSwitch({ stores, store }: { stores: AgentStore[]; stor
     <label className="block">
       <span className="sr-only">Store</span>
       <span className="block text-[10px] uppercase tracking-wide opacity-75">{pending ? 'Switching store…' : 'Selling for'}</span>
-      <select className="w-full max-w-xs truncate rounded-md border border-white/30 bg-white/15 px-2 py-1 text-base font-semibold text-inherit outline-none [&>option]:text-slate-900"
+      <select className="w-full max-w-xs truncate rounded-md border bg-transparent px-2 py-1 text-base font-semibold text-inherit outline-none [&>option]:bg-white [&>option]:text-slate-900"
+        style={{ borderColor: 'color-mix(in srgb, currentColor 35%, transparent)', background: 'color-mix(in srgb, currentColor 10%, transparent)' }}
         value={store?.business_id ?? ''} disabled={pending} onChange={(e) => pick(e.target.value)} aria-label="Store">
         {stores.map((s) => <option key={s.business_id} value={s.business_id}>{s.name}</option>)}
       </select>
@@ -58,7 +59,7 @@ export function AgentNav({ variant }: { variant: 'tabs' | 'bottom' }) {
     return (
       <nav className="mx-auto hidden max-w-6xl gap-1 px-3 md:flex">
         {[...MAIN, ...MORE].map((n) => (
-          <Link key={n.href} href={n.href} className={`rounded-t-md px-3 py-1.5 text-sm ${active(n.href) ? 'bg-slate-50 font-semibold text-slate-900' : 'opacity-85 hover:opacity-100'}`}>{n.label}</Link>
+          <Link key={n.href} href={n.href} className={`rounded-t-md px-3 py-1.5 text-sm ${active(n.href) ? 'bg-slate-50 font-semibold text-slate-900' : 'opacity-80 hover:opacity-100'}`}>{n.label}</Link>
         ))}
       </nav>
     );
@@ -90,7 +91,7 @@ export function AgentMenu({ name }: { name: string }) {
   const [open, setOpen] = useState(false);
   return (
     <div className="relative">
-      <button type="button" className="flex h-9 w-9 items-center justify-center rounded-full bg-white/15 text-sm font-semibold" onClick={() => setOpen((o) => !o)} aria-label="Account">
+      <button type="button" className="flex h-9 w-9 items-center justify-center rounded-full text-sm font-semibold" style={{ background: 'color-mix(in srgb, currentColor 15%, transparent)' }} onClick={() => setOpen((o) => !o)} aria-label="Account">
         {name.slice(0, 1).toUpperCase()}
       </button>
       {open && (
@@ -132,7 +133,7 @@ export function InstallButton() {
   };
   return (
     <>
-      <button type="button" onClick={click} className="flex-none rounded-md bg-white/15 px-2.5 py-1.5 text-xs font-semibold" title="Install the app on this phone">
+      <button type="button" onClick={click} className="flex-none rounded-md px-2.5 py-1.5 text-xs font-semibold" style={{ background: 'color-mix(in srgb, currentColor 15%, transparent)' }} title="Install the app on this phone">
         <span aria-hidden>⤓</span> Install
       </button>
       {help && (
