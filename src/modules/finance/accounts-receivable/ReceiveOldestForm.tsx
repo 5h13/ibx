@@ -8,7 +8,7 @@ import { arOldestPreviewAction, createOldestReceiptsAction, type OldestPart } fr
 
 const peso = (v: unknown) => `₱${Number(v ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-export function ReceiveOldestForm({ customers, onDone }: { customers: { id: string; customer_code: string; legal_name: string }[]; onDone: (msg: string) => void }) {
+export function ReceiveOldestForm({ customers, onDone, bankAccounts = [] }: { customers: { id: string; customer_code: string; legal_name: string }[]; onDone: (msg: string) => void; bankAccounts?: { id: string; account_name: string; bank_name: string | null; is_cash_on_hand: boolean }[] }) {
   const [f, setF] = useState({ customer_id: '', amount: '', receipt_number: '', receipt_date: new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10), payment_method: 'Bank transfer', reference_number: '', bank_account: '' });
   const [parts, setParts] = useState<OldestPart[] | null>(null);
   const [error, setError] = useState('');
@@ -37,7 +37,10 @@ export function ReceiveOldestForm({ customers, onDone }: { customers: { id: stri
         {box('receipt_date', 'Receipt date', 'date')}
         <label className="block text-sm"><span className="mb-1 block text-slate-600">Method</span>
           <select className="input" value={f.payment_method} onChange={(e) => setF({ ...f, payment_method: e.target.value })}>{['Bank transfer', 'Cheque', 'Cash', 'Card', 'Other'].map((m) => <option key={m}>{m}</option>)}</select></label>
-        {box('reference_number', 'Reference')}{box('bank_account', 'Bank account')}
+        {box('reference_number', 'Reference')}
+        <label className="block text-sm"><span className="mb-1 block text-slate-600">Received into (bank / cash account)</span>
+          <select className="input" value={f.bank_account} onChange={(e) => setF({ ...f, bank_account: e.target.value })}><option value="">Select account</option>
+            {bankAccounts.map((a) => <option key={a.id} value={a.id}>{a.account_name}{a.bank_name ? ` · ${a.bank_name}` : ''}{a.is_cash_on_hand ? ' (cash)' : ''}</option>)}</select></label>
       </div>
       {parts && parts.length === 0 && <p className="text-slate-500">This customer has no unpaid approved invoices.</p>}
       {parts && parts.length > 0 && (

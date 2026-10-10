@@ -18,4 +18,9 @@ async function transition(id:string,status:string,from:string,actorField:string,
 export async function preparePayrollRunAction(id:string){return transition(id,'prepared','draft','prepared_by','prepared');}
 export async function reviewPayrollRunAction(id:string,accept:boolean){return transition(id,accept?'reviewed':'draft','prepared','reviewed_by',accept?'reviewed':'returned');}
 export async function approvePayrollRunAction(id:string){return transition(id,'approved','reviewed','approved_by','approved');}
-export async function postPayrollRunAction(id:string){return transition(id,'posted','approved','posted_by','posted');}
+// Build 100: posting = releasing the net pay, from the chosen bank / cash account (the ledger books it)
+export async function postPayrollRunAction(id:string,bankAccountId?:string){if(!bankAccountId)throw appError('Choose the bank / cash account the net pay is paid from.');const p=await finance(),db=createClient();const {error:be}=await db.from('payroll_runs').update({paid_from_bank_account_id:bankAccountId}).eq('id',id).eq('status','approved');if(be)throw appError(be.message);return transition(id,'posted','approved','posted_by','posted');}
+
+// Build 100 — what is owed to SSS / PhilHealth / Pag-IBIG / BIR, and recording a remittance
+export async function payrollLiabilitiesAction(){await finance();const {data,error}=await createClient().rpc('payroll_liabilities');if(error)throw appError(error.message);return data}
+export async function payrollRemitAction(input:{code:string;amount:number;date:string;bank_account_id:string;reference?:string}){await finance();const {error}=await createClient().rpc('payroll_remit',{p:input});if(error)throw appError(error.message);revalidatePath('/finance/payroll');revalidatePath('/finance/accounting')}
