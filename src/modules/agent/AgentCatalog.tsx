@@ -403,6 +403,14 @@ function ProductSheet({ share, businessId, row, clientId, clientName, onClose, o
   const low = Math.min(Number(p.tier4 ?? p.list_price ?? 0), Number(p.client_price ?? p.tier4 ?? p.list_price ?? 0));
   const priceOk = mode !== 'custom' || (Number(price) >= low && Number(price) <= Number(p.list_price ?? 0));
   const photos = d?.photo_urls?.length ? d.photo_urls : row.photo_url ? [row.photo_url] : [];
+  // Build 102c: the photo on screen is the one shared
+  const [photoIdx, setPhotoIdx] = useState(0);
+  const onPhotos = (el: HTMLDivElement) => {
+    const mid = el.scrollLeft + el.clientWidth / 2;
+    let best = 0, gap = Infinity;
+    Array.from(el.children).forEach((c, i) => { const h = c as HTMLElement; const g = Math.abs(h.offsetLeft + h.offsetWidth / 2 - mid); if (g < gap) { gap = g; best = i; } });
+    setPhotoIdx(best);
+  };
   return (
     <Sheet title={p.item_name} onClose={onClose}
       actions={
@@ -424,9 +432,12 @@ function ProductSheet({ share, businessId, row, clientId, clientName, onClose, o
       }>
       <div className="space-y-4">
         {photos.length > 0 ? (
-          <div className="-mx-4 flex snap-x snap-mandatory gap-2 overflow-x-auto px-4">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            {photos.map((u) => <img key={u} src={u} alt={p.item_name} className="h-64 w-full flex-none snap-center rounded-lg border bg-slate-50 object-contain sm:w-auto sm:max-w-full" />)}
+          <div>
+            <div className="-mx-4 flex snap-x snap-mandatory gap-2 overflow-x-auto px-4" onScroll={(e) => onPhotos(e.currentTarget)}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              {photos.map((u, i) => <img key={u} src={u} alt={p.item_name} onClick={() => setPhotoIdx(i)} className={`h-64 w-full flex-none snap-center rounded-lg border bg-slate-50 object-contain sm:w-auto sm:max-w-full ${photos.length > 1 && i === photoIdx ? 'sm:ring-2 sm:ring-sky-500' : ''}`} />)}
+            </div>
+            {photos.length > 1 && <div className="mt-1.5 flex justify-center gap-1.5">{photos.map((u, i) => <span key={u} className={`h-1.5 w-1.5 rounded-full ${i === photoIdx ? 'bg-slate-700' : 'bg-slate-300'}`} />)}</div>}
           </div>
         ) : <div className="flex h-32 items-center justify-center rounded-lg border bg-slate-50 text-sm text-slate-400">No photo</div>}
         <div className="space-y-1">
@@ -453,7 +464,7 @@ function ProductSheet({ share, businessId, row, clientId, clientName, onClose, o
           // Build 102: the card shows the price picked below (the client's price, a tier, or "My price")
           const sp = mode === 'custom' ? (priceOk && price.trim() !== '' ? Number(price) : null) : mode === 'client' ? (p.client_price ?? p.list_price) : tierPrice(p, Number(mode));
           return <ShareImageButton brand={share.brand} agent={share.agent}
-            item={sp == null ? null : { item_code: p.item_code, item_name: p.item_name, unit: p.unit, specification: d?.specification ?? null, photo: photos[0] ?? null, price: Number(sp) }} />;
+            item={sp == null ? null : { item_code: p.item_code, item_name: p.item_name, unit: p.unit, specification: d?.specification ?? null, photo: photos[photoIdx] ?? photos[0] ?? null, price: Number(sp) }} />;
         })()}
         {d?.description && <p className="whitespace-pre-line text-sm text-slate-700">{d.description}</p>}
         {d?.specification && <div><div className="text-xs font-medium uppercase text-slate-500">Specification</div><p className="whitespace-pre-line text-sm text-slate-700">{d.specification}</p></div>}

@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import './globals.css';
 import { DialogProvider } from '@/core/ui/Dialog';
 import { BusyIndicator } from '@/core/ui/BusyIndicator';
+import { LaunchScreen } from '@/core/ui/LaunchScreen';
 
 export const metadata = {
   title: '5H13 Business Solutions',
@@ -16,8 +17,13 @@ export const viewport = { width: 'device-width', initialScale: 1, viewportFit: '
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        {/* Build 102c: only when opened as the installed app, once per opening — decided before the first paint */}
+        <script dangerouslySetInnerHTML={{ __html: "try{var s=window.matchMedia('(display-mode: standalone)').matches||navigator.standalone;if(s&&!sessionStorage.getItem('ibx-launched')){document.documentElement.classList.add('ibx-launching');sessionStorage.setItem('ibx-launched','1')}}catch(e){}" }} />
+      </head>
       <body className="font-sans text-slate-800">
+        <LaunchScreen />
         <BusyIndicator />
         <DialogProvider>{children}</DialogProvider>
       </body>

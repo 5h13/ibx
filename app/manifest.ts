@@ -11,7 +11,9 @@ export default function manifest(): MetadataRoute.Manifest {
     scope: '/',
     display: 'standalone',
     orientation: 'portrait',
-    background_color: '#ffffff',
+    // Build 102c: the phone's own start screen is the blue of the 5H13 launch screen (a phone draws it in one colour);
+    // the app then shows the full blue → red launch screen for a moment (LaunchScreen in app/layout.tsx)
+    background_color: '#0a37a6',
     theme_color: '#0f172a',
     icons: [
       { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
