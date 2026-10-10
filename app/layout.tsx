@@ -4,6 +4,7 @@ import './globals.css';
 import { DialogProvider } from '@/core/ui/Dialog';
 import { BusyIndicator } from '@/core/ui/BusyIndicator';
 import { LaunchScreen } from '@/core/ui/LaunchScreen';
+import { LAUNCH_CSS } from '@/core/ui/launchCss';
 
 export const metadata = {
   title: '5H13 Business Solutions',
@@ -21,6 +22,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       <head>
         {/* Build 102c: only when opened as the installed app, once per opening — decided before the first paint */}
         <script dangerouslySetInnerHTML={{ __html: "try{var s=window.matchMedia('(display-mode: standalone)').matches||navigator.standalone;if(s&&!sessionStorage.getItem('ibx-launched')){document.documentElement.classList.add('ibx-launching');sessionStorage.setItem('ibx-launched','1')}}catch(e){}" }} />
+        <style dangerouslySetInnerHTML={{ __html: LAUNCH_CSS }} />
       </head>
       <body className="font-sans text-slate-800">
         <LaunchScreen />

@@ -3,6 +3,7 @@
 // Shown only when the app is opened from the phone's home screen (once per opening), then fades out.
 import { useEffect } from 'react';
 
+
 export function LaunchScreen() {
   useEffect(() => {
     const html = document.documentElement;
@@ -13,15 +14,10 @@ export function LaunchScreen() {
   }, []);
   return (
     <>
-      <style dangerouslySetInnerHTML={{ __html: `
-.ibx-launch{display:none}
-html.ibx-launching .ibx-launch{display:flex;position:fixed;inset:0;z-index:9999;align-items:center;justify-content:center;
-  background:linear-gradient(180deg,#0a37a6 0%,#0a37a6 50%,#3d3f9a 60%,#7d4479 75%,#c21d36 100%);transition:opacity .4s ease}
-html.ibx-launch-out .ibx-launch{opacity:0;pointer-events:none}
-.ibx-launch img{width:120px;height:120px;border-radius:26px;box-shadow:0 10px 30px rgba(0,0,0,.25)}` }} />
       <div className="ibx-launch" aria-hidden="true">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/icons/icon-512.png" alt="" />
+        <div className="ibx-launch-name">5H13 Business Solutions</div>
       </div>
     </>
   );
