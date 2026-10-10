@@ -25,6 +25,7 @@ export default async function AgentCommissionPage(props: { searchParams?: Promis
           <button className="button-secondary">Show</button>
         </form>
         <CommissionStatement data={d} />
+        {Number(d.savings_balance) > 0 && <div className="rounded border bg-white p-3 text-sm">Your savings with the store: <b>₱{Number(d.savings_balance).toLocaleString(undefined, { minimumFractionDigits: 2 })}</b> (released by the Business Admin).</div>}
         <section className="space-y-2">
           <h3 className="font-semibold">Closed months</h3>
           <div className="overflow-x-auto rounded-xl border bg-white">

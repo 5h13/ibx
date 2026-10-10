@@ -11,13 +11,15 @@ export function CommissionStatement({ data: d }: { data: any }) {
       {d.skipped && <div className="rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">{d.note}</div>}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <div className="rounded-xl border bg-white p-3"><div className="text-xs text-slate-500">{monthLabel} · paid sales</div><div className="text-lg font-semibold">{peso(d.paid_sales)}</div>
-          {!d.closed && d.next_bracket != null && <><div className="mt-2 h-1.5 rounded bg-slate-100"><div className="h-1.5 rounded bg-emerald-500" style={{ width: `${pct}%` }} /></div>
+          {!d.closed && !d.online && d.next_bracket != null && <><div className="mt-2 h-1.5 rounded bg-slate-100"><div className="h-1.5 rounded bg-emerald-500" style={{ width: `${pct}%` }} /></div>
             <div className="mt-1 text-xs text-slate-500">{peso(toNext)} more to reach {peso(d.next_bracket)} ({pts(d.next_points)})</div></>}</div>
-        <div className="rounded-xl border bg-white p-3"><div className="text-xs text-slate-500">Tier this month</div><div className={`text-lg font-semibold ${Number(d.points) < 0 ? 'text-amber-700' : ''}`}>{pts(d.points)}</div>
+        <div className="rounded-xl border bg-white p-3"><div className="text-xs text-slate-500">{d.online ? 'Online agent' : 'Tier this month'}</div><div className={`text-lg font-semibold ${Number(d.points) < 0 ? 'text-amber-700' : ''}`}>{d.online ? `${Number(d.online_rate ?? 0)}% flat` : pts(d.points)}</div>
           <div className="text-xs text-slate-500">on each category&apos;s rate{d.max_rate ? `, max ${Number(d.max_rate)}%` : ''}</div></div>
         <div className="rounded-xl border bg-white p-3"><div className="text-xs text-slate-500">Earned</div><div className="text-lg font-semibold">{peso(d.earned)}</div>
           {d.waiting != null && !d.closed && <div className="text-xs text-slate-500">{peso(d.waiting)} more when unpaid DRs are paid</div>}</div>
-        <div className="rounded-xl border bg-white p-3"><div className="text-xs text-slate-500">Adjustments / carried in</div><div className="text-lg font-semibold">{peso(Number(d.adjustments) + Number(d.carried_in))}</div>
+        <div className="rounded-xl border bg-white p-3"><div className="text-xs text-slate-500">Adjustments / deductions</div><div className="text-lg font-semibold">{peso(Number(d.adjustments) + Number(d.carried_in) - Number(d.expense_deduction ?? 0) - Number(d.savings ?? 0))}</div>
+          {Number(d.expense_deduction ?? 0) > 0 && <div className="text-xs text-slate-500">your expenses this month: −{peso(d.expense_deduction)}</div>}
+          {Number(d.savings ?? 0) > 0 && <div className="text-xs text-slate-500">savings held for you: −{peso(d.savings)}</div>}
           {(d.adjustment_lines ?? []).map((a: any) => <div key={a.id} className="text-xs text-slate-500">{a.note}: {peso(a.amount)}</div>)}
           {Number(d.carried_in) !== 0 && <div className="text-xs text-slate-500">carried from last month: {peso(d.carried_in)}</div>}</div>
         <div className="rounded-xl border bg-white p-3"><div className="text-xs text-slate-500">{d.closed ? 'Payable (closed)' : 'Payable so far'}</div><div className="text-lg font-semibold">{peso(d.payable)}</div>

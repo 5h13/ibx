@@ -7,7 +7,7 @@ import { errorText } from '@/core/errors/appError';
 import { useDialog } from '@/core/ui/Dialog';
 import { ActionBar, PopupAction } from '@/core/ui/PopupAction';
 import { CommissionStatement } from '@/modules/agent/CommissionStatement';
-import { commissionAdjustAction, commissionAdjustDeleteAction, commissionCloseAction, commissionSettingsAction, commissionStatementAction } from './commissionActions';
+import { agentOnlineAction, commissionAdjustAction, commissionAdjustDeleteAction, commissionCloseAction, commissionSettingsAction, commissionStatementAction, savingsReleaseAction } from './commissionActions';
 
 const peso = (v: unknown) => `₱${Number(v ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
@@ -43,7 +43,8 @@ function AdjustForm({ agent, month, lines, onDone }: { agent: any; month: string
 
 function SettingsForm({ data, categories, onDone }: { data: any; categories: string[]; onDone: (m: string) => void }) {
   const s = data.settings ?? {};
-  const [f, setF] = useState({ default_rate: String(s.default_rate ?? 20), max_rate: String(s.max_rate ?? 30), start_date: String(s.start_date ?? '') });
+  const [f, setF] = useState({ default_rate: String(s.default_rate ?? 20), max_rate: String(s.max_rate ?? 30), start_date: String(s.start_date ?? ''),
+    online_rate: String(s.online_rate ?? 20), savings_rate: String(s.savings_rate ?? 0), deduct: !!s.deduct_agent_expenses });
   const [rates, setRates] = useState<{ category: string; rate: string }[]>((data.rates ?? []).map((r: any) => ({ category: r.category, rate: String(r.rate) })));
   const [brackets, setBrackets] = useState<{ min_paid: string; points: string }[]>((data.brackets ?? []).map((b: any) => ({ min_paid: String(b.min_paid), points: String(b.points) })));
   const [error, setError] = useState('');
@@ -54,6 +55,9 @@ function SettingsForm({ data, categories, onDone }: { data: any; categories: str
         <label className="block">Default rate (% of markup)<input className="input mt-1" type="number" step="any" value={f.default_rate} onChange={(e) => setF({ ...f, default_rate: e.target.value })} /></label>
         <label className="block">Maximum rate (%)<input className="input mt-1" type="number" step="any" value={f.max_rate} onChange={(e) => setF({ ...f, max_rate: e.target.value })} /></label>
         <label className="block">Commission starts on<input className="input mt-1" type="date" value={f.start_date} onChange={(e) => setF({ ...f, start_date: e.target.value })} /></label>
+        <label className="block">Online agents — flat rate (%)<input className="input mt-1" type="number" step="any" value={f.online_rate} onChange={(e) => setF({ ...f, online_rate: e.target.value })} /></label>
+        <label className="block">Savings held back (% of commission after expenses, direct agents)<input className="input mt-1" type="number" step="any" value={f.savings_rate} onChange={(e) => setF({ ...f, savings_rate: e.target.value })} /></label>
+        <label className="flex items-center gap-2 pt-6"><input type="checkbox" checked={f.deduct} onChange={(e) => setF({ ...f, deduct: e.target.checked })} /> Deduct the agent&apos;s approved expenses from his commission</label>
       </div>
       <div>
         <div className="mb-1 font-medium">Rate per category <span className="font-normal text-slate-500">(others use the default)</span></div>
@@ -84,11 +88,30 @@ function SettingsForm({ data, categories, onDone }: { data: any; categories: str
         setError('');
         try {
           await commissionSettingsAction({ default_rate: Number(f.default_rate), max_rate: Number(f.max_rate), start_date: f.start_date,
+            online_rate: Number(f.online_rate), savings_rate: Number(f.savings_rate), deduct_agent_expenses: f.deduct,
             rates: rates.filter((r) => r.category && r.rate !== '').map((r) => ({ category: r.category, rate: Number(r.rate) })),
             brackets: brackets.filter((b) => b.min_paid !== '' && b.points !== '').map((b) => ({ min_paid: Number(b.min_paid), points: Number(b.points) })) });
           onDone('Commission matrix saved.');
         } catch (e) { setError(errorText(e)); }
       })}>{pending ? 'Saving…' : 'Save matrix'}</button>
+    </div>
+  );
+}
+
+function ReleaseForm({ agent, onDone }: { agent: any; onDone: (m: string) => void }) {
+  const [amount, setAmount] = useState(String(agent.savings_balance));
+  const [note, setNote] = useState('');
+  const [error, setError] = useState('');
+  const [pending, start] = useTransition();
+  return (
+    <div className="space-y-3 text-sm">
+      <p>Saved so far: <b>{peso(agent.savings_balance)}</b>. Releasing makes an approved Commission expense for Finance to pay the agent.</p>
+      <div className="grid gap-2 sm:grid-cols-2">
+        <label className="block">Amount<input className="input mt-1" type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} /></label>
+        <label className="block">Note<input className="input mt-1" value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. year-end release" /></label>
+      </div>
+      {error && <p className="text-red-700">{error}</p>}
+      <button type="button" className="button" disabled={pending || !(Number(amount) > 0)} onClick={() => start(async () => { setError(''); try { await savingsReleaseAction(agent.agent_id, Number(amount), note); onDone(`${peso(amount)} of ${agent.agent}'s savings released.`); } catch (e) { setError(errorText(e)); } })}>Release</button>
     </div>
   );
 }
@@ -123,7 +146,7 @@ export function AgentCommissions({ data, month, thisMonth, canManage, categories
           <tbody>
             {agents.map((a) => (
               <tr key={a.agent_id} className="border-t align-top">
-                <td className="p-2 font-medium">{a.agent}<div className="text-xs font-normal text-slate-500">{a.agent_code}</div></td>
+                <td className="p-2 font-medium">{a.agent}<div className="text-xs font-normal text-slate-500">{a.agent_code}{a.online ? ' · online' : ''}{Number(a.savings_balance) > 0 ? ` · savings ${peso(a.savings_balance)}` : ''}</div></td>
                 <td className="p-2 text-right">{peso(a.paid_sales)}</td>
                 <td className="p-2 text-right">{Number(a.points) > 0 ? '+' : ''}{Number(a.points)} pts</td>
                 <td className="p-2 text-right">{peso(a.earned)}</td>
@@ -134,6 +157,8 @@ export function AgentCommissions({ data, month, thisMonth, canManage, categories
                   <PopupAction label="Statement" title={`${a.agent} — ${month}`} variant="secondary" wide><Statement agentId={a.agent_id} month={month} /></PopupAction>
                   {canManage && !a.closed && !a.skipped && <PopupAction label="Adjust" title={`Adjustments — ${a.agent} — ${month}`} variant="secondary">{(c) => <AdjustForm agent={a} month={month} lines={a.adjustment_lines ?? []} onDone={(m) => { setMessage(m); c(); router.refresh(); }} />}</PopupAction>}
                   {canManage && ended && !a.closed && !a.skipped && <button type="button" className="button" disabled={pending} onClick={() => close(a)}>Close month</button>}
+                  {canManage && <button type="button" className="button-secondary" disabled={pending} onClick={() => start(async () => { try { await agentOnlineAction(a.agent_id, !a.online); setMessage(`${a.agent} is now ${a.online ? 'a direct' : 'an online'} agent.`); router.refresh(); } catch (e) { setMessage(errorText(e)); } })}>{a.online ? 'Make direct' : 'Make online'}</button>}
+                  {canManage && Number(a.savings_balance) > 0 && <PopupAction label="Release savings" title={`Release savings — ${a.agent}`} variant="secondary">{(c) => <ReleaseForm agent={a} onDone={(m) => { setMessage(m); c(); router.refresh(); }} />}</PopupAction>}
                 </div></td>
               </tr>
             ))}
