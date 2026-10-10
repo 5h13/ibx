@@ -69,28 +69,24 @@ export function AgentExpenses({ businessId, expenses, categories, allowances }: 
         <span className="text-sm text-slate-600">This month: <b>{peso(thisMonth)}</b></span>
       </ActionBar>
       {message && <div className="rounded border bg-white p-2 text-sm">{message}</div>}
-      <div className="overflow-x-auto rounded-xl border bg-white">
-        <table className="w-full text-sm">
-          <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500"><tr><th className="p-2">No.</th><th className="p-2">Date</th><th className="p-2">Category</th><th className="p-2">For</th><th className="p-2 text-right">Amount</th><th className="p-2">Status</th><th className="p-2"></th></tr></thead>
-          <tbody>
-            {expenses.map((e) => { const [st, lbl] = STATUS_LABEL(e); return (
-              <tr key={e.id} className="border-t align-top">
-                <td className="p-2 font-mono text-xs">{e.expense_number}</td>
-                <td className="p-2 text-xs">{e.expense_date}</td>
-                <td className="p-2">{e.category}</td>
-                <td className="p-2">{e.description}{e.no_receipt && <div className="text-xs text-slate-500">no receipt</div>}</td>
-                <td className="p-2 text-right">{peso(e.amount)}{Number(e.over_allowance) > 0 && <div className="text-xs text-amber-700">{peso(e.over_allowance)} over allowance</div>}</td>
-                <td className="p-2"><Pill status={st as string} label={lbl as string | undefined} />{e.decision_note && <div className="mt-1 max-w-xs text-xs text-slate-600">{e.decision_note}</div>}</td>
-                <td className="p-2"><div className="flex gap-2 text-xs">
-                  {e.photo_path && <button type="button" className="text-blue-700 underline" disabled={pending} onClick={() => view(e.photo_path)}>Receipt</button>}
-                  {e.status === 'submitted' && <button type="button" className="text-red-700 underline" disabled={pending} onClick={() => cancel(e)}>Cancel</button>}
-                </div></td>
-              </tr>
-            ); })}
-            {!expenses.length && <tr><td colSpan={7} className="p-6 text-center text-slate-500">No expenses filed yet.</td></tr>}
-          </tbody>
-        </table>
+      <div className="grid gap-3 md:grid-cols-2">
+        {expenses.map((e) => { const [st, lbl] = STATUS_LABEL(e); return (
+          <div key={e.id} className="space-y-1 rounded-xl border bg-white p-3 text-sm">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0"><div className="font-medium leading-snug">{e.description}</div>
+                <div className="text-[11px] text-slate-500"><span className="font-mono">{e.expense_number}</span> · {e.expense_date} · {e.category}{e.no_receipt ? ' · no receipt' : ''}</div></div>
+              <div className="flex-none text-right"><div className="font-semibold">{peso(e.amount)}</div><Pill status={st as string} label={lbl as string | undefined} /></div>
+            </div>
+            {Number(e.over_allowance) > 0 && <div className="text-xs text-amber-700">{peso(e.over_allowance)} over allowance</div>}
+            {e.decision_note && <div className="text-xs text-slate-600">{e.decision_note}</div>}
+            {(e.photo_path || e.status === 'submitted') && <div className="flex gap-3 pt-1 text-xs">
+              {e.photo_path && <button type="button" className="text-blue-700 underline" disabled={pending} onClick={() => view(e.photo_path)}>Receipt</button>}
+              {e.status === 'submitted' && <button type="button" className="text-red-700 underline" disabled={pending} onClick={() => cancel(e)}>Cancel</button>}
+            </div>}
+          </div>
+        ); })}
       </div>
+      {!expenses.length && <div className="rounded-xl border bg-white p-6 text-center text-sm text-slate-500">No expenses filed in this store yet.</div>}
     </div>
   );
 }

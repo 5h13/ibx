@@ -7,7 +7,12 @@ import { BusyIndicator } from '@/core/ui/BusyIndicator';
 export const metadata = {
   title: '5H13 Business Solutions',
   description: '5H13 Business Solutions — multi-business operations for Pili-Aire, Aton Aire and Ishabella.',
+  // Build 95 — installable app (manifest from app/manifest.ts)
+  appleWebApp: { capable: true, title: '5H13', statusBarStyle: 'default' as const },
+  icons: { icon: '/icons/icon-192.png', apple: '/icons/apple-touch-icon.png' },
 };
+
+export const viewport = { width: 'device-width', initialScale: 1, viewportFit: 'cover' as const, themeColor: '#0f172a' };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (

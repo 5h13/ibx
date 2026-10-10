@@ -1,9 +1,8 @@
 // Build 91 — agent portal: expense reports (receipt photo required except meals).
-import { AuthedShell } from '@/core/layout/AuthedShell';
+import { AgentShell } from '@/modules/agent/AgentShell';
 import { createClient } from '@/core/auth/supabaseServer';
 import { createAdminClient } from '@/core/auth/supabaseAdmin';
 import { getAgentContext } from '@/modules/agent/agentContext';
-import { AgentHeader, AgentNotLinked } from '@/modules/agent/AgentHeader';
 import { AgentExpenses } from '@/modules/agent/AgentExpenses';
 
 export const dynamic = 'force-dynamic';
@@ -11,7 +10,7 @@ export const dynamic = 'force-dynamic';
 export default async function AgentExpensesPage(props: { searchParams?: Promise<{ b?: string }> }) {
   const sp = (await props.searchParams) ?? {};
   const ctx = await getAgentContext(sp.b);
-  if (!ctx.store || !ctx.agentId) return <AuthedShell profile={ctx.profile}><AgentNotLinked message={ctx.error ?? 'No store is open for agents yet.'} /></AuthedShell>;
+  if (!ctx.store || !ctx.agentId) return <AgentShell ctx={ctx} title="Expenses" />;
   const admin = createAdminClient();   // categories and this agent's own allowances (read after the agent check above)
   const [{ data: list, error }, { data: cats }, { data: allowances }] = await Promise.all([
     createClient().rpc('agent_expenses_list', { p_business: ctx.store.business_id }),
@@ -20,11 +19,10 @@ export default async function AgentExpensesPage(props: { searchParams?: Promise<
   ]);
   if (error) throw new Error(error.message);
   return (
-    <AuthedShell profile={ctx.profile}>
-      <div className="space-y-5">
-        <AgentHeader title="Expenses" hint="File your expenses for this store with a photo of the receipt (meals can be filed without one). The Business Admin approves them and Finance pays you back." stores={ctx.stores} store={ctx.store} />
+    <AgentShell ctx={ctx} title="Expenses" hint="File your expenses for this store with a receipt photo (meals can go without). The Business Admin approves; Finance pays you back.">
+      <div className="space-y-4">
         <AgentExpenses businessId={ctx.store.business_id} expenses={(list ?? []) as any[]} categories={(cats ?? []) as any[]} allowances={(allowances ?? []) as any[]} />
       </div>
-    </AuthedShell>
+    </AgentShell>
   );
 }

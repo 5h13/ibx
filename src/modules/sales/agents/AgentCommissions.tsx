@@ -7,7 +7,7 @@ import { errorText } from '@/core/errors/appError';
 import { useDialog } from '@/core/ui/Dialog';
 import { ActionBar, PopupAction } from '@/core/ui/PopupAction';
 import { CommissionStatement } from '@/modules/agent/CommissionStatement';
-import { agentOnlineAction, commissionAdjustAction, commissionAdjustDeleteAction, commissionCloseAction, commissionSettingsAction, commissionStatementAction, savingsReleaseAction } from './commissionActions';
+import { agentCommissionSetupAction, agentOnlineAction, commissionAdjustAction, commissionAdjustDeleteAction, commissionCloseAction, commissionSettingsAction, commissionStatementAction, savingsReleaseAction } from './commissionActions';
 
 const peso = (v: unknown) => `₱${Number(v ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
@@ -98,6 +98,47 @@ function SettingsForm({ data, categories, onDone }: { data: any; categories: str
   );
 }
 
+function PayForm({ agent, onDone }: { agent: any; onDone: (m: string) => void }) {
+  const [basis, setBasis] = useState<'markup' | 'gross'>(agent.basis === 'gross' ? 'gross' : 'markup');
+  const [rate, setRate] = useState(String(agent.commission_rate ?? 1));
+  const [less, setLess] = useState(!!agent.gross_less_expenses);
+  const [tiers, setTiers] = useState<{ min_sales: string; rate: string }[]>((agent.tiers ?? []).map((t: any) => ({ min_sales: String(t.min_sales), rate: String(t.rate) })));
+  const [error, setError] = useState('');
+  const [pending, start] = useTransition();
+  return (
+    <div className="space-y-3 text-sm">
+      <label className="flex items-center gap-2"><input type="radio" checked={basis === 'markup'} onChange={() => setBasis('markup')} /> <span><b>Freelance</b> — % of the markup, earned as clients pay (the store&apos;s commission matrix)</span></label>
+      <label className="flex items-center gap-2"><input type="radio" checked={basis === 'gross'} onChange={() => setBasis('gross')} /> <span><b>Store agent</b> — % of the month&apos;s gross sales (counted when sold)</span></label>
+      {basis === 'gross' && <div className="space-y-3 rounded border p-3">
+        <div className="grid gap-2 sm:grid-cols-2">
+          <label className="block">Rate (% of gross sales)<input className="input mt-1" type="number" step="any" value={rate} onChange={(e) => setRate(e.target.value)} /></label>
+          <label className="flex items-center gap-2 pt-6"><input type="checkbox" checked={less} onChange={(e) => setLess(e.target.checked)} /> Take his approved expenses off the sales first</label>
+        </div>
+        <div>
+          <div className="mb-1 font-medium">Tiered rates <span className="font-normal text-slate-500">(optional — by the month&apos;s gross sales; replaces the rate above)</span></div>
+          {tiers.map((t, i) => (
+            <div key={i} className="mb-1 flex items-center gap-2">
+              <span className="text-xs text-slate-500">from ₱</span><input className="input w-36" type="number" step="0.01" value={t.min_sales} onChange={(e) => setTiers(tiers.map((x, j) => (j === i ? { ...x, min_sales: e.target.value } : x)))} />
+              <input className="input w-24" type="number" step="any" value={t.rate} onChange={(e) => setTiers(tiers.map((x, j) => (j === i ? { ...x, rate: e.target.value } : x)))} /><span className="text-xs text-slate-500">%</span>
+              <button type="button" className="text-xs text-red-700" onClick={() => setTiers(tiers.filter((_, j) => j !== i))}>✕</button>
+            </div>
+          ))}
+          <button type="button" className="button-secondary text-xs" onClick={() => setTiers([...tiers, { min_sales: tiers.length ? '' : '0', rate: rate }])}>+ Tier</button>
+        </div>
+      </div>}
+      {error && <p className="text-red-700">{error}</p>}
+      <button type="button" className="button" disabled={pending} onClick={() => start(async () => {
+        setError('');
+        try {
+          await agentCommissionSetupAction(agent.agent_id, { commission_basis: basis, commission_rate: Number(rate || 0), gross_less_expenses: less,
+            tiers: basis === 'gross' ? tiers.filter((t) => t.min_sales !== '' && t.rate !== '').map((t) => ({ min_sales: Number(t.min_sales), rate: Number(t.rate) })) : [] });
+          onDone(`${agent.agent}: ${basis === 'gross' ? 'store agent on gross sales' : 'freelance on markup'}.`);
+        } catch (e) { setError(errorText(e)); }
+      })}>{pending ? 'Saving…' : 'Save'}</button>
+    </div>
+  );
+}
+
 function ReleaseForm({ agent, onDone }: { agent: any; onDone: (m: string) => void }) {
   const [amount, setAmount] = useState(String(agent.savings_balance));
   const [note, setNote] = useState('');
@@ -146,9 +187,9 @@ export function AgentCommissions({ data, month, thisMonth, canManage, categories
           <tbody>
             {agents.map((a) => (
               <tr key={a.agent_id} className="border-t align-top">
-                <td className="p-2 font-medium">{a.agent}<div className="text-xs font-normal text-slate-500">{a.agent_code}{a.online ? ' · online' : ''}{Number(a.savings_balance) > 0 ? ` · savings ${peso(a.savings_balance)}` : ''}</div></td>
+                <td className="p-2 font-medium">{a.agent}<div className="text-xs font-normal text-slate-500">{a.agent_code}{a.basis === 'gross' ? ` · store agent ${Number(a.rate ?? a.commission_rate)}% of gross` : ''}{a.online ? ' · online' : ''}{Number(a.savings_balance) > 0 ? ` · savings ${peso(a.savings_balance)}` : ''}</div></td>
                 <td className="p-2 text-right">{peso(a.paid_sales)}</td>
-                <td className="p-2 text-right">{Number(a.points) > 0 ? '+' : ''}{Number(a.points)} pts</td>
+                <td className="p-2 text-right">{a.basis === 'gross' ? `${Number(a.rate ?? 0)}%` : `${Number(a.points) > 0 ? '+' : ''}${Number(a.points)} pts`}</td>
                 <td className="p-2 text-right">{peso(a.earned)}</td>
                 <td className="p-2 text-right">{peso(Number(a.adjustments) + Number(a.carried_in))}</td>
                 <td className="p-2 text-right font-medium">{peso(a.payable)}</td>
@@ -157,7 +198,8 @@ export function AgentCommissions({ data, month, thisMonth, canManage, categories
                   <PopupAction label="Statement" title={`${a.agent} — ${month}`} variant="secondary" wide><Statement agentId={a.agent_id} month={month} /></PopupAction>
                   {canManage && !a.closed && !a.skipped && <PopupAction label="Adjust" title={`Adjustments — ${a.agent} — ${month}`} variant="secondary">{(c) => <AdjustForm agent={a} month={month} lines={a.adjustment_lines ?? []} onDone={(m) => { setMessage(m); c(); router.refresh(); }} />}</PopupAction>}
                   {canManage && ended && !a.closed && !a.skipped && <button type="button" className="button" disabled={pending} onClick={() => close(a)}>Close month</button>}
-                  {canManage && <button type="button" className="button-secondary" disabled={pending} onClick={() => start(async () => { try { await agentOnlineAction(a.agent_id, !a.online); setMessage(`${a.agent} is now ${a.online ? 'a direct' : 'an online'} agent.`); router.refresh(); } catch (e) { setMessage(errorText(e)); } })}>{a.online ? 'Make direct' : 'Make online'}</button>}
+                  {canManage && <PopupAction label="How paid" title={`How ${a.agent} is paid`} variant="secondary" wide>{(c) => <PayForm agent={a} onDone={(m) => { setMessage(m); c(); router.refresh(); }} />}</PopupAction>}
+                  {canManage && a.basis !== 'gross' && <button type="button" className="button-secondary" disabled={pending} onClick={() => start(async () => { try { await agentOnlineAction(a.agent_id, !a.online); setMessage(`${a.agent} is now ${a.online ? 'a direct' : 'an online'} agent.`); router.refresh(); } catch (e) { setMessage(errorText(e)); } })}>{a.online ? 'Make direct' : 'Make online'}</button>}
                   {canManage && Number(a.savings_balance) > 0 && <PopupAction label="Release savings" title={`Release savings — ${a.agent}`} variant="secondary">{(c) => <ReleaseForm agent={a} onDone={(m) => { setMessage(m); c(); router.refresh(); }} />}</PopupAction>}
                 </div></td>
               </tr>

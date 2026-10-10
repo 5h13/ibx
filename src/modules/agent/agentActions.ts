@@ -131,3 +131,20 @@ export async function saveQuoteAction(input: { business_id: string; customer_id:
   refresh();
   return id;
 }
+
+// Build 95 — one product for the agent app's detail view (photos as short-lived links).
+export type ProductDetail = {
+  item_id: string; item_code: string; item_name: string; category: string | null; generic_item: string | null; brand: string | null; description: string | null;
+  specification: string | null; unit: string; item_type: string; stock_type: string | null; photo_paths: string[]; photo_urls: string[];
+  on_hand: number | null; reserved: number | null; available: number | null; list_price: number | null; acquisition_cost: number | null; floor_price: number | null;
+  markup_percent: number | null; tier2: number | null; tier3: number | null; tier4: number | null; client_tier: number | null; client_price: number | null; client_discount: number | null;
+};
+export async function productDetailAction(input: { business_id: string; item_id: string; customer_id?: string | null }) {
+  const d = await rpc<ProductDetail>('agent_product_detail', { p_business: input.business_id, p_item: input.item_id, p_customer: input.customer_id || null });
+  let urls: string[] = [];
+  if (d.photo_paths?.length) {
+    const { data } = await createAdminClient().storage.from('catalog-photos').createSignedUrls(d.photo_paths, 3600);
+    urls = (data ?? []).map((x) => x.signedUrl).filter((x): x is string => !!x);
+  }
+  return { ...d, photo_urls: urls };
+}

@@ -57,16 +57,17 @@ function ReportForm({ clients, initialClient, onDone }: { clients: AgentClient[]
           <div className="flex flex-wrap items-end gap-2 text-xs"><label className="block">Amount received<input className="input mt-0.5 w-36" type="number" min="0" step="0.01" value={spread} onChange={(e) => setSpread(e.target.value)} /></label>
             <button type="button" className="button-secondary" onClick={fillOldest}>Apply to oldest DRs first</button><span className="pb-2 text-slate-500">or type the amount per DR below</span></div>
           <div className="overflow-x-auto rounded border">
-            <table className="w-full text-xs">
-              <thead className="bg-slate-50 text-left text-slate-500"><tr><th className="p-1">DR / SI</th><th className="p-1">Date</th><th className="p-1 text-right">Balance</th><th className="p-1 text-right">Already reported</th><th className="p-1 text-right">Paid now</th></tr></thead>
-              <tbody>{invoices.map((i) => (
-                <tr key={i.invoice_id} className="border-t"><td className="p-1"><div className="font-medium">{i.dr_numbers || i.invoice_number}</div><div className="text-slate-500">{[i.si_number && `SI ${i.si_number}`, i.invoice_number].filter(Boolean).join(' · ')}</div></td>
-                  <td className="p-1">{i.invoice_date}{i.due_date && i.due_date < manilaToday() && <div className="text-red-700">due {i.due_date}</div>}</td>
-                  <td className="p-1 text-right">{peso(i.balance_due)}</td><td className="p-1 text-right">{Number(i.reported) > 0 ? peso(i.reported) : '—'}</td>
-                  <td className="p-1 text-right"><input className="input w-28 text-right" type="number" min="0" max={left(i)} step="0.01" value={amounts[i.invoice_id] ?? ''} disabled={left(i) <= 0}
-                    onChange={(e) => setAmounts({ ...amounts, [i.invoice_id]: e.target.value })} /></td></tr>
-              ))}</tbody>
-            </table>
+            <div className="divide-y text-xs">{invoices.map((i) => (
+              <div key={i.invoice_id} className="flex items-center gap-2 p-2">
+                <div className="min-w-0 flex-1">
+                  <div className="font-medium">{i.dr_numbers || i.invoice_number}</div>
+                  <div className="text-slate-500">{[i.si_number && `SI ${i.si_number}`, i.invoice_date].filter(Boolean).join(' · ')}{i.due_date && i.due_date < manilaToday() && <span className="text-red-700"> · due {i.due_date}</span>}</div>
+                  <div className="text-slate-600">Balance {peso(i.balance_due)}{Number(i.reported) > 0 ? ` · reported ${peso(i.reported)}` : ''}</div>
+                </div>
+                <input className="input w-28 flex-none text-right" type="number" inputMode="decimal" min="0" max={left(i)} step="0.01" placeholder="Paid now" value={amounts[i.invoice_id] ?? ''} disabled={left(i) <= 0}
+                  onChange={(e) => setAmounts({ ...amounts, [i.invoice_id]: e.target.value })} aria-label="Paid now" />
+              </div>
+            ))}</div>
           </div>
           <div className="text-right font-semibold">Total {peso(total)}</div>
           <div className="grid gap-2 sm:grid-cols-3">
@@ -103,28 +104,25 @@ export function AgentPayments({ reports, clients, initialClient }: { reports: an
         </PopupAction>
       </ActionBar>
       {message && <div className="rounded border bg-white p-2 text-sm">{message}</div>}
-      <div className="overflow-x-auto rounded-xl border bg-white">
-        <table className="w-full text-sm">
-          <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500"><tr><th className="p-2">Report</th><th className="p-2">Client</th><th className="p-2">DRs paid</th><th className="p-2">How</th><th className="p-2 text-right">Amount</th><th className="p-2">Status</th><th className="p-2"></th></tr></thead>
-          <tbody>
-            {reports.map((r) => (
-              <tr key={r.id} className="border-t align-top">
-                <td className="p-2 font-mono text-xs">{r.report_number}<div className="font-sans text-slate-500">paid {r.paid_on}</div></td>
-                <td className="p-2">{r.customer}</td>
-                <td className="p-2 text-xs">{(r.allocations ?? []).map((a: any, i: number) => <div key={i}>{a.dr_numbers || a.invoice_number}: {peso(a.amount)}</div>)}</td>
-                <td className="p-2 text-xs">{METHODS.find((m) => m[0] === r.method)?.[1] ?? r.method}{r.reference ? ` · ${r.reference}` : ''}</td>
-                <td className="p-2 text-right">{peso(r.amount)}</td>
-                <td className="p-2"><Pill status={r.status} label={r.status === 'pending' ? 'waiting for cashier' : undefined} />{r.decision_note && <div className="mt-1 max-w-xs text-xs text-red-700">{r.decision_note}</div>}</td>
-                <td className="p-2"><div className="flex gap-2 text-xs">
-                  {r.photo_path && <button type="button" className="text-blue-700 underline" disabled={pending} onClick={() => view(r.photo_path)}>Photo</button>}
-                  {r.status === 'pending' && <button type="button" className="text-red-700 underline" disabled={pending} onClick={() => cancel(r)}>Cancel</button>}
-                </div></td>
-              </tr>
-            ))}
-            {!reports.length && <tr><td colSpan={7} className="p-6 text-center text-slate-500">No payments reported yet.</td></tr>}
-          </tbody>
-        </table>
+      <div className="grid gap-3 md:grid-cols-2">
+        {reports.map((r) => (
+          <div key={r.id} className="space-y-1 rounded-xl border bg-white p-3 text-sm">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0"><div className="font-medium leading-snug">{r.customer}</div>
+                <div className="font-mono text-[11px] text-slate-500">{r.report_number} · paid {r.paid_on}</div></div>
+              <div className="flex-none text-right"><div className="font-semibold">{peso(r.amount)}</div><Pill status={r.status} label={r.status === 'pending' ? 'waiting for cashier' : undefined} /></div>
+            </div>
+            <div className="text-xs text-slate-600">{METHODS.find((m) => m[0] === r.method)?.[1] ?? r.method}{r.reference ? ` · ${r.reference}` : ''}</div>
+            <div className="text-xs text-slate-600">{(r.allocations ?? []).map((a: any, i: number) => <span key={i} className="mr-2 inline-block">{a.dr_numbers || a.invoice_number}: {peso(a.amount)}</span>)}</div>
+            {r.decision_note && <div className="text-xs text-red-700">{r.decision_note}</div>}
+            {(r.photo_path || r.status === 'pending') && <div className="flex gap-3 pt-1 text-xs">
+              {r.photo_path && <button type="button" className="text-blue-700 underline" disabled={pending} onClick={() => view(r.photo_path)}>Photo</button>}
+              {r.status === 'pending' && <button type="button" className="text-red-700 underline" disabled={pending} onClick={() => cancel(r)}>Cancel</button>}
+            </div>}
+          </div>
+        ))}
       </div>
+      {!reports.length && <div className="rounded-xl border bg-white p-6 text-center text-sm text-slate-500">No payments reported in this store yet.</div>}
     </div>
   );
 }

@@ -319,6 +319,14 @@ export async function agentOrderReturnAction(orderId: string, note: string) {
   await rpc('storefront_agent_order_return', { p_order: orderId, p_note: note });
   refresh();
 }
+// Build 95 — agent order with no stock → sales order; "order from supplier" lines go to Procurement (PR → PO) once the Sales approver approves.
+export async function agentOrderToSalesOrderAction(orderId: string, lines: { item_id: string; fulfilment: 'stock' | 'source' }[], note?: string) {
+  await needFn('sales.counter', 'counter sales');
+  const r = await rpc<{ id: string; order_number: string; lines_to_source: number }>('storefront_agent_order_to_so', { p_order: orderId, p_lines: lines, p_note: note?.trim() || null });
+  refresh();
+  revalidatePath('/sales/revenue');
+  return r;
+}
 export async function confirmAgentPaymentAction(reportId: string, payment: PaymentInput) {
   await needFn('sales.ar_collect', 'receiving AR payments');
   const r = await rpc<{ report_number: string; amount: number; parts: number }>('storefront_confirm_agent_payment', { p_report: reportId, p_payment: payment });

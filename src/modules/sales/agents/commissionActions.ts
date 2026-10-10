@@ -59,3 +59,9 @@ export async function boCloseAction(month: string) {
   refreshBo();
   return r;
 }
+
+// Build 94 — store agents on % of gross sales (fixed rate or tiers)
+export async function agentCommissionSetupAction(agentId: string, input: { commission_basis: 'markup' | 'gross'; commission_rate: number; gross_less_expenses: boolean; tiers: { min_sales: number; rate: number }[] }) {
+  await rpc('sales_agent_commission_setup', { p_agent: agentId, p: input });
+  refresh(); revalidatePath('/sales/agents');
+}
