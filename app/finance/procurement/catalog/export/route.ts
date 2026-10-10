@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { hasAnyFunction, hasFunction } from '@/core/auth/functions';
 import { createClient } from '@/core/auth/supabaseServer';
 // Build 52: session-scoped client, so business-isolation RLS applies.
 // Build 60: the user's catalog column layout (catalogColumns.ts), read from
@@ -19,7 +20,7 @@ export async function GET(req: Request) {
   const filters = readCatalogFilters(url.searchParams);
   const xlsx = url.searchParams.get('format') === 'xlsx';
   const p = await getSessionProfile();
-  if (!p?.user.is_active || (!isAdminTier(p) && p.user.section_code !== 'finance' && !p.access.some((a: any) => a.section_code === 'finance'))) return new NextResponse('Forbidden', { status: 403 });
+  if (!p?.user.is_active || !hasFunction(p, 'catalog.edit') || (!isAdminTier(p) && p.user.section_code !== 'finance' && !p.access.some((a: any) => a.section_code === 'finance'))) return new NextResponse('Forbidden', { status: 403 });
   const db = createClient();
   const rows: unknown[][] = [[...CATALOG_COLUMNS, ...CATALOG_UPLOAD_EXTRA, 'Type', 'Status']];
   // money: text with 2 decimals in the CSV, a numeric cell in the workbook

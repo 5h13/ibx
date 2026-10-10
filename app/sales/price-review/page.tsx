@@ -2,6 +2,7 @@
 // approver and Finance review and adjust this store's prices on one screen —
 // markup or store price per item, add-on per category — with every change
 // logged and no approval step. Data: price_review_* functions (20261210).
+import { hasAnyFunction } from '@/core/auth/functions';
 import { redirect } from 'next/navigation';
 import { getSessionProfile } from '@/core/auth/getSessionProfile';
 import { createClient } from '@/core/auth/supabaseServer';
@@ -18,7 +19,7 @@ export default async function PriceReviewPage(props: { searchParams?: Promise<SP
   if (!profile) redirect('/login');
   const db = createClient();
   const { data: allowed } = await db.rpc('can_review_prices');
-  if (allowed !== true) {
+  if (allowed !== true || !hasAnyFunction(profile, ['catalog.edit', 'sales.price_review'])) {   // Build 90: function limits too
     return <AuthedShell profile={profile}><div className="rounded border bg-white p-6 text-slate-600">The price review is for the Sales approver, Finance and Business Admins.</div></AuthedShell>;
   }
   const sp = searchParams ?? {};

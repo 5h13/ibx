@@ -1,4 +1,5 @@
 'use server';
+import {hasFunction} from '@/core/auth/functions';
 import { appError } from '@/core/errors/appError';
 import { revalidatePath } from 'next/cache';
 import { createClient } from '@/core/auth/supabaseServer';
@@ -9,7 +10,7 @@ import { notifyWorkflowRole } from '@/shared/notifications/service';
 function biz(p:{user:{business_id:string|null}}):{business_id?:string}{return p.user.business_id?{business_id:p.user.business_id}:{};}
 const req=(fd:FormData,k:string)=>{const v=String(fd.get(k)??'').trim();if(!v)throw appError(`${k.replaceAll('_',' ')} is required.`);return v};
 const opt=(fd:FormData,k:string)=>{const v=String(fd.get(k)??'').trim();return v||null};
-async function sales(){const p=await getSessionProfile();if(!p?.user.is_active)throw appError('Authentication required.');if(!isAdminTier(p)&&p.user.role!=='sales'&&p.user.section_code!=='sales'&&!p.access.some(a=>a.section_code==='sales'))throw appError('Sales access required.');return p}
+async function sales(){const p=await getSessionProfile();if(!p?.user.is_active)throw appError('Authentication required.');if(!isAdminTier(p)&&p.user.role!=='sales'&&p.user.section_code!=='sales'&&!p.access.some(a=>a.section_code==='sales'))throw appError('Sales access required.');/* Build 90 */if(!hasFunction(p,'sales.quotes'))throw appError('Your access does not include this function.');return p}
 async function audit(actor:string,id:string,table:string,action:string,detail:Record<string,unknown>={}){const {error}=await createClient().from('audit_log').insert({actor_id:actor,entity_table:table,entity_id:id,action,detail});if(error)throw appError(error.message)}
 export async function createOpportunityAction(fd:FormData){const p=await sales(),db=createClient();const {data,error}=await db.from('sales_opportunities').insert({...biz(p),opportunity_number:req(fd,'opportunity_number'),lead_id:opt(fd,'lead_id'),customer_id:opt(fd,'customer_id'),opportunity_name:req(fd,'opportunity_name'),owner_id:opt(fd,'owner_id')||p.user.id,expected_close_date:opt(fd,'expected_close_date'),estimated_value:Number(fd.get('estimated_value')||0),probability:Number(fd.get('probability')||0),source:opt(fd,'source'),notes:opt(fd,'notes'),created_by:p.user.id}).select('id').single();if(error||!data)throw appError(error?.message||'Unable to create opportunity.');await audit(p.user.id,data.id,'sales_opportunities','opportunity_created');revalidatePath('/sales/revenue')}
 export async function updateOpportunityStatusAction(id:string,status:string){const p=await sales(),db=createClient();const {error}=await db.from('sales_opportunities').update({status,updated_at:new Date().toISOString()}).eq('id',id);if(error)throw appError(error.message);await audit(p.user.id,id,'sales_opportunities','status_changed',{status});revalidatePath('/sales/revenue')}

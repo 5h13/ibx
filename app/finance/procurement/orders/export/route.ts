@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { hasAnyFunction, hasFunction } from '@/core/auth/functions';
 import { createClient } from '@/core/auth/supabaseServer';
 import { createAdminClient } from '@/core/auth/supabaseAdmin';
 import { selectByScopedIds } from '@/core/auth/businessScope';
@@ -13,7 +14,7 @@ function csv(v: unknown) { const s = String(v ?? ''); return /[",\n\r]/.test(s) 
 
 export async function GET() {
   const p = await getSessionProfile();
-  if (!p?.user.is_active || (!isAdminTier(p) && p.user.section_code !== 'finance' && !p.access.some((a: any) => a.section_code === 'finance'))) {
+  if (!p?.user.is_active || !hasFunction(p, 'procurement.po') || (!isAdminTier(p) && p.user.section_code !== 'finance' && !p.access.some((a: any) => a.section_code === 'finance'))) {
     return new NextResponse('Forbidden', { status: 403 });
   }
   // Build 52 (CC-01-class fix): session-scoped client — previously service

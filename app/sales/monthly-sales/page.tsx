@@ -9,7 +9,7 @@ import { ActionBar, PopupAction } from '@/core/ui/PopupAction';
 import { CounterSalesMonth } from '@/modules/sales/storefront/CounterSalesMonth';
 
 export default async function MonthlySalesPage() {
-  const profile = await requireSection('sales');
+  const profile = await requireSection('sales', 'sales.reports');
   const monthId = await getCurrentMonthId(profile.user.business_id);
   const rows = await listSalesEntries(monthId);
   const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }));

@@ -13,6 +13,7 @@ import { createAdminClient } from '@/core/auth/supabaseAdmin';
 import { createClient } from '@/core/auth/supabaseServer';
 import { getSessionProfile } from '@/core/auth/getSessionProfile';
 import { isAdminTier, type SessionProfile } from '@/core/auth/types';
+import { hasFunction } from '@/core/auth/functions';
 import { CATALOG_PHOTO_BUCKET, normalizeCatalogHeader } from './catalogColumns';
 import { looksLikeXlsx, readXlsxRows } from './xlsxReader';
 
@@ -33,10 +34,12 @@ function percent(v: unknown, label: string) {
   return n;
 }
 
-async function financeUser(): Promise<SessionProfile> {
+async function financeUser(fn: string = 'catalog.edit'): Promise<SessionProfile> {
   const p = await getSessionProfile();
   if (!p?.user.is_active) throw appError('Authentication required.');
   if (!isAdminTier(p) && p.user.section_code !== 'finance' && !p.access.some((a) => a.section_code === 'finance')) throw appError('Finance access required.');
+  // Build 90: function limits (default: catalog items & prices)
+  if (!hasFunction(p, fn)) throw appError('Your access does not include this catalog function.');
   return p;
 }
 async function audit(actor: string, id: string, table: string, action: string, detail: Record<string, unknown>) {
@@ -75,7 +78,7 @@ async function saveSupplierItemCode(db: Db, p: SessionProfile, itemId: string, s
 }
 
 const PHOTO_SLOTS = [['photo', 'photo_path'], ['photo_2', 'photo_path_2'], ['photo_3', 'photo_path_3']] as const;
-async function savePhoto(itemId: string, file: FormDataEntryValue | null, oldPath: string | null, column: 'photo_path' | 'photo_path_2' | 'photo_path_3' = 'photo_path') {
+async function savePhoto(itemId: string, file: FormDataEntryValue | null, oldPath: string | null, column: 'photo_path' | 'photo_path_2' | 'photo_path_3' = 'photo_path', db: Db = createClient()) {
   if (!(file instanceof File) || file.size === 0) return null;
   if (file.size > 5 * 1024 * 1024) throw appError('Product photos must be 5 MB or smaller.');
   if (file.type && !['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) throw appError('Product photo must be JPG, PNG or WebP.');
@@ -84,7 +87,7 @@ async function savePhoto(itemId: string, file: FormDataEntryValue | null, oldPat
   const path = `${itemId}/${crypto.randomUUID()}-${safe}`;
   const { error } = await admin.storage.from(CATALOG_PHOTO_BUCKET).upload(path, file, { contentType: file.type || 'image/jpeg', upsert: false });
   if (error) throw appError(error.message);
-  const { error: ue } = await createClient().from('finance_procurement_items').update({ [column]: path, updated_at: new Date().toISOString() }).eq('id', itemId);
+  const { error: ue } = await db.from('finance_procurement_items').update({ [column]: path, updated_at: new Date().toISOString() }).eq('id', itemId);
   if (ue) { await admin.storage.from(CATALOG_PHOTO_BUCKET).remove([path]); throw appError(ue.message); }
   if (oldPath) await admin.storage.from(CATALOG_PHOTO_BUCKET).remove([oldPath]);
   return path;
@@ -570,8 +573,11 @@ export async function importCatalogCsvAction(fd: FormData) {
 // Build 79a: photos named by Item Code (PA-0123.jpg, PA-0123_2.jpg …) are
 // matched to their items, then sent one file per call so no request is large.
 export type PhotoMatch = { item_code: string; id: string; item_name: string; active: boolean; photo_path: string | null; photo_path_2: string | null; photo_path_3: string | null };
+// Build 90: the photo actions need only "Catalog photos". After that check
+// they read / write through the service role, so a photos-only user needs no
+// other catalog rights (and never sees costs or prices).
 export async function matchPhotoCodesAction(codes: string[]): Promise<PhotoMatch[]> {
-  await financeUser(); const db = createClient();
+  await financeUser('catalog.photos'); const db = createAdminClient() as unknown as Db;
   const wanted = Array.from(new Set(codes.map((c) => String(c).trim().toUpperCase()).filter(Boolean))).slice(0, 5000);
   const out: PhotoMatch[] = [];
   for (const part of chunk(wanted, 300)) {
@@ -583,7 +589,7 @@ export async function matchPhotoCodesAction(codes: string[]): Promise<PhotoMatch
 }
 
 export async function uploadCatalogPhotoAction(fd: FormData): Promise<'saved' | 'skipped'> {
-  const p = await financeUser(); const db = createClient();
+  const p = await financeUser('catalog.photos'); const db = createAdminClient() as unknown as Db;
   const id = need(fd, 'item_id', 'Item');
   const slot = Number(fd.get('slot'));
   if (![1, 2, 3].includes(slot)) throw appError('Photo slot must be 1, 2 or 3.');
@@ -592,14 +598,33 @@ export async function uploadCatalogPhotoAction(fd: FormData): Promise<'saved' | 
   if (error || !current) throw appError(error?.message || 'Catalog item not found.');
   const old = (current as any)[column] as string | null;
   if (old && String(fd.get('replace') || '') !== 'true') return 'skipped';
-  const path = await savePhoto(id, fd.get('file'), old, column);
+  const path = await savePhoto(id, fd.get('file'), old, column, db);
   if (!path) throw appError('The photo file is empty.');
-  await audit(p.user.id, id, 'finance_procurement_items', 'catalog_photo_uploaded', { item_code: (current as any).item_code, slot });
+  await db.from('audit_log').insert({ actor_id: p.user.id, entity_table: 'finance_procurement_items', entity_id: id, action: 'catalog_photo_uploaded', detail: { item_code: (current as any).item_code, slot } });
   return 'saved';
 }
 
 export async function photoUploadDoneAction() {
-  await financeUser();
+  await financeUser('catalog.photos');
   revalidatePath('/finance/procurement');
+  revalidatePath('/finance/catalog-photos');
+  revalidatePath('/catalog');
+}
+
+/** Build 90: remove one photo (Catalog photos screen). */
+export async function removeCatalogPhotoAction(itemId: string, slot: number) {
+  const p = await financeUser('catalog.photos');
+  if (![1, 2, 3].includes(slot)) throw appError('Photo slot must be 1, 2 or 3.');
+  const column = PHOTO_SLOTS[slot - 1][1];
+  const admin = createAdminClient();
+  const { data: current, error } = await admin.from('finance_procurement_items').select(`id,item_code,${column}`).eq('id', itemId).single();
+  if (error || !current) throw appError(error?.message || 'Catalog item not found.');
+  const old = (current as any)[column] as string | null;
+  if (!old) return;
+  const { error: ue } = await admin.from('finance_procurement_items').update({ [column]: null, updated_at: new Date().toISOString() }).eq('id', itemId);
+  if (ue) throw appError(ue.message);
+  await admin.storage.from(CATALOG_PHOTO_BUCKET).remove([old]);
+  await admin.from('audit_log').insert({ actor_id: p.user.id, entity_table: 'finance_procurement_items', entity_id: itemId, action: 'catalog_photo_removed', detail: { item_code: (current as any).item_code, slot } });
+  revalidatePath('/finance/catalog-photos');
   revalidatePath('/catalog');
 }

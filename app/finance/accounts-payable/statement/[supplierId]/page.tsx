@@ -18,7 +18,7 @@ const isDate = (v?: string) => (v && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null);
 export default async function SupplierStatementPage(props: { params: Promise<{ supplierId: string }>; searchParams?: Promise<{ from?: string; to?: string }> }) {
   const params = await props.params;
   const sp = (await props.searchParams) ?? {};
-  await requireAnySection(['finance']);
+  await requireAnySection(['finance'], ['finance.ap']);
   const db = createClient();
   const profile = await getSessionProfile();
   const [{ data: st, error }, { data: biz }] = await Promise.all([

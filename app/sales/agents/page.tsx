@@ -10,7 +10,7 @@ const isDate = (v?: string) => (v && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null);
 
 export default async function AgentsPage(props: { searchParams?: Promise<{ from?: string; to?: string }> }) {
   const sp = (await props.searchParams) ?? {};
-  const profile = await requireAnySection(['sales', 'finance']);
+  const profile = await requireAnySection(['sales', 'finance'], ['sales.agents', 'finance.ar']);
   const today = new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10);
   const to = isDate(sp.to) ?? today;
   const from = isDate(sp.from) ?? `${to.slice(0, 7)}-01`;

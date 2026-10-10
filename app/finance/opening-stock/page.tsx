@@ -13,7 +13,7 @@ const peso = (v: unknown) => `₱${Number(v ?? 0).toLocaleString(undefined, { mi
 const qty = (v: unknown) => Number(v ?? 0).toLocaleString(undefined, { maximumFractionDigits: 3 });
 
 export default async function OpeningStockPage() {
-  const profile = await requireSection('finance');
+  const profile = await requireSection('finance', 'finance.accounting');
   const db = createClient();
   const [{ data: counts, error }, { data: locs }] = await Promise.all([
     db.from('inventory_opening_counts').select('*,prepared:users!inventory_opening_counts_prepared_by_fkey(full_name),decided:users!inventory_opening_counts_decided_by_fkey(full_name)').order('prepared_at', { ascending: false }).limit(50),

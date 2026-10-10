@@ -35,7 +35,7 @@ export const getSessionProfile = cache(async (): Promise<SessionProfile | null> 
 
   // These two queries don't depend on each other, so fire them together
   // instead of waiting on one before starting the next.
-  const [{ data: userRow, error: userErr }, { data: accessRows }] = await Promise.all([
+  const [{ data: userRow, error: userErr }, { data: accessRows }, { data: fnRows }] = await Promise.all([
     supabase
       .from('users')
       .select('id, email, full_name, role, section_id, is_active, business_id, must_change_password, sections(code)')
@@ -45,6 +45,8 @@ export const getSessionProfile = cache(async (): Promise<SessionProfile | null> 
       .from('user_access')
       .select('section_id, workflow_role, sections(code)')
       .eq('user_id', authUser.id),
+    // Build 90 — function limits (table missing before the migration: treated as none)
+    supabase.from('user_functions').select('function_code').eq('user_id', authUser.id),
   ]);
 
   if (userErr || !userRow || !userRow.is_active) return null;
@@ -65,6 +67,7 @@ export const getSessionProfile = cache(async (): Promise<SessionProfile | null> 
   return {
     user: { ...userRow, business_id: effectiveBusinessId, section_code: (userRow as any).sections?.code ?? null },
     access: (accessRows ?? []).map((row: any) => ({ ...row, section_code: row.sections?.code ?? null })),
+    functions: (fnRows ?? []).map((r: any) => String(r.function_code)),
     audit,
   };
 });

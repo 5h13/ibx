@@ -15,6 +15,7 @@
 import { redirect } from 'next/navigation';
 import { getSessionProfile } from './getSessionProfile';
 import { isAdminTier, type SectionCode, type SessionProfile } from './types';
+import { hasAnyFunction } from './functions';
 
 export function hasSectionAccess(profile: SessionProfile | null, section: SectionCode): boolean {
   if (!profile) return false;
@@ -22,10 +23,21 @@ export function hasSectionAccess(profile: SessionProfile | null, section: Sectio
   return profile.user.section_code === section || profile.user.role === section || profile.access.some((a) => a.section_code === section);
 }
 
-export async function requireSection(section: SectionCode): Promise<SessionProfile> {
+/** Build 90: pass function code(s) to also require one of those functions
+ * (a user limited to some functions of the section). */
+export async function requireSection(section: SectionCode, fn?: string | string[]): Promise<SessionProfile> {
   const profile = await getSessionProfile();
   if (!profile) redirect('/login');
   if (!hasSectionAccess(profile, section)) redirect('/dashboard');
+  if (fn && !hasAnyFunction(profile, Array.isArray(fn) ? fn : [fn])) redirect('/dashboard');
+  return profile as SessionProfile;
+}
+
+/** Build 90: any one of these functions (whatever section they belong to). */
+export async function requireFunction(fn: string | string[]): Promise<SessionProfile> {
+  const profile = await getSessionProfile();
+  if (!profile) redirect('/login');
+  if (!hasAnyFunction(profile, Array.isArray(fn) ? fn : [fn])) redirect('/dashboard');
   return profile as SessionProfile;
 }
 

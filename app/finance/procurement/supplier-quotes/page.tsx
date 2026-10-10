@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation';
+import { hasAnyFunction, hasFunction } from '@/core/auth/functions';
 import { getSessionProfile } from '@/core/auth/getSessionProfile';
 import { createClient } from '@/core/auth/supabaseServer';
 import { AuthedShell } from '@/core/layout/AuthedShell';
@@ -19,6 +20,7 @@ export default async function SupplierQuotesPage() {
   const profile = await getSessionProfile();
   if (!profile) redirect('/login');
   if (!canViewSupplierQuotes(profile)) redirect('/dashboard');
+  if (!hasAnyFunction(profile, ['procurement.suppliers', 'sales.price_review'])) redirect('/dashboard');   // Build 90
   const db = createClient();
   const [{ data: quotes, error: qe }, { data: suppliers, error: se }] = await Promise.all([
     db.from('finance_supplier_quote_log')

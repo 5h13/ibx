@@ -5,6 +5,7 @@
 import { redirect } from 'next/navigation';
 import { getSessionProfile } from '@/core/auth/getSessionProfile';
 import { hasSectionAccess } from '@/core/auth/requireSection';
+import { hasFunction } from '@/core/auth/functions';
 import { createClient } from '@/core/auth/supabaseServer';
 import { AuthedShell } from '@/core/layout/AuthedShell';
 import { StorefrontManagement } from '@/modules/sales/storefront/StorefrontManagement';
@@ -19,8 +20,10 @@ export default async function StorefrontPage(
   const searchParams = await props.searchParams;
   const profile = await getSessionProfile();
   if (!profile) redirect('/login');
-  const sales = hasSectionAccess(profile, 'sales');
-  if (!sales && !hasSectionAccess(profile, 'finance')) redirect('/dashboard');
+  // Build 90: the counter needs one of the storefront functions; Finance AR gets the view
+  const can = { counter: hasFunction(profile, 'sales.counter'), ar: hasFunction(profile, 'sales.ar_collect'), closing: hasFunction(profile, 'sales.closing') };
+  const sales = hasSectionAccess(profile, 'sales') && (can.counter || can.ar || can.closing);
+  if (!sales && !(hasSectionAccess(profile, 'finance') && hasFunction(profile, 'finance.ar'))) redirect('/dashboard');
   const db = createClient();
   const { data: ctx, error: ce } = await db.rpc(sales ? 'storefront_context' : 'storefront_view_context');
   if (ce || !ctx) {
@@ -92,7 +95,7 @@ export default async function StorefrontPage(
         customers={(customers ?? []) as any} agents={((agents ?? []) as any[]).filter((a) => a.kind === 'freelance' || a.business_id === (ctx as any).business_id)} locations={locations ?? []} initialTab={searchParams?.tab}
         dayPayments={dayPayments ?? []} returns={returns ?? []} closings={closingsWithJournal} today={manilaToday()}
         dayCash={dayCash ?? []} me={profile.user.id} cancelRequests={cancelRequests ?? []} returnItems={returnItems ?? []}
-        checks={checks ?? []} orders={(orders ?? []) as any} search={search} />
+        checks={checks ?? []} orders={(orders ?? []) as any} search={search} can={can} />
     </AuthedShell>
   );
 }

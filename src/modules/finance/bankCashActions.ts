@@ -1,4 +1,5 @@
 'use server';
+import {hasFunction} from '@/core/auth/functions';
 import { appError } from '@/core/errors/appError';
 import { revalidatePath } from 'next/cache';
 import { createClient } from '@/core/auth/supabaseServer';
@@ -7,7 +8,7 @@ import { isAdminTier } from '@/core/auth/types';
 function biz(p:{user:{business_id:string|null}}):{business_id?:string}{return p.user.business_id?{business_id:p.user.business_id}:{};}
 function req(fd:FormData,k:string){const v=String(fd.get(k)??'').trim();if(!v)throw appError(`${k.replaceAll('_',' ')} is required.`);return v}
 function opt(fd:FormData,k:string){const v=String(fd.get(k)??'').trim();return v||null}
-async function finance(){const p=await getSessionProfile();if(!p?.user.is_active)throw appError('Authentication required.');if(!isAdminTier(p)&&p.user.role!=='finance'&&!p.access.some(a=>a.section_code==='finance'))throw appError('Finance access required.');return p}
+async function finance(){const p=await getSessionProfile();if(!p?.user.is_active)throw appError('Authentication required.');if(!isAdminTier(p)&&p.user.role!=='finance'&&!p.access.some(a=>a.section_code==='finance'))throw appError('Finance access required.');/* Build 90 */if(!hasFunction(p,'finance.cash'))throw appError('Your access does not include this function.');return p}
 async function audit(actor:string,id:string,table:string,action:string,detail:Record<string,unknown>){const {error}=await createClient().from('audit_log').insert({actor_id:actor,entity_table:table,entity_id:id,action,detail});if(error)throw appError(error.message)}
 export async function createBankAccountAction(fd:FormData){const p=await finance(),db=createClient();const {data,error}=await db.from('finance_bank_accounts').insert({...biz(p),account_code:req(fd,'account_code'),account_name:req(fd,'account_name'),bank_name:opt(fd,'bank_name'),account_number_masked:opt(fd,'account_number_masked'),account_type:req(fd,'account_type'),currency:opt(fd,'currency')||'PHP',opening_balance:Number(fd.get('opening_balance')||0),current_balance:Number(fd.get('opening_balance')||0),is_cash_on_hand:fd.get('is_cash_on_hand')==='on',notes:opt(fd,'notes'),created_by:p.user.id}).select('id').single();if(error||!data)throw appError(error?.message||'Unable to create bank account.');await audit(p.user.id,data.id,'finance_bank_accounts','bank_account_created',{});revalidatePath('/finance/bank-cash')}
 export async function toggleBankAccountAction(id:string,active:boolean){const p=await finance(),db=createClient();const {error}=await db.from('finance_bank_accounts').update({status:active?'active':'inactive'}).eq('id',id);if(error)throw appError(error.message);await audit(p.user.id,id,'finance_bank_accounts',active?'bank_account_activated':'bank_account_deactivated',{});revalidatePath('/finance/bank-cash')}

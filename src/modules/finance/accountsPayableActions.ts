@@ -1,4 +1,5 @@
 'use server';
+import {hasFunction} from '@/core/auth/functions';
 import { appError } from '@/core/errors/appError';
 import { revalidatePath } from 'next/cache';
 import { createClient } from '@/core/auth/supabaseServer';
@@ -7,7 +8,7 @@ import { isAdminTier } from '@/core/auth/types';
 function biz(p:{user:{business_id:string|null}}):{business_id?:string}{return p.user.business_id?{business_id:p.user.business_id}:{};}
 function req(fd:FormData,k:string){const v=String(fd.get(k)??'').trim();if(!v)throw appError(`${k.replaceAll('_',' ')} is required.`);return v}
 function opt(fd:FormData,k:string){const v=String(fd.get(k)??'').trim();return v||null}
-async function finance(){const p=await getSessionProfile();if(!p?.user.is_active)throw appError('Authentication required.');if(!isAdminTier(p)&&p.user.role!=='finance'&&!p.access.some(a=>a.section_code==='finance'))throw appError('Finance access required.');return p}
+async function finance(){const p=await getSessionProfile();if(!p?.user.is_active)throw appError('Authentication required.');if(!isAdminTier(p)&&p.user.role!=='finance'&&!p.access.some(a=>a.section_code==='finance'))throw appError('Finance access required.');/* Build 90 */if(!hasFunction(p,'finance.ap'))throw appError('Your access does not include this function.');return p}
 async function audit(actor:string,id:string,table:string,action:string,detail:Record<string,unknown>){const {error}=await createClient().from('audit_log').insert({actor_id:actor,entity_table:table,entity_id:id,action,detail});if(error)throw appError(error.message)}
 export async function createSupplierInvoiceAction(fd:FormData){const p=await finance(),db=createClient();const lines=JSON.parse(String(fd.get('lines')||'[]')) as Array<{description:string;quantity:number;unit:string;unit_cost:number;purchase_order_item_id?:string}>;if(!lines.length)throw appError('Add at least one invoice line.');
 // Build 55: lines linked to PO lines feed the item's purchase price history, so check them here as well as in the DB (guard_invoice_item_po_link): the invoice must name the PO, the linked lines must be on that PO, and the invoice supplier must be the PO's supplier.

@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState } from 'react';
 import { isAdminTier, type SessionProfile } from '@/core/auth/types';
-import { NAV_GROUPS, groupIsAccessible, type NavGroup } from './navConfig';
+import { NAV_GROUPS, groupIsAccessible, itemVisible, type NavGroup } from './navConfig';
 import { ShortcutsPanel } from './ShortcutsPanel';
 import { canViewProductSearch } from '@/modules/catalog/productSearchAccess';
 
@@ -61,7 +61,7 @@ export function Sidebar({ profile, shortcuts = [] }: { profile: SessionProfile; 
         </Link>
       )}
 
-      {NAV_GROUPS.filter((group) => groupIsAccessible(group, profile)).map((group) => {
+      {NAV_GROUPS.filter((group) => groupIsAccessible(group, profile) && group.items.some((item) => itemVisible(group, item, profile))).map((group) => {
         const isOpen = openGroups[group.code] ?? false;
         const hasActiveItem = groupContainsPath(group, pathname);
 
@@ -79,7 +79,7 @@ export function Sidebar({ profile, shortcuts = [] }: { profile: SessionProfile; 
 
             {isOpen && (
               <div className="mt-1 ml-2 border-l border-slate-600 pl-2 space-y-1">
-                {group.items.filter((item) => !item.show || item.show(profile)).map((item) => {
+                {group.items.filter((item) => itemVisible(group, item, profile)).map((item) => {
                   // Most specific match wins (e.g. Supplier Quotes under /finance/procurement/).
                   const matches = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
                   const active = matches(item.href) && !group.items.some((o) => o.href.length > item.href.length && o.href.startsWith(`${item.href}/`) && matches(o.href));

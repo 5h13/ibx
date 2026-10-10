@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { hasAnyFunction, hasFunction } from '@/core/auth/functions';
 import { createClient } from '@/core/auth/supabaseServer';
 import { getSessionProfile } from '@/core/auth/getSessionProfile';
 import { buildCsv, buildXlsx, type Cell } from '@/shared/export/xlsx';
@@ -17,7 +18,7 @@ import { canExportSuppliers, canExportSupplierSensitive } from '@/modules/financ
 //   tier or a Finance approver; every sensitive export is written to audit_log.
 export async function GET(request: Request) {
   const profile = await getSessionProfile();
-  if (!canExportSuppliers(profile)) return new NextResponse('Forbidden', { status: 403 });
+  if (!canExportSuppliers(profile) || !hasFunction(profile, 'procurement.suppliers')) return new NextResponse('Forbidden', { status: 403 });
   const url = new URL(request.url);
   const format = url.searchParams.get('format') === 'xlsx' ? 'xlsx' : 'csv';
   const wantSensitive = url.searchParams.get('sensitive') === '1';

@@ -357,9 +357,11 @@ function SaleDetail({ sale, items, payments, returnItems = [], canRequestCancel 
 const TABS = ['register', 'approval', 'orders', 'returns', 'checks', 'closing'] as const;
 
 export function StorefrontManagement({ ctx, date, today, sales, open, items, payments, dayPayments, returns, closings, customers, agents = [], locations, initialTab = 'register', dayCash = [], me = '',
-  cancelRequests = [], returnItems = [], checks = [], orders = [], search = '' }: {
+  cancelRequests = [], returnItems = [], checks = [], orders = [], search = '', can = { counter: true, ar: true, closing: true } }: {
   ctx: Ctx; date: string; today: string; sales: any[]; open: any[]; items: any[]; payments: any[]; dayPayments: any[]; returns: any[]; closings: any[]; dayCash?: any[]; me?: string;
   customers: Customer[]; agents?: Agent[]; locations: any[]; initialTab?: string; cancelRequests?: any[]; returnItems?: any[]; checks?: any[]; orders?: StoreOrder[]; search?: string;
+  /** Build 90: the user's storefront functions */
+  can?: { counter: boolean; ar: boolean; closing: boolean };
 }) {
   const [tab, setTab] = useState<(typeof TABS)[number]>((TABS as readonly string[]).includes(initialTab) ? (initialTab as (typeof TABS)[number]) : 'register');
   const [message, setMessage] = useState('');
@@ -394,21 +396,21 @@ export function StorefrontManagement({ ctx, date, today, sales, open, items, pay
 
       {!ro && (
       <ActionBar>
-        <PopupAction label="+ New sale" title="New counter sale" wide disabled={!ctx.location_id} openParam="sale">
+        {can.counter && <PopupAction label="+ New sale" title="New counter sale" wide disabled={!ctx.location_id} openParam="sale">
           {(close) => <SaleForm ctx={ctx} customers={customers} agents={agents} onDone={(m) => { setMessage(m); close(); }} />}
-        </PopupAction>
-        <PopupAction label="Receive AR payment" title="Receive payment on an existing invoice" variant="secondary" wide openParam="arpay">
+        </PopupAction>}
+        {can.ar && <PopupAction label="Receive AR payment" title="Receive payment on an existing invoice" variant="secondary" wide openParam="arpay">
           {(close) => <ArCollectionForm customers={customers} walkInId={ctx.walk_in_customer_id} onDone={(m) => { setMessage(m); close(); }} />}
-        </PopupAction>
-        <PopupAction label="Return / refund" title="Return / refund" variant="secondary" wide disabled={!ctx.location_id}>
+        </PopupAction>}
+        {can.counter && <PopupAction label="Return / refund" title="Return / refund" variant="secondary" wide disabled={!ctx.location_id}>
           {(close) => <ReturnForm onDone={(m) => { setMessage(m); close(); }} />}
-        </PopupAction>
-        <PopupAction label="Cash drawer" title="Cash drawer — opening float / cash taken out" variant="secondary" wide>
+        </PopupAction>}
+        {can.closing && <PopupAction label="Cash drawer" title="Cash drawer — opening float / cash taken out" variant="secondary" wide>
           {(close) => <CashDrawerForm entries={dayCash} onDone={(m) => { setMessage(m); close(); }} />}
-        </PopupAction>
-        <PopupAction label="Close the day" title="Daily closing" variant="secondary" wide>
+        </PopupAction>}
+        {can.closing && <PopupAction label="Close the day" title="Daily closing" variant="secondary" wide>
           {(close) => <ClosingForm date={date} today={today} onDone={(m) => { setMessage(m); setTab('closing'); close(); }} />}
-        </PopupAction>
+        </PopupAction>}
         {ctx.can_setup && (
           <PopupAction label="Store settings" title="Store settings" variant="secondary" wide notice={message}>
             {(close) => (
@@ -468,7 +470,7 @@ export function StorefrontManagement({ ctx, date, today, sales, open, items, pay
                     <td className="p-2 text-right">{Number(s.balance) > 0 ? <span className="text-amber-700">{peso(s.balance)}</span> : '—'}</td>
                     <td className="p-2 capitalize">{String(s.status).replace('_', ' ')}{s.cancel_status === 'approved' ? <div className="text-xs text-red-700">cancelled (reversed)</div> : s.cancel_status === 'requested' ? <div className="text-xs text-amber-700">cancel requested</div> : null}</td>
                     <td className="p-2 whitespace-nowrap"><div className="flex gap-2"><PopupAction label="View" title={`Sale ${s.sale_number}`} variant="secondary" wide>{(close) => <SaleDetail sale={s} items={itemsOf(s.id)} payments={paysOf(s.id)} returnItems={returnItems} canRequestCancel={!ro} onMessage={(m) => { setMessage(m); close(); }} />}</PopupAction>
-                      {!ro && s.status === 'completed' && s.cancel_status !== 'approved' && <PopupAction label="Return" title={`Return / refund · ${s.sale_number}`} variant="secondary" wide>{(close) => <ReturnForm saleNumber={s.sale_number} onDone={(m) => { setMessage(m); close(); }} />}</PopupAction>}</div></td>
+                      {!ro && can.counter && s.status === 'completed' && s.cancel_status !== 'approved' && <PopupAction label="Return" title={`Return / refund · ${s.sale_number}`} variant="secondary" wide>{(close) => <ReturnForm saleNumber={s.sale_number} onDone={(m) => { setMessage(m); close(); }} />}</PopupAction>}</div></td>
                   </tr>
                 ))}
               </tbody>
@@ -479,7 +481,7 @@ export function StorefrontManagement({ ctx, date, today, sales, open, items, pay
 
       {tab === 'orders' && (
         <section className="space-y-3 rounded-xl border bg-white p-4">
-          <OrdersTab orders={orders} readOnly={ro || !ctx.location_id} canRelease={ctx.can_setup} canCancel={!ro && ctx.can_approve} vatBooklet={!!ctx.booklet_vat} onMessage={setMessage} />
+          <OrdersTab orders={orders} readOnly={ro || !can.counter || !ctx.location_id} canRelease={ctx.can_setup} canCancel={!ro && ctx.can_approve} vatBooklet={!!ctx.booklet_vat} onMessage={setMessage} />
         </section>
       )}
 
@@ -515,7 +517,7 @@ export function StorefrontManagement({ ctx, date, today, sales, open, items, pay
               {!ro && <div className="flex flex-wrap gap-2">
                 {s.status === 'pending_approval' && ctx.can_approve && s.created_by === me && <span className="text-xs text-slate-500">You made this sale — another approver signs off</span>}
                 {s.status === 'pending_approval' && ctx.can_approve && s.created_by !== me && <button className="button" disabled={pending} onClick={() => act(() => approveSaleAction(s.id), `${s.sale_number} approved.`)}>Approve</button>}
-                {s.status === 'approved' && <PopupAction label="Take payment" title={`Complete ${s.sale_number}`} wide>{(close) => <CompleteForm sale={s} vatBooklet={!!ctx.booklet_vat} onDone={(m) => { setMessage(m); close(); }} />}</PopupAction>}
+                {s.status === 'approved' && can.counter && <PopupAction label="Take payment" title={`Complete ${s.sale_number}`} wide>{(close) => <CompleteForm sale={s} vatBooklet={!!ctx.booklet_vat} onDone={(m) => { setMessage(m); close(); }} />}</PopupAction>}
                 <PopupAction label="View" title={`Sale ${s.sale_number}`} variant="secondary" wide><SaleDetail sale={s} items={itemsOf(s.id)} payments={[]} /></PopupAction>
                 <button className="button-secondary" disabled={pending} onClick={() => act(() => cancelSaleAction(s.id), `${s.sale_number} cancelled.`)}>Cancel</button>
               </div>}

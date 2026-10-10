@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic';
 
 export default async function PriceRequestsPage(props: { searchParams?: Promise<{ answered?: string }> }) {
   const searchParams = await props.searchParams;
-  const profile = await requireSection('finance');
+  const profile = await requireSection('finance', 'catalog.edit');
   const db = createClient();
   const showAnswered = searchParams?.answered === '1';
   const [{ data: requests, error: re }, { data: suppliers, error: se }] = await Promise.all([

@@ -1,4 +1,5 @@
 'use server';
+import { APP_FUNCTIONS } from '@/core/auth/functions';
 import { appError } from '@/core/errors/appError';
 
 import { revalidatePath } from 'next/cache';
@@ -54,6 +55,29 @@ function parseGrants(value: FormDataEntryValue | null) {
   } catch {
     throw appError('Invalid workflow assignment.');
   }
+}
+
+/** Build 90: function limits — only codes from the registry; empty = whole sections. */
+function parseFunctions(value: FormDataEntryValue | null): string[] {
+  if (value === null) return [];
+  try {
+    const parsed = JSON.parse(String(value || '[]'));
+    if (!Array.isArray(parsed)) throw appError();
+    const known = new Set(APP_FUNCTIONS.map((f) => f.code));
+    if (parsed.some((c) => typeof c !== 'string' || !known.has(c))) throw appError();
+    return Array.from(new Set(parsed as string[]));
+  } catch {
+    throw appError('Invalid function assignment.');
+  }
+}
+async function saveFunctions(db: any, actorId: string, userId: string, codes: string[], replace: boolean) {
+  if (replace) {
+    const { error } = await db.from('user_functions').delete().eq('user_id', userId);
+    if (error) throw appError(error.message);
+  }
+  if (!codes.length) return;
+  const { error } = await db.from('user_functions').insert(codes.map((c) => ({ user_id: userId, function_code: c, created_by: actorId })));
+  if (error) throw appError(error.message);
 }
 
 function validateRole(role: string): asserts role is AppRole {
@@ -199,7 +223,9 @@ export async function createUserAction(formData: FormData) {
     }
   }
 
-  await writeAudit(actor.user.id, authData.user.id, 'created', { email, role, section_ids: sectionIds, onboarding: invite ? 'email_invitation' : 'temporary_password' });
+  const functions = role === 'super_admin' || role === 'business_admin' ? [] : parseFunctions(formData.get('functions'));
+  await saveFunctions(db, actor.user.id, authData.user!.id, functions, false);
+  await writeAudit(actor.user.id, authData.user.id, 'created', { email, role, section_ids: sectionIds, functions, onboarding: invite ? 'email_invitation' : 'temporary_password' });
   revalidatePath('/settings/users');
   return invite ? { ok: true, invited: email } : { ok: true, temporaryPassword };
 }
@@ -293,9 +319,14 @@ export async function updateUserAction(formData: FormData) {
   });
   if (authUpdate.error) throw appError(authUpdate.error.message);
 
+  // Build 90: function limits replace the old ones
+  const functions = role === 'super_admin' || role === 'business_admin' ? [] : parseFunctions(formData.get('functions'));
+  await saveFunctions(db, actor.user.id, userId, functions, true);
+
   await writeAudit(actor.user.id, userId, 'edited', {
     role,
     section_ids: sectionIds,
+    functions,
     is_active: isActive,
   });
   revalidatePath('/settings/users');

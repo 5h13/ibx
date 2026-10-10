@@ -8,7 +8,7 @@ import { CostCenterManagement } from '@/modules/finance/cost-centers/CostCenterM
 // (service-role, bypasses RLS) would have shown every business's cost
 // centers and expenses to any viewer, regardless of A001.
 export default async function CostCentersPage(){
-  const profile=await requireSection('finance');
+  const profile=await requireSection('finance', 'finance.budgets');
   const db=createClient();
   const [{data:centers,error},{data:actuals,error:ae},{data:recovery,error:re}]=await Promise.all([
     db.from('finance_cost_centers').select('*').order('name'),

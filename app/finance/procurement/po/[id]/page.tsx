@@ -9,7 +9,7 @@ export const dynamic = 'force-dynamic';
 
 export default async function PurchaseOrderPrintPage(props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
-  await requireAnySection(['finance']);
+  await requireAnySection(['finance'], ['procurement.po', 'finance.ap']);
   const db = createClient();
   const { data: po } = await db.from('purchase_orders')
     .select(`*,supplier:finance_suppliers!purchase_orders_supplier_id_fkey(supplier_code,legal_name,trade_name,contact_person,address,phone,email,tax_id),business:businesses!purchase_orders_business_id_fkey(${DOCUMENT_BUSINESS_COLUMNS}),approver:users!purchase_orders_approved_by_fkey(full_name),preparer:users!purchase_orders_prepared_by_fkey(full_name)`)

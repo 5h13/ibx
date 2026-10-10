@@ -1,4 +1,5 @@
 'use server';
+import {hasFunction} from '@/core/auth/functions';
 import { appError } from '@/core/errors/appError';
 import { revalidatePath } from 'next/cache';
 import { createClient } from '@/core/auth/supabaseServer';
@@ -7,7 +8,7 @@ import { isAdminTier } from '@/core/auth/types';
 function biz(p:{user:{business_id:string|null}}):{business_id?:string}{return p.user.business_id?{business_id:p.user.business_id}:{};}
 function req(fd: FormData,key:string){const v=String(fd.get(key)??'').trim();if(!v)throw appError(`${key.replaceAll('_',' ')} is required.`);return v;}
 function opt(fd: FormData,key:string){const v=String(fd.get(key)??'').trim();return v||null;}
-async function finance(){const p=await getSessionProfile();if(!p?.user.is_active)throw appError('Authentication required.');if(!isAdminTier(p)&&p.user.section_code!=='finance'&&!p.access.some(a=>a.section_code==='finance'))throw appError('Finance access required.');return p;}
+async function finance(){const p=await getSessionProfile();if(!p?.user.is_active)throw appError('Authentication required.');if(!isAdminTier(p)&&p.user.section_code!=='finance'&&!p.access.some(a=>a.section_code==='finance'))throw appError('Finance access required.');/* Build 90 */if(!hasFunction(p,'finance.ar'))throw appError('Your access does not include this function.');return p;}
 async function audit(actor:string,id:string,table:string,action:string,detail:Record<string,unknown>){const {error}=await createClient().from('audit_log').insert({actor_id:actor,entity_table:table,entity_id:id,action,detail});if(error)throw appError(error.message);}
 export async function createCustomerAction(fd:FormData){const p=await finance(),db=createClient();const {data,error}=await db.from('finance_customers').insert({...biz(p),customer_code:req(fd,'customer_code'),legal_name:req(fd,'legal_name'),trade_name:opt(fd,'trade_name'),contact_person:opt(fd,'contact_person'),email:opt(fd,'email'),phone:opt(fd,'phone'),address:opt(fd,'address'),tax_id:opt(fd,'tax_id'),payment_terms:opt(fd,'payment_terms'),credit_limit:Number(fd.get('credit_limit')||0),notes:opt(fd,'notes'),agent_id:opt(fd,'agent_id'),created_by:p.user.id}).select('id').single();if(error||!data)throw appError(error?.message||'Unable to create customer.');await audit(p.user.id,data.id,'finance_customers','customer_created',{});revalidatePath('/finance/accounts-receivable');}
 // Build 81 (AR-01): correct a customer's details (the statement of account reads them live).

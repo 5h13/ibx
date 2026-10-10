@@ -39,7 +39,7 @@ function aging(rows: Array<{ balance_due: number | null; due_date: string | null
 const MONTH_COLS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'].map((m) => `${m}_budget`);
 
 export default async function FinanceDashboardPage() {
-  const profile = await requireSection('finance');
+  const profile = await requireSection('finance', 'finance.accounting');
   const db = createClient();
 
   // U002's fix (business-scoped `months`) is the shared prerequisite this

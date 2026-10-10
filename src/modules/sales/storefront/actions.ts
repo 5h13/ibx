@@ -9,11 +9,18 @@ import { appError } from '@/core/errors/appError';
 import { revalidatePath } from 'next/cache';
 import { createClient } from '@/core/auth/supabaseServer';
 import { getSessionProfile } from '@/core/auth/getSessionProfile';
+import { hasFunction } from '@/core/auth/functions';
 import { notifyWorkflowRole } from '@/shared/notifications/service';
 
 async function signedIn() {
   const p = await getSessionProfile();
   if (!p?.user.is_active) throw appError('Authentication required.');
+  return p;
+}
+/** Build 90: the user must hold this storefront function (see functions.ts). */
+async function needFn(code: string, label: string) {
+  const p = await signedIn();
+  if (!hasFunction(p, code)) throw appError(`Your access does not include ${label}.`);
   return p;
 }
 async function rpc<T = any>(fn: string, args?: Record<string, unknown>): Promise<T> {
@@ -55,6 +62,7 @@ export async function setStoreLocationAction(locationId: string) {
 }
 
 export async function submitSaleAction(input: { customer_id?: string | null; lines: SaleLineInput[]; payments: PaymentInput[]; si_number?: string; issue_dr: boolean; notes?: string; sale_date?: string; late_reason?: string; hardcopy_dr_no?: string }) {
+  await needFn('sales.counter', 'counter sales');
   const p = await signedIn();
   const r = await rpc<{ id: string; sale_number: string; status: string; total: number; reasons: string[] }>('storefront_submit_sale', { p: input });
   if (r.status === 'pending_approval') {
@@ -76,6 +84,7 @@ export async function approveSaleAction(saleId: string) {
 }
 
 export async function completeSaleAction(saleId: string, input: { payments: PaymentInput[]; si_number?: string; issue_dr: boolean }) {
+  await needFn('sales.counter', 'counter sales');
   await signedIn();
   await rpc('storefront_complete_sale', { p_sale: saleId, p_payments: input.payments, p_si: input.si_number ?? null, p_issue_dr: input.issue_dr });
   refresh();
@@ -100,6 +109,7 @@ export async function openInvoicesAction(customerId: string) {
 
 // Build 88 (AR-02): one payment from the customer, applied to the oldest open invoices first
 export async function collectArOldestAction(customerId: string, payments: PaymentInput[]) {
+  await needFn('sales.ar_collect', 'receiving AR payments');
   await signedIn();
   const r = await rpc<{ amount: number; owed_before: number; balance: number; payment_id: string; applied: { invoice_number: string; dr: string | null; applied: number; balance: number }[] }>(
     'storefront_collect_ar_oldest', { p_customer: customerId, p_payments: payments });
@@ -108,6 +118,7 @@ export async function collectArOldestAction(customerId: string, payments: Paymen
 }
 
 export async function collectArAction(invoiceId: string, payments: PaymentInput[]) {
+  await needFn('sales.ar_collect', 'receiving AR payments');
   await signedIn();
   const r = await rpc<{ invoice_number: string; amount: number; balance: number; payment_id: string }>('storefront_collect_ar', { p_invoice: invoiceId, p_payments: payments });
   refresh();
@@ -124,6 +135,7 @@ export async function saleForReturnAction(saleNumber: string) {
 }
 
 export async function returnAction(input: { sale_id: string; reason: string; lines: { sale_item_id: string; quantity: number; condition?: ReturnCondition }[]; refunds: PaymentInput[] }) {
+  await needFn('sales.counter', 'returns');
   await signedIn();
   const r = await rpc<{ return_number: string; total: number; credit_to_ar: number; refund: number; damaged_cost: number }>('storefront_return', { p: input });
   refresh();
@@ -139,6 +151,7 @@ export async function closingPreviewAction(date: string) {
 }
 
 export async function closeDayAction(input: { date: string; counted_cash: number; notes?: string }) {
+  await needFn('sales.closing', 'the day closing');
   const p = await signedIn();
   const r = await rpc<{ id: string; closing_number: string; variance: number }>('storefront_close_day', { p_date: input.date, p_counted_cash: input.counted_cash, p_notes: input.notes ?? null });
   await notifyWorkflowRole(p.user.business_id, 'sales', 'approver', {
@@ -167,6 +180,7 @@ export async function refundableAction(saleId: string) {
 }
 
 export async function cashMovementAction(input: { kind: 'float' | 'cash_out'; amount: number; category?: 'bank_deposit' | 'petty_cash' | 'other' | null; note?: string; bank_account?: string | null }) {
+  await needFn('sales.closing', 'the cash drawer');
   await signedIn();
   const r = await rpc<{ id: string; movement_number: string }>('storefront_cash_movement', {
     p_kind: input.kind, p_amount: input.amount, p_category: input.category ?? null, p_note: input.note ?? null, p_bank_account: input.bank_account ?? null,
@@ -251,6 +265,7 @@ export type StoreOrder = { id: string; order_number: string; order_date: string;
   pr_number: string | null; po_numbers: string[]; lines: OrderLine[]; drs: OrderDr[] };
 
 export async function orderDrAction(input: { order_id: string; lines: { sales_order_item_id: string; quantity: number; lot_id?: string | null }[]; payments: PaymentInput[]; si_number?: string; notes?: string; hardcopy_dr_no?: string }) {
+  await needFn('sales.counter', 'counter sales');
   const p = await signedIn();
   const r = await rpc<{ id: string; sale_number: string; dr_number: string; total: number; balance: number }>('storefront_order_dr', { p: input });
   await notifyWorkflowRole(p.user.business_id, 'logistics', 'preparer', {

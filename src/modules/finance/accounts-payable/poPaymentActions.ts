@@ -10,11 +10,13 @@ import { appError } from '@/core/errors/appError';
 import { createClient } from '@/core/auth/supabaseServer';
 import { getSessionProfile } from '@/core/auth/getSessionProfile';
 import { isAdminTier } from '@/core/auth/types';
+import { hasFunction } from '@/core/auth/functions';
 
 async function finance() {
   const p = await getSessionProfile();
   if (!p?.user.is_active) throw appError('Authentication required.');
   if (!isAdminTier(p) && p.user.role !== 'finance' && !p.access.some((a) => a.section_code === 'finance')) throw appError('Finance access required.');
+  if (!hasFunction(p, 'finance.ap')) throw appError('Your access does not include this function.');   // Build 90
   return p;
 }
 const refresh = () => { revalidatePath('/finance/accounts-payable'); revalidatePath('/approvals'); revalidatePath('/sales/revenue'); };

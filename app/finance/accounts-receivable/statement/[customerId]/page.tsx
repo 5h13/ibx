@@ -16,7 +16,7 @@ const isDate = (v?: string) => (v && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null);
 export default async function StatementPage(props: { params: Promise<{ customerId: string }>; searchParams?: Promise<{ from?: string; to?: string }> }) {
   const params = await props.params;
   const sp = (await props.searchParams) ?? {};
-  await requireAnySection(['sales', 'finance']);
+  await requireAnySection(['sales', 'finance'], ['finance.ar', 'sales.counter', 'sales.ar_collect', 'sales.quotes']);
   const db = createClient();
   const { data: cust } = await db.from('finance_customers').select('business_id,customer_code').eq('id', params.customerId).maybeSingle();
   if (!cust) notFound();

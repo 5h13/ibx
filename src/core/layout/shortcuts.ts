@@ -4,9 +4,10 @@
 // (PopupAction openParam, triggered by ?new=<key>).
 import { isAdminTier, type SessionProfile } from '@/core/auth/types';
 import { canViewProductSearch } from '@/modules/catalog/productSearchAccess';
-import { NAV_GROUPS, groupIsAccessible } from './navConfig';
+import { NAV_GROUPS, groupIsAccessible, itemVisible } from './navConfig';
+import { hasFunction } from '@/core/auth/functions';
 
-export type Shortcut = { key: string; label: string; href: string; group: string; action?: boolean };
+export type Shortcut = { key: string; label: string; href: string; group: string; action?: boolean; fn?: string };
 
 const SECTION_LABEL: Record<string, string> = { admin: 'Admin', finance: 'Finance', logistics: 'Logistics', marketing: 'Marketing', sales: 'Sales' };
 
@@ -23,20 +24,22 @@ export function availableShortcuts(profile: SessionProfile): Shortcut[] {
   const can = (code: string) => { const g = NAV_GROUPS.find((x) => x.code === code); return !!g && groupIsAccessible(g, profile); };
   // actions first within each department
   const actions: Shortcut[] = [
-    { key: 'new:quote', label: 'New quotation', href: '/sales/revenue?tab=quotations&new=quote', group: 'Sales', action: true },
-    { key: 'new:sale', label: 'New sale (Storefront)', href: '/sales/storefront?new=sale', group: 'Sales', action: true },
-    { key: 'new:arpay', label: 'Receive AR payment', href: '/sales/storefront?new=arpay', group: 'Sales', action: true },
-    { key: 'new:po', label: 'New purchase order', href: '/finance/procurement?tab=po&new=po', group: 'Finance', action: true },
-    { key: 'new:apinv', label: 'Record supplier invoice', href: '/finance/accounts-payable?tab=invoices&new=apinv', group: 'Finance', action: true },
+    { key: 'new:quote', label: 'New quotation', href: '/sales/revenue?tab=quotations&new=quote', group: 'Sales', action: true, fn: 'sales.quotes' },
+    { key: 'new:sale', label: 'New sale (Storefront)', href: '/sales/storefront?new=sale', group: 'Sales', action: true, fn: 'sales.counter' },
+    { key: 'new:arpay', label: 'Receive AR payment', href: '/sales/storefront?new=arpay', group: 'Sales', action: true, fn: 'sales.ar_collect' },
+    { key: 'new:po', label: 'New purchase order', href: '/finance/procurement?tab=po&new=po', group: 'Finance', action: true, fn: 'procurement.po' },
+    { key: 'new:apinv', label: 'Record supplier invoice', href: '/finance/accounts-payable?tab=invoices&new=apinv', group: 'Finance', action: true, fn: 'finance.ap' },
   ];
-  for (const a of actions) if (can(a.group.toLowerCase())) out.push(a);
+  // Build 90: shortcuts follow the same function limits as the menu
+  for (const a of actions) if (can(a.group.toLowerCase()) && (!a.fn || hasFunction(profile, a.fn))) out.push(a);
+  const expenseFn: Record<string, string> = { finance: 'finance.expenses', sales: 'sales.expenses' };
   for (const sec of ['admin', 'finance', 'logistics', 'marketing', 'sales']) {
-    if (can(sec)) out.push({ key: `new:expense:${sec}`, label: `Add expense (${SECTION_LABEL[sec]})`, href: `/${sec}/expenses?new=expense`, group: SECTION_LABEL[sec], action: true });
+    if (can(sec) && (!expenseFn[sec] || hasFunction(profile, expenseFn[sec]))) out.push({ key: `new:expense:${sec}`, label: `Add expense (${SECTION_LABEL[sec]})`, href: `/${sec}/expenses?new=expense`, group: SECTION_LABEL[sec], action: true });
   }
   for (const g of NAV_GROUPS) {
     if (!groupIsAccessible(g, profile)) continue;
     for (const it of g.items) {
-      if (it.show && !it.show(profile)) continue;
+      if (!itemVisible(g, it, profile)) continue;
       if (out.some((x) => x.key === it.href)) continue;
       out.push({ key: it.href, label: it.label, href: it.href, group: g.label });
     }

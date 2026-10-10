@@ -10,7 +10,7 @@ export const dynamic = 'force-dynamic';
 
 export default async function BudgetsPage(props: { searchParams?: Promise<{ b?: string; tab?: string }> }) {
   const sp = (await props.searchParams) ?? {};
-  const profile = await requireSection('finance');
+  const profile = await requireSection('finance', 'finance.budgets');
   const db = createClient();
   const { data: budgets, error } = await db.from('finance_budgets').select('*').order('fiscal_year', { ascending: false }).order('version', { ascending: false });
   if (error) throw new Error(error.message);

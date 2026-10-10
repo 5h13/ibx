@@ -6,7 +6,7 @@ import { loadDepartmentExpenses } from '@/shared/expenses/loadDepartmentExpenses
 
 export default async function ExpensesPage(props: { searchParams?: Promise<{ month?: string }> }) {
   const searchParams = await props.searchParams;
-  const profile = await requireSection('finance');
+  const profile = await requireSection('finance', 'finance.expenses');
   const data = await loadDepartmentExpenses(profile, 'finance', searchParams?.month);
   return <AuthedShell profile={profile}><DepartmentExpenses profile={profile} data={data} /></AuthedShell>;
 }

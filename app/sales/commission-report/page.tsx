@@ -3,7 +3,7 @@ import {createClient} from '@/core/auth/supabaseServer';
 import {AuthedShell} from '@/core/layout/AuthedShell';
 import CommissionOperationsManagement from '@/modules/sales/CommissionOperationsManagement';
 export default async function SalesCommissionReportPage(){
- const profile=await requireSection('sales'); const db=createClient();
+ const profile=await requireSection('sales', 'sales.reports'); const db=createClient();
  const [{data:commissions,error:ce},{data:payouts,error:pe},{data:employees,error:ee},{data:summary,error:se}]=await Promise.all([
   db.from('sales_commissions').select('*,employee:employees(employee_no,first_name,last_name),order:sales_orders(order_number)').order('created_at',{ascending:false}),
   db.from('sales_commission_payouts').select('*,employee:employees(employee_no,first_name,last_name)').order('period_start',{ascending:false}),

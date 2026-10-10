@@ -36,6 +36,8 @@ export interface UserAccessGrant {
 export interface SessionProfile {
   user: AppUser;
   access: UserAccessGrant[];
+  /** Build 90 — function codes the user is limited to (empty = whole sections). See functions.ts. */
+  functions?: string[];
   /** Build 57 — set while a Super Admin / Business Admin is auditing a role:
    * the account genuinely holds that role (user/access above ARE the audited
    * role); this records what to show in the banner and what is restored. */

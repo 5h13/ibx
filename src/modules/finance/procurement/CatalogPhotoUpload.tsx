@@ -16,7 +16,7 @@ function parseName(name: string): { code: string; slot: 1 | 2 | 3 } {
   return m ? { code: m[1].trim().toUpperCase(), slot: Number(m[2]) as 1 | 2 | 3 } : { code: base.toUpperCase(), slot: 1 };
 }
 
-async function shrink(file: File): Promise<File> {
+export async function shrink(file: File): Promise<File> {
   if (file.size <= 1_500_000 && file.type !== 'image/heic') return file;
   try {
     const bmp = await createImageBitmap(file);

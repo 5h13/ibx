@@ -20,7 +20,7 @@ select proof.ok((select count(*) from jsonb_array_elements(proof.get('st')::json
 select proof.ok((select count(*) from jsonb_array_elements(proof.get('st')::jsonb->'lines') l where (l->>'charge')::numeric > 0 and l->>'status' <> 'Paid') >= 1, 'open DRs are listed too');
 select proof.ok((proof.get('st')::jsonb->>'closing')::numeric = (proof.get('st')::jsonb->'aging'->>'total')::numeric, 'closing balance = total open invoices');
 select proof.ok((select (l->>'balance')::numeric from jsonb_array_elements(proof.get('st')::jsonb->'lines') with ordinality x(l, n) order by n desc limit 1) = (proof.get('st')::jsonb->>'closing')::numeric, 'running balance ends at the closing balance');
-select proof.set('st2', public.customer_statement(proof.get('cust1')::uuid, current_date, current_date)::text);
+select proof.set('st2', public.customer_statement(proof.get('cust1')::uuid, (now() at time zone 'Asia/Manila')::date, (now() at time zone 'Asia/Manila')::date)::text);
 select proof.ok((proof.get('st2')::jsonb->>'opening')::numeric + (proof.get('st2')::jsonb->>'charges')::numeric - (proof.get('st2')::jsonb->>'payments_total')::numeric = (proof.get('st')::jsonb->>'closing')::numeric,
                 'a shorter period carries the earlier balance forward (opening + charges − payments = closing)');
 select proof.ok(not exists (select 1 from jsonb_array_elements(proof.get('st2')::jsonb->'lines') l where l->>'dr' = '8585'), 'the period filters the lines');

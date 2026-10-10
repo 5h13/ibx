@@ -8,7 +8,7 @@ import type { RegisterRow, ScheduleRow } from '@/modules/finance/expenses/action
 
 export default async function ExpenseRegisterPage(props: { searchParams?: Promise<{ from?: string; to?: string }> }) {
   const searchParams = await props.searchParams;
-  const profile = await requireSection('finance');
+  const profile = await requireSection('finance', 'finance.expenses');
   const db = createClient();
   const today = new Date();
   const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
