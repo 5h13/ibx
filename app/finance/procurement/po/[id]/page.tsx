@@ -17,9 +17,12 @@ export default async function PurchaseOrderPrintPage(props: { params: Promise<{ 
   if (!po) notFound();
   // Build 77: supplier TIN lives in finance_supplier_private (Finance / admin only)
   const { data: priv } = await db.from('finance_supplier_private').select('tax_id').eq('supplier_id', po.supplier_id).maybeSingle();
-  const { data: items } = await db.from('purchase_order_items').select('description,quantity,unit,unit_cost,amount,supplier_item_code').eq('purchase_order_id', po.id).order('created_at');
+  const { data: items } = await db.from('purchase_order_items').select('description,quantity,unit,unit_cost,amount,supplier_item_code,price_status,price_note').eq('purchase_order_id', po.id).order('created_at');
   const sup: any = po.supplier;
   const approved = ['approved'].includes(String(po.status));
+  // Build 103: lines ordered without a price print as "To be quoted"; free lines as "Free of charge"
+  const tbq = (items ?? []).filter((i: any) => i.price_status === 'to_be_quoted').length;
+  const cost = (i: any, v: unknown) => i.price_status === 'to_be_quoted' ? 'To be quoted' : i.price_status === 'free' ? 'Free of charge' : peso(v);
   return (
     <div data-document className={`${DOCUMENT_PAGE_CLASS} mx-auto max-w-3xl p-8 text-sm text-black print:p-0`} style={{ background: '#fff' }}>
       <DocumentPrintStyles />
@@ -33,15 +36,16 @@ export default async function PurchaseOrderPrintPage(props: { params: Promise<{ 
       </div>
       <table className="w-full border-collapse">
         <thead><tr className="border-b-2 border-black text-left"><th className="py-1">#</th><th className="py-1">Description</th><th className="py-1 text-right">Qty</th><th className="py-1">Unit</th><th className="py-1 text-right">Unit cost</th><th className="py-1 text-right">Amount</th></tr></thead>
-        <tbody>{(items ?? []).map((i: any, n: number) => <tr key={n} className="border-b"><td className="py-1">{n + 1}</td><td className="py-1">{i.description}{i.supplier_item_code && <div className="text-xs">Your code: {i.supplier_item_code}</div>}</td><td className="py-1 text-right">{Number(i.quantity)}</td><td className="py-1">{i.unit}</td><td className="py-1 text-right">{peso(i.unit_cost)}</td><td className="py-1 text-right">{peso(i.amount ?? Number(i.quantity) * Number(i.unit_cost))}</td></tr>)}</tbody>
+        <tbody>{(items ?? []).map((i: any, n: number) => <tr key={n} className="border-b"><td className="py-1">{n + 1}</td><td className="py-1">{i.description}{i.supplier_item_code && <div className="text-xs">Your code: {i.supplier_item_code}</div>}{i.price_status === 'free' && i.price_note && <div className="text-xs">{i.price_note}</div>}</td><td className="py-1 text-right">{Number(i.quantity)}</td><td className="py-1">{i.unit}</td><td className="py-1 text-right">{cost(i, i.unit_cost)}</td><td className="py-1 text-right">{i.price_status === 'to_be_quoted' ? '—' : cost(i, i.amount ?? Number(i.quantity) * Number(i.unit_cost))}</td></tr>)}</tbody>
         <tfoot>
           <tr><td colSpan={5} className="pt-2 text-right">Subtotal</td><td className="pt-2 text-right">{peso(po.subtotal)}</td></tr>
           {Number(po.tax_amount) > 0 && <tr><td colSpan={5} className="text-right">Tax</td><td className="text-right">{peso(po.tax_amount)}</td></tr>}
           {Number(po.other_charges) > 0 && <tr><td colSpan={5} className="text-right">Other charges</td><td className="text-right">{peso(po.other_charges)}</td></tr>}
-          <tr><td colSpan={5} className="pt-1 text-right font-semibold">TOTAL ({po.currency || 'PHP'})</td><td className="pt-1 text-right font-semibold">{peso(po.total_amount)}</td></tr>
+          <tr><td colSpan={5} className="pt-1 text-right font-semibold">TOTAL ({po.currency || 'PHP'})</td><td className="pt-1 text-right font-semibold">{peso(po.total_amount)}{tbq > 0 && <div className="text-xs font-normal">+ {tbq} item{tbq > 1 ? 's' : ''} to be quoted</div>}</td></tr>
         </tfoot>
       </table>
       {po.notes && <div className="mt-4"><div className="text-xs uppercase">Notes</div><div className="whitespace-pre-line">{po.notes}</div></div>}
+      {tbq > 0 && <p className="mt-4 text-xs font-semibold">Items marked “To be quoted”: please send your quotation for our approval before billing. We pay the approved quoted price.</p>}
       <p className="mt-4 text-xs">Please quote our PO number on your delivery receipt and invoice.</p>
       <div data-pdf-block className="mt-12 grid grid-cols-2 gap-12 text-center text-xs">
         <div className="border-t border-black pt-1">Prepared by{(po as any).preparer?.full_name ? `: ${(po as any).preparer.full_name}` : ''}</div>

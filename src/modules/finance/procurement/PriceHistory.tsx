@@ -12,7 +12,7 @@ import { errorText } from '@/core/errors/appError';
 //     price paid to the chosen supplier and the lowest recent price from any
 //     supplier, with a one-click "Use".
 
-import { useEffect, useState, useTransition } from 'react';
+import { useEffect, useRef, useState, useTransition } from 'react';
 import { getItemPriceHistoryAction, getLastPurchasePricesAction, adjustPurchasePriceAction, revertPurchasePriceAction } from './actions';
 
 const peso = (v: unknown) => `₱${Number(v ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -104,8 +104,17 @@ export function ItemPriceHistory({ itemId, canEdit }: { itemId: string; canEdit:
 
 const hintCache = new Map<string, Promise<any[]>>();
 
-export function LastPriceHint({ itemId, supplierId, onUse }: { itemId: string; supplierId?: string; onUse?: (price: number) => void }) {
+export function LastPriceHint({ itemId, supplierId, onUse, autoFill = false }: { itemId: string; supplierId?: string; onUse?: (price: number) => void; autoFill?: boolean }) {
   const [rows, setRows] = useState<any[] | null>(null);
+  // Build 103: a new PO line starts from the last price paid to this supplier (the preparer can still change it)
+  const filled = useRef('');
+  useEffect(() => {
+    if (!autoFill || !rows || !supplierId || !onUse) return;
+    const key = `${itemId}:${supplierId}`;
+    if (filled.current === key) return;
+    const r = rows.find((x) => x.supplier_id === supplierId);
+    if (r && Number(r.last_unit_price) > 0) { filled.current = key; onUse(Number(r.last_unit_price)); }
+  }, [autoFill, rows, supplierId, itemId, onUse]);
   useEffect(() => {
     let alive = true;
     if (!hintCache.has(itemId)) hintCache.set(itemId, getLastPurchasePricesAction([itemId]).catch(() => []));

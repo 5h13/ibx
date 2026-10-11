@@ -46,9 +46,12 @@ async function rowsFor(db:any,table:string,section:string):Promise<ApprovalItem[
   const fields=[...new Set(['id','status',meta.number,meta.description,meta.amount,'prepared_by','reviewed_by','approved_by'].filter(Boolean))].join(',');
   const {data,error}=await db.from(table).select(fields).in('status', ['prepared','reviewed', ...( ['finance_supplier_payments','finance_customer_receipts','finance_cash_transactions','finance_journal_entries','payroll_runs','logistics_receipts','logistics_stock_transfers'].includes(table) ? ['approved'] : []) ]).order('updated_at',{ascending:false}).limit(250);
   if(error) return [];
+  // Build 103: a PO in the queue says when prices need a look (well above the last price, to be quoted, free)
+  const poNotes=new Map<string,string>();
+  if(table==='purchase_orders'&&data?.length){await Promise.all((data as any[]).map(async(po:any)=>{const [{data:rv},{data:its}]=await Promise.all([db.rpc('po_review_lines',{p_po:po.id}),db.from('purchase_order_items').select('price_status').eq('purchase_order_id',po.id)]);const flagged=((rv??[]) as any[]).filter(x=>x.flag);const tbq=((its??[]) as any[]).filter(x=>x.price_status==='to_be_quoted').length;const free=((its??[]) as any[]).filter(x=>x.price_status==='free').length;const parts=[flagged.length?`⚠ ${flagged.length} price${flagged.length>1?'s':''} over ${Number(flagged[0].flag_pct)}% above the last purchase`:'',tbq?`${tbq} line${tbq>1?'s':''} to be quoted`:'',free?`${free} free line${free>1?'s':''}`:''].filter(Boolean);if(parts.length)poNotes.set(po.id,parts.join(' · '));}));}
   const postable=['finance_supplier_payments','finance_customer_receipts','finance_cash_transactions','finance_journal_entries','payroll_runs','logistics_receipts','logistics_stock_transfers'].includes(table);
   return (data||[]).map((r:any)=>({
-    id:r.id,sourceTable:table,section,module:meta.module,number:String(r[meta.number]??r.id.slice(0,8)),description:String(r[meta.description]??''),amount:meta.amount?r[meta.amount]:null,status:String(r.status),canReview:String(r.status)==='prepared',canApprove:String(r.status)==='reviewed',canPost:false,
+    id:r.id,sourceTable:table,section,module:meta.module,number:String(r[meta.number]??r.id.slice(0,8)),description:[poNotes.get(r.id),String(r[meta.description]??'')].filter(Boolean).join(' — '),amount:meta.amount?r[meta.amount]:null,status:String(r.status),canReview:String(r.status)==='prepared',canApprove:String(r.status)==='reviewed',canPost:false,
     _postable:postable
   } as any));
 }

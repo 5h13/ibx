@@ -32,7 +32,10 @@ insert into finance_supplier_invoices(id, business_id, invoice_number, supplier_
 values ('00000000-0000-0000-0000-0000009900f1', proof.get('b')::uuid, 'T99-SI1', '00000000-0000-0000-0000-0000009900a1', '00000000-0000-0000-0000-0000009900d1', current_date, 1050, 126, 'reviewed');
 insert into finance_supplier_invoice_items(business_id, invoice_id, purchase_order_item_id, description, quantity, unit_cost)
 values (proof.get('b')::uuid, '00000000-0000-0000-0000-0000009900f1', '00000000-0000-0000-0000-0000009900d2', 'Item T99', 10, 105);
-update finance_supplier_invoices set status = 'approved' where id = '00000000-0000-0000-0000-0000009900f1';
+-- Build 103: ₱5 above the PO price (+5 %) is over the 2 % tolerance, so the Business Admin approves it
+select proof.as_user('00000000-0000-0000-0000-000000000011');
+update finance_supplier_invoices set status = 'approved', approved_by = '00000000-0000-0000-0000-000000000011', approved_at = now() where id = '00000000-0000-0000-0000-0000009900f1';
+reset role; select proof.as_owner();
 select proof.ok(pg_temp.bal('2010') = 0, 'the bill clears received-not-billed at the PO cost (₱1,000)');
 select proof.ok(pg_temp.bal('1200') = 1050 and pg_temp.bal('1320') = 126 and pg_temp.bal('2000') = -1176, 'price difference ₱50 to inventory, input VAT ₱126, payable ₱1,176');
 
