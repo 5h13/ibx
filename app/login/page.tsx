@@ -4,11 +4,11 @@
 import { Form } from '@/core/ui/Form';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { createClient } from '@/core/auth/supabaseClient';
+import { signInAction } from './actions';
 
 export default function LoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState('');   // Build 104: username or email
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -18,12 +18,11 @@ export default function LoginPage() {
     setLoading(true);
     setError(null);
 
-    const supabase = createClient();
-    const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
-
+    let result: Awaited<ReturnType<typeof signInAction>>;
+    try { result = await signInAction(email, password); } catch { result = { ok: false, error: 'Could not reach the server. Try again.' }; }
     setLoading(false);
-    if (signInError) {
-      setError(signInError.message);
+    if (!result.ok) {
+      setError(result.error);
       return;
     }
     router.push('/dashboard');
@@ -45,14 +44,17 @@ export default function LoginPage() {
         {error && <p className="text-sm text-red-600">{error}</p>}
 
         <div>
-          <label className="block text-xs text-slate-500 mb-1">Email</label>
+          <label className="block text-xs text-slate-500 mb-1">Username or email</label>
           <input
-            type="email"
+            type="text"
+            autoComplete="username"
+            autoCapitalize="none"
+            spellCheck={false}
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
             className="w-full border rounded px-3 py-2 text-sm"
-            placeholder="you@company.com"
+            placeholder="e.g. A.Santiago"
           />
         </div>
         <div>

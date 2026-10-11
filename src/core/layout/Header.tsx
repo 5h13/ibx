@@ -1,4 +1,5 @@
 // src/core/layout/Header.tsx
+import { displayName } from '@/core/auth/loginEmail';
 import type { SessionProfile } from '@/core/auth/types';
 import { ActingBusinessSwitcher } from './ActingBusinessSwitcher';
 import { RoleAuditSwitcher } from './RoleAuditSwitcher';
@@ -69,7 +70,7 @@ export function Header({ profile, businesses = [], notifications = [] }: { profi
           )}
           <NotificationBell notifications={notifications} />
           <span>
-            {profile.user.full_name ?? profile.user.email} &middot;{' '}
+            <a href="/profile" className="hover:underline" title="My profile">{displayName(profile.user)}</a> &middot;{' '}
             <span className="uppercase text-slate-400">{profile.user.role}</span>
           </span>
           <form action="/api/auth/signout" method="post">

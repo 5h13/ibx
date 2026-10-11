@@ -4,6 +4,8 @@ import { getSessionProfile } from '@/core/auth/getSessionProfile';
 import { AuthedShell } from '@/core/layout/AuthedShell';
 import EmployeeProfile from '@/modules/admin/employees/EmployeeProfile';
 import SuperAdminAccountProfile from '@/modules/profile/SuperAdminAccountProfile';
+import { AccountLogin } from '@/modules/profile/AccountLogin';
+import { shownEmail } from '@/core/auth/loginEmail';
 
 const PROFILE_COLUMNS = [
   'id', 'employee_no', 'user_id', 'first_name', 'middle_name', 'last_name', 'suffix', 'preferred_name',
@@ -66,9 +68,10 @@ export default async function MyProfilePage() {
     }
     return (
       <AuthedShell profile={profile}>
+        <AccountLogin username={profile.user.username ?? ''} nickname={profile.user.nickname ?? null} fullName={profile.user.full_name} email={shownEmail(profile.user.email)} />
         <SuperAdminAccountProfile
           fullName={profile.user.full_name}
-          email={profile.user.email}
+          email={shownEmail(profile.user.email) || '— (no email; signs in with username ' + (profile.user.username ?? '') + ')'}
           createdAt={(userRow as any).created_at}
           superAdmin={profile.user.role === 'super_admin'}
           roleLabel={ROLE_LABEL[profile.user.role] ?? profile.user.role}
@@ -101,6 +104,7 @@ export default async function MyProfilePage() {
   return (
     <AuthedShell profile={profile}>
       <div className="mb-3 flex justify-end"><a href="/account/change-password" className="rounded border bg-white px-3 py-2 text-sm">Change password</a></div>
+      <AccountLogin username={profile.user.username ?? ''} nickname={profile.user.nickname ?? null} fullName={profile.user.full_name} email={shownEmail(profile.user.email)} />
       <EmployeeProfile
         employee={{ ...(employee as any), notes: null }}
         emergencyContacts={emergencyContacts ?? []}

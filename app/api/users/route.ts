@@ -8,7 +8,7 @@ import { createClient } from '@/core/auth/supabaseServer';
 
 export async function GET() {
   const supabase = createClient();
-  const { data, error } = await supabase.from('users').select('id, email, full_name, role, section_id, is_active');
+  const { data, error } = await supabase.from('users').select('id, email, username, full_name, role, section_id, is_active');
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
   return NextResponse.json({ data });
 }

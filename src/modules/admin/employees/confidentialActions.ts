@@ -161,8 +161,8 @@ export async function listEmployeeChangeHistoryAction(employeeId: string) {
     // Actor display names are not confidential; a plain service-role lookup
     // here is consistent with how the rest of the app resolves user names.
     const admin = createClient();
-    const { data: users } = await admin.from('users').select('id,full_name,email').in('id', actorIds);
-    actorNames = new Map((users ?? []).map((u: any) => [u.id, u.full_name || u.email]));
+    const { data: users } = await admin.from('users').select('id,full_name,username').in('id', actorIds);
+    actorNames = new Map((users ?? []).map((u: any) => [u.id, u.full_name || u.username]));
   }
 
   return rows.map((r: any) => ({ ...r, actor_name: actorNames.get(r.actor_id) ?? 'Unknown' }));

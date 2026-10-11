@@ -3,6 +3,8 @@
 // prices, orders, quotations, payments, expenses and commission all follow it,
 // and everything he records is recorded in that store.
 import { redirect } from 'next/navigation';
+import { displayName } from '@/core/auth/loginEmail';
+import { WelcomeGreeting } from '@/core/ui/WelcomeGreeting';
 import type { ReactNode } from 'react';
 import { createAdminClient } from '@/core/auth/supabaseAdmin';
 import { createClient } from '@/core/auth/supabaseServer';
@@ -44,7 +46,7 @@ export async function AgentShell({ ctx, title, hint, children }: { ctx: AgentCon
           </div>
           <InstallButton />
           <AgentNotices data={(notices as any) ?? { unread: 0, items: [] }} />
-          <AgentMenu name={ctx.profile.user.full_name || ctx.profile.user.email} />
+          <AgentMenu name={displayName(ctx.profile.user)} />
         </div>
         <AgentNav variant="tabs" />
       </header>
@@ -56,6 +58,7 @@ export async function AgentShell({ ctx, title, hint, children }: { ctx: AgentCon
         {ctx.store ? children : <AgentNotLinked message={ctx.error ?? 'No store is open for agents yet.'} />}
       </main>
       <AgentNav variant="bottom" />
+      <WelcomeGreeting name={ctx.profile.user.welcome_name} userId={ctx.profile.user.id} />
       <Suspense fallback={null}><ResumeLastScreen /></Suspense>
     </div>
   );

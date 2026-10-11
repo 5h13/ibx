@@ -18,7 +18,7 @@ export default async function UsersPage() {
   const db = createClient();
   const [{ data: sections, error: sectionsError }, { data: users, error: usersError }, { data: businesses, error: businessesError }] = await Promise.all([
     db.from('sections').select('id, code, name').order('name'),
-    db.from('users').select('id, email, full_name, role, section_id, business_id, is_active, access:user_access(section_id, workflow_role), functions:user_functions!user_functions_user_id_fkey(function_code)').order('email'),
+    db.from('users').select('id, email, full_name, first_name, last_name, username, nickname, email_is_login_only, role, section_id, business_id, is_active, access:user_access(section_id, workflow_role), functions:user_functions!user_functions_user_id_fkey(function_code)').order('username'),
     db.from('businesses').select('id, code, legal_name, trade_name, is_active').eq('is_active', true).order('trade_name'),
   ]);
   // Build 91: freelance agents an Agent login can be linked to

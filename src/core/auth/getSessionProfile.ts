@@ -38,7 +38,7 @@ export const getSessionProfile = cache(async (): Promise<SessionProfile | null> 
   const [{ data: userRow, error: userErr }, { data: accessRows }, { data: fnRows }] = await Promise.all([
     supabase
       .from('users')
-      .select('id, email, full_name, role, section_id, is_active, business_id, must_change_password, sections(code)')
+      .select('id, email, full_name, role, section_id, is_active, business_id, must_change_password, username, nickname, email_is_login_only, welcome_name, sections(code)')
       .eq('id', authUser.id)
       .single(),
     supabase

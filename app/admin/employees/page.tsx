@@ -1,3 +1,4 @@
+import { isLoginOnlyEmail } from '@/core/auth/loginEmail';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/core/auth/supabaseServer';
 import { createAdminClient } from '@/core/auth/supabaseAdmin';
@@ -25,7 +26,7 @@ export default async function EmployeesPage() {
   const admin = createAdminClient();
   const [{ data: employees, error: employeeError }, { data: users, error: usersError }, { data: departments, error: deptError }, { data: positions, error: posError }, { data: workLocations, error: locError }] = await Promise.all([
     db.from('employees').select('*').order('last_name').order('first_name'),
-    scopeToBusiness(admin.from('users').select('id,email,full_name,role,is_active'), profile).order('email'),
+    scopeToBusiness(admin.from('users').select('id,email,username,full_name,role,is_active'), profile).order('email'),
     db.from('hr_departments').select('id,name,active').order('name'),
     db.from('hr_positions').select('id,name,active').order('name'),
     db.from('work_locations').select('id,name,active').order('name'),
@@ -40,5 +41,5 @@ export default async function EmployeesPage() {
   // the value was still shipped in the page payload. Strip it server-side.
   const visibleEmployees = canViewConfidential ? (employees ?? []) : (employees ?? []).map((e: any) => ({ ...e, notes: null }));
 
-  return <AuthedShell profile={profile}><EmployeeManagement employees={visibleEmployees as any} users={(users ?? []) as any} departments={(departments ?? []) as any} positions={(positions ?? []) as any} workLocations={(workLocations ?? []) as any} canDelete={isAdminTier(profile)} canViewConfidential={canViewConfidential} /></AuthedShell>;
+  return <AuthedShell profile={profile}><EmployeeManagement employees={visibleEmployees as any} users={((users ?? []) as any[]).map((u: any) => ({ ...u, email: isLoginOnlyEmail(u.email) ? u.username : u.email })) as any} departments={(departments ?? []) as any} positions={(positions ?? []) as any} workLocations={(workLocations ?? []) as any} canDelete={isAdminTier(profile)} canViewConfidential={canViewConfidential} /></AuthedShell>;
 }

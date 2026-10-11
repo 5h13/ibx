@@ -1,4 +1,5 @@
 // src/core/layout/AuthedShell.tsx
+import { WelcomeGreeting } from '@/core/ui/WelcomeGreeting';
 import { redirect } from 'next/navigation';
 import type { ReactNode } from 'react';
 import type { SessionProfile } from '@/core/auth/types';
@@ -59,6 +60,7 @@ export async function AuthedShell({ profile, children }: { profile: SessionProfi
           />
         )}
         <Header profile={profile} businesses={businesses} notifications={notifications} />
+        <WelcomeGreeting name={profile.user.welcome_name} userId={profile.user.id} />
       </div>
       <div className="flex md:flex-1 md:min-h-0">
         <ResponsiveNav profile={profile} shortcuts={shortcuts} />

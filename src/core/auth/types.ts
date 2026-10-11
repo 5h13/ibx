@@ -24,6 +24,11 @@ export interface AppUser {
   business_id: string | null;
   /** Build 72: set after an admin sets / resets the password; the user must choose a new one before using the app. */
   must_change_password?: boolean;
+  /** Build 104: login name, screen name, no-real-email flag, sign-in greeting */
+  username?: string | null;
+  nickname?: string | null;
+  email_is_login_only?: boolean;
+  welcome_name?: string | null;
 }
 
 export interface UserAccessGrant {

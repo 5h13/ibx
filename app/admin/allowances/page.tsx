@@ -1,4 +1,5 @@
 // Build 91 — Expense Allowances (Business Admin): monthly limits per person and category.
+import { isLoginOnlyEmail } from '@/core/auth/loginEmail';
 import { redirect } from 'next/navigation';
 import { getSessionProfile } from '@/core/auth/getSessionProfile';
 import { isAdminTier } from '@/core/auth/types';
@@ -18,13 +19,13 @@ export default async function AllowancesPage() {
   const [{ data: rows, error }, { data: cats }, { data: users }, { data: agents }] = await Promise.all([
     db.from('expense_allowances').select('id,user_id,agent_id,category_id,monthly_limit,notes,active').eq('business_id', b).order('created_at'),
     db.from('admin_expense_categories').select('id,code,name').eq('active', true).order('name'),
-    db.from('users').select('id,full_name,email,role').eq('business_id', b).eq('is_active', true).neq('role', 'agent').order('full_name'),
+    db.from('users').select('id,full_name,email,username,role').eq('business_id', b).eq('is_active', true).neq('role', 'agent').order('full_name'),
     db.from('sales_agents').select('id,agent_code,name').eq('kind', 'freelance').eq('active', true).order('name'),
   ]);
   if (error) throw new Error(error.message);
   return (
     <AuthedShell profile={profile}>
-      <AllowancesManagement rows={(rows ?? []) as any[]} categories={(cats ?? []) as any[]} users={(users ?? []) as any[]} agents={(agents ?? []) as any[]} />
+      <AllowancesManagement rows={(rows ?? []) as any[]} categories={(cats ?? []) as any[]} users={((users ?? []) as any[]).map((u: any) => ({ ...u, email: isLoginOnlyEmail(u.email) ? u.username : u.email }))} agents={(agents ?? []) as any[]} />
     </AuthedShell>
   );
 }

@@ -1,4 +1,6 @@
 'use server';
+import { EMAIL_RE, isLoginOnlyEmail, newLoginOnlyEmail } from '@/core/auth/loginEmail';
+import { setAccountEmail } from '@/core/auth/accountEmail';
 import { APP_FUNCTIONS } from '@/core/auth/functions';
 import { appError } from '@/core/errors/appError';
 
@@ -142,8 +144,17 @@ async function writeAudit(
 
 export async function createUserAction(formData: FormData) {
   const actor = await requireAdminTier();
-  const email = requiredString(formData.get('email'), 'Email').toLowerCase();
-  const fullName = requiredString(formData.get('full_name'), 'Full name');
+  // Build 104: first name + surname (the username is made from them); the email is optional
+  const firstName = String(formData.get('first_name') ?? '').trim();
+  const lastName = String(formData.get('last_name') ?? '').trim();
+  const fullName = firstName || lastName ? `${firstName} ${lastName}`.trim() : requiredString(formData.get('full_name'), 'Full name');
+  if (!firstName || !lastName) throw appError('Enter the first name and the surname.');
+  const typedEmail = String(formData.get('email') ?? '').trim().toLowerCase();
+  if (typedEmail && (!EMAIL_RE.test(typedEmail) || isLoginOnlyEmail(typedEmail))) throw appError('Enter a valid email address, or leave it blank.');
+  const loginOnly = !typedEmail;
+  const email = typedEmail || newLoginOnlyEmail();
+  const typedUsername = String(formData.get('username') ?? '').trim();
+  if (typedUsername && !/^[A-Za-z0-9._-]{3,30}$/.test(typedUsername)) throw appError('A username has 3 to 30 letters, numbers, dots, dashes or underscores (no spaces).');
   const role = requiredString(formData.get('role'), 'Role');
   validateRole(role);
   const sectionIds = parseIds(formData.get('section_ids'));
@@ -192,7 +203,7 @@ export async function createUserAction(formData: FormData) {
 
   // Build 72 (U065): invite by email (the user sets their own password from
   // the link), or set a temporary password that must be changed at first sign-in.
-  const invite = String(formData.get('onboarding') ?? 'invite') === 'invite';
+  const invite = !loginOnly && String(formData.get('onboarding') ?? 'invite') === 'invite';   // no email → temporary password
   const typedPassword = String(formData.get('password') ?? '').trim();
   if (!invite && typedPassword && typedPassword.length < 8) throw appError('A temporary password needs at least 8 characters.');
   const temporaryPassword = invite ? null : typedPassword || crypto.randomUUID().slice(0, 8) + 'Aa1!';
@@ -205,7 +216,11 @@ export async function createUserAction(formData: FormData) {
   const { error: userError } = await db.from('users').insert({
     id: authData.user.id,
     email,
+    email_is_login_only: loginOnly,
     full_name: fullName,
+    first_name: firstName,
+    last_name: lastName,
+    username: typedUsername || null,
     role,
     section_id: homeSectionId,
     business_id: newUserBusinessId,
@@ -214,8 +229,10 @@ export async function createUserAction(formData: FormData) {
   });
   if (userError) {
     await admin.auth.admin.deleteUser(authData.user.id);
-    throw appError(userError.message);
+    throw appError(/users_username_lower_key/.test(userError.message) ? `The username "${typedUsername}" is already taken.` : userError.message);
   }
+  const { data: made } = await db.from('users').select('username').eq('id', authData.user.id).maybeSingle();
+  const username = (made as any)?.username ?? typedUsername;
 
   const rows = sectionIds.flatMap((sectionId) =>
     (grants[sectionId] ?? []).map((workflowRole) => ({
@@ -236,9 +253,9 @@ export async function createUserAction(formData: FormData) {
   const functions = role === 'super_admin' || role === 'business_admin' || role === 'agent' ? [] : parseFunctions(formData.get('functions'));
   await saveFunctions(db, actor.user.id, authData.user!.id, functions, false);
   await linkAgent(db, role, authData.user!.id, formData.get('agent_id'));
-  await writeAudit(actor.user.id, authData.user.id, 'created', { email, role, section_ids: sectionIds, functions, onboarding: invite ? 'email_invitation' : 'temporary_password' });
+  await writeAudit(actor.user.id, authData.user.id, 'created', { email: loginOnly ? null : email, username, role, section_ids: sectionIds, functions, onboarding: invite ? 'email_invitation' : 'temporary_password' });
   revalidatePath('/settings/users');
-  return invite ? { ok: true, invited: email } : { ok: true, temporaryPassword };
+  return invite ? { ok: true, invited: email, username } : { ok: true, temporaryPassword, username };
 }
 
 export async function updateUserAction(formData: FormData) {
@@ -307,14 +324,25 @@ export async function updateUserAction(formData: FormData) {
     if ((count ?? 0) <= 1) throw appError('At least one active Super Admin must remain.');
   }
 
+  // Build 104: names, username and (optionally) a new email
+  const firstName = String(formData.get('first_name') ?? '').trim();
+  const lastName = String(formData.get('last_name') ?? '').trim();
+  if (!firstName || !lastName) throw appError('Enter the first name and the surname.');
+  const editUsername = String(formData.get('username') ?? '').trim();
+  if (!/^[A-Za-z0-9._-]{3,30}$/.test(editUsername)) throw appError('A username has 3 to 30 letters, numbers, dots, dashes or underscores (no spaces).');
   const { error: userError } = await db.from('users').update({
-    full_name: requiredString(formData.get('full_name'), 'Full name'),
+    full_name: `${firstName} ${lastName}`,
+    first_name: firstName,
+    last_name: lastName,
+    username: editUsername,
     role,
     section_id: sectionIds[0] ?? null,
     business_id: targetBusinessId,
     is_active: isActive,
   }).eq('id', userId);
-  if (userError) throw appError(userError.message);
+  if (userError) throw appError(/users_username_lower_key/.test(userError.message) ? `The username "${editUsername}" is already taken.` : userError.message);
+  const newEmail = String(formData.get('email') ?? '').trim().toLowerCase();
+  if (newEmail && newEmail !== String(target.email ?? '').toLowerCase()) await setAccountEmail(userId, newEmail, actor.user.id);
 
   await db.from('user_access').delete().eq('user_id', userId);
   const rows = sectionIds.flatMap((sectionId) =>
@@ -326,7 +354,7 @@ export async function updateUserAction(formData: FormData) {
   }
 
   const authUpdate = await admin.auth.admin.updateUserById(userId, {
-    user_metadata: { full_name: requiredString(formData.get('full_name'), 'Full name') },
+    user_metadata: { full_name: `${firstName} ${lastName}` },
     ...(isActive ? { ban_duration: 'none' } : { ban_duration: '876000h' }),
   });
   if (authUpdate.error) throw appError(authUpdate.error.message);
@@ -372,6 +400,7 @@ export async function sendPasswordLinkAction(formData: FormData) {
   const admin = createAdminClient();
   const { data: target, error: te } = await admin.auth.admin.getUserById(userId);
   if (te || !target.user?.email) throw appError(te?.message ?? 'User not found.');
+  if (isLoginOnlyEmail(target.user.email)) throw appError('This user has no email. Use "Reset password" to give a temporary password, or add an email first.');
   const redirectTo = `${await siteUrl()}/auth/accept`;
   // never signed in yet → send the invitation again; otherwise a password-reset email
   const { error } = target.user.last_sign_in_at
@@ -432,4 +461,12 @@ export async function deleteUserAction(formData: FormData) {
   await writeAudit(actor.user.id, userId, 'edited', { action: 'deleted', email: target.email });
   revalidatePath('/settings/users');
   return { ok: true, deleted: target.email };
+}
+
+// Build 104 — the username a new user would get (shown on the Add user form)
+export async function suggestUsernameAction(firstName: string, lastName: string) {
+  await requireAdminTier();
+  const { data, error } = await createClient().rpc('username_suggest', { p_first: firstName, p_last: lastName });
+  if (error) throw appError(error.message);
+  return String(data ?? '');
 }
