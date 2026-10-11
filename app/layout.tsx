@@ -23,6 +23,8 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         {/* Build 102c: only when opened as the installed app, once per opening — decided before the first paint */}
         <script dangerouslySetInnerHTML={{ __html: "try{var s=window.matchMedia('(display-mode: standalone)').matches||navigator.standalone;if(s&&!sessionStorage.getItem('ibx-launched')){document.documentElement.classList.add('ibx-launching');sessionStorage.setItem('ibx-launched','1')}}catch(e){}" }} />
         <style dangerouslySetInnerHTML={{ __html: LAUNCH_CSS }} />
+        <link rel="preload" href="/fonts/roboto-condensed-400.woff2" as="font" type="font/woff2" crossOrigin="anonymous" />
+        <link rel="preload" href="/icons/launch-logo.png" as="image" />
       </head>
       <body className="font-sans text-slate-800">
         <LaunchScreen />
