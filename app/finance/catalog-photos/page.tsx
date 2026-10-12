@@ -24,7 +24,7 @@ export default async function CatalogPhotosPage(props: { searchParams?: Promise<
     .eq('active', true);
   if (f.q) {
     const term = f.q.replace(/[%_,()*.]/g, ' ').trim();
-    if (term) query = query.or(`item_code.ilike.*${term}*,item_name.ilike.*${term}*,brand.ilike.*${term}*,generic_item.ilike.*${term}*`);
+    for (const w of term.split(/\s+/).filter(Boolean)) query = query.or(`item_code.ilike.*${w}*,item_name.ilike.*${w}*,brand.ilike.*${w}*,generic_item.ilike.*${w}*`);   // Build 107: word by word
   }
   if (f.category) query = query.ilike('category', f.category);
   if (f.missing) query = query.or('photo_path.is.null,photo_path_2.is.null,photo_path_3.is.null');

@@ -58,7 +58,8 @@ export async function searchCatalogItemsAction(query: string, options?: { includ
   if (item) q = q.ilike('generic_item', exact(item));
   if (brand) q = q.ilike('brand', exact(brand));
   const term = String(query ?? '').trim().slice(0, 80).replace(/[%_,()]/g, ' ').trim();
-  if (term) q = q.or(`item_code.ilike.%${term}%,item_name.ilike.%${term}%,category.ilike.%${term}%`);
+  // Build 107: word by word, any order, partial words
+  for (const w of term.split(/\s+/).filter(Boolean)) q = q.or(`item_code.ilike.%${w}%,item_name.ilike.%${w}%,category.ilike.%${w}%,brand.ilike.%${w}%,generic_item.ilike.%${w}%`);
   const { data, error } = await q;
   if (error) throw appError(error.message);
   return (data ?? []) as CatalogSearchItem[];

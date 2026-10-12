@@ -35,6 +35,7 @@ export function applyCatalogFilters<Q>(query: Q, f: CatalogFilters): Q {
   if (f.supplier === 'none') q = q.is('default_supplier_id', null);
   else if (f.supplier) q = q.eq('default_supplier_id', f.supplier);
   const t = safe(f.q);
-  if (t) q = q.or(['item_name', 'item_code', 'category', 'generic_item', 'brand', 'description', 'supplier_name', 'supplier_item_code'].map((c) => `${c}.ilike.%${t}%`).join(','));
+  // Build 107: every word typed must match somewhere (any order, partial words): "blower inno" finds "BLOWER MOTOR, TOYOTA INNOVA"
+  for (const w of t.split(/[\s,;/]+/).filter(Boolean)) q = q.or(['item_name', 'item_code', 'category', 'generic_item', 'brand', 'description', 'supplier_name', 'supplier_item_code'].map((c) => `${c}.ilike.%${w}%`).join(','));
   return q as Q;
 }
