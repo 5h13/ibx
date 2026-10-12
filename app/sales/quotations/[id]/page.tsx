@@ -17,12 +17,12 @@ export default async function QuotationPrintPage(props: { params: Promise<{ id: 
   // Build 92: an agent prints his own quotations (read with the service role after the check)
   const me = await getSessionProfile();
   let db: any = createClient();
-  if (me?.user.role === 'agent') {
-    const { data: agentId } = await db.rpc('current_agent_id');
-    const admin = createAdminClient();
-    const { data: own } = await admin.from('sales_quotations').select('agent_id').eq('id', params.id).maybeSingle();
-    if (!agentId || !own || own.agent_id !== agentId) notFound();
-    db = admin;
+  // Build 106: staff linked to an agent print their own agent quotations the same way
+  const { data: myAgent } = me ? await db.rpc('current_agent_id') : { data: null };
+  const ownQuote = myAgent ? ((await createAdminClient().from('sales_quotations').select('agent_id').eq('id', params.id).maybeSingle()).data as any)?.agent_id === myAgent : false;
+  if (me?.user.role === 'agent' || ownQuote) {
+    if (!ownQuote) notFound();
+    db = createAdminClient();
   } else {
     await requireSection('sales');
   }

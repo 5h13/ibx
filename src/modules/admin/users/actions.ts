@@ -86,7 +86,8 @@ async function saveFunctions(db: any, actorId: string, userId: string, codes: st
 async function linkAgent(db: any, role: string, userId: string, agentValue: FormDataEntryValue | null) {
   const agentId = String(agentValue ?? '').trim() || null;
   if (role === 'agent' && !agentId) throw appError('Choose which agent this login is for.');
-  const { error } = await db.rpc('sales_agent_link_user', { p_agent: role === 'agent' ? agentId : null, p_user: userId });
+  // Build 106: a staff login may also be linked to an agent record ("Also an agent"); never a Super Admin
+  const { error } = await db.rpc('sales_agent_link_user', { p_agent: role === 'super_admin' ? null : agentId, p_user: userId });
   if (error) throw appError(error.message);
 }
 

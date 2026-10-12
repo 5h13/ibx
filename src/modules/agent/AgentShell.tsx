@@ -46,7 +46,7 @@ export async function AgentShell({ ctx, title, hint, children }: { ctx: AgentCon
           </div>
           <InstallButton />
           <AgentNotices data={(notices as any) ?? { unread: 0, items: [] }} />
-          <AgentMenu name={displayName(ctx.profile.user)} />
+          <AgentMenu name={displayName(ctx.profile.user)} office={ctx.profile.user.role !== 'agent'} />
         </div>
         <AgentNav variant="tabs" />
       </header>

@@ -27,6 +27,8 @@ export async function AuthedShell({ profile, children }: { profile: SessionProfi
   const db = createClient();
   const { data } = await db.from('businesses').select('id,code,legal_name,trade_name,branding').eq('is_active', true).order('trade_name');
   const businesses = data ?? [];
+  // Build 106: staff linked to an agent record get an "Agent app" button
+  const { data: myAgent } = profile.user.role === 'agent' || profile.user.role === 'super_admin' ? { data: null } : await db.rpc('current_agent_id');
 
   // U006: fetched once here (same rationale as `businesses` above) so no
   // individual page needs to know about notifications for the bell to work
@@ -59,7 +61,7 @@ export async function AuthedShell({ profile, children }: { profile: SessionProfi
             businessName={(() => { const b = businesses.find((x: any) => x.id === profile.audit!.businessId); return b ? (b.trade_name || b.legal_name) : 'selected business'; })()}
           />
         )}
-        <Header profile={profile} businesses={businesses} notifications={notifications} />
+        <Header profile={profile} businesses={businesses} notifications={notifications} agentApp={!!myAgent} />
         <WelcomeGreeting name={profile.user.welcome_name} userId={profile.user.id} />
       </div>
       <div className="flex md:flex-1 md:min-h-0">

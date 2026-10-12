@@ -20,7 +20,7 @@ function accentColor(branding: Branding | null | undefined): string | null {
   return typeof c === 'string' && /^#[0-9a-fA-F]{6}$/.test(c) ? c : null;
 }
 
-export function Header({ profile, businesses = [], notifications = [] }: { profile: SessionProfile; businesses?: Business[]; notifications?: Notification[] }) {
+export function Header({ profile, businesses = [], notifications = [], agentApp = false }: { profile: SessionProfile; businesses?: Business[]; notifications?: Notification[]; agentApp?: boolean }) {
   const actingBusiness = businesses.find((b) => b.id === profile.user.business_id);
   const accent = accentColor(actingBusiness?.branding);
   const logoUrl = actingBusiness?.branding?.logo_url;
@@ -68,6 +68,7 @@ export function Header({ profile, businesses = [], notifications = [] }: { profi
           {!profile.audit && (profile.user.role === 'super_admin' || profile.user.role === 'business_admin') && (
             <RoleAuditSwitcher isSuperAdmin={profile.user.role === 'super_admin'} businesses={businesses} defaultBusinessId={profile.user.business_id} />
           )}
+          {agentApp && <a href="/agent" className="rounded border border-slate-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-800" title="Open the agent app (your clients, catalogue, orders and commission)">Agent app</a>}
           <NotificationBell notifications={notifications} />
           <span>
             <a href="/profile" className="hover:underline" title="My profile">{displayName(profile.user)}</a> &middot;{' '}

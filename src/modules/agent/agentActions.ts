@@ -13,7 +13,7 @@ const AGENT_BUCKET = 'agent-files';
 
 async function agentId(): Promise<string> {
   const p = await getSessionProfile();
-  if (!p?.user.is_active || p.user.role !== 'agent') throw appError('This is for agent logins.');
+  if (!p?.user.is_active) throw appError('This is for agent logins.');   // Build 106: agent logins and staff linked to an agent
   const { data, error } = await createClient().rpc('current_agent_id');
   if (error) throw appError(error.message);
   if (!data) throw appError('Your login is not linked to an agent record yet. Ask the Business Admin.');

@@ -16,7 +16,7 @@ select proof.set('ag', public.sales_agent_save(null, '{"name":"Ikot91"}')::text)
 select proof.set('ag2', public.sales_agent_save(null, '{"name":"Rocky91"}')::text);
 select public.sales_agent_link_user(proof.get('ag')::uuid, '00000000-0000-0000-0000-000000000031');
 select public.sales_agent_link_user(proof.get('ag2')::uuid, '00000000-0000-0000-0000-000000000032');
-select proof.fails($$select public.sales_agent_link_user(proof.get('ag')::uuid, '00000000-0000-0000-0000-000000000013')$$, 'Agent role', 'only a user with the Agent role can be linked');
+select proof.fails($$select public.sales_agent_link_user(proof.get('ag')::uuid, '00000000-0000-0000-0000-000000000013')$$, 'already has a login', 'an agent record already linked cannot take a second login (Build 106: staff may be linked to a free agent record)');
 select proof.as_user('00000000-0000-0000-0000-000000000013');   -- cashier
 select proof.fails($$select public.sales_agent_link_user(proof.get('ag')::uuid, '00000000-0000-0000-0000-000000000031')$$, 'Business Admin', 'a cashier cannot link logins');
 select proof.fails($$select * from public.agent_clients()$$, 'for agents', 'a cashier cannot open the agent screens');

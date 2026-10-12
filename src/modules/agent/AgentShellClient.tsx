@@ -87,7 +87,7 @@ export function AgentNav({ variant }: { variant: 'tabs' | 'bottom' }) {
   );
 }
 
-export function AgentMenu({ name }: { name: string }) {
+export function AgentMenu({ name, office = false }: { name: string; office?: boolean }) {
   const [open, setOpen] = useState(false);
   return (
     <div className="relative">
@@ -99,7 +99,7 @@ export function AgentMenu({ name }: { name: string }) {
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
           <div className="absolute right-0 z-50 mt-2 w-56 overflow-hidden rounded-lg border bg-white text-sm text-slate-800 shadow-lg">
             <div className="border-b px-3 py-2 text-xs text-slate-500">{name}</div>
-            <Link href="/profile" className="block px-3 py-2 hover:bg-slate-50">My profile (username, nickname, email)</Link><Link href="/account/change-password" className="block px-3 py-2 hover:bg-slate-50">Change password</Link>
+            {office && <Link href="/dashboard" className="block border-b px-3 py-2 font-semibold hover:bg-slate-50">← Back to office</Link>}<Link href="/profile" className="block px-3 py-2 hover:bg-slate-50">My profile (username, nickname, email)</Link><Link href="/account/change-password" className="block px-3 py-2 hover:bg-slate-50">Change password</Link>
             <form action="/api/auth/signout" method="post"><button className="block w-full px-3 py-2 text-left text-red-700 hover:bg-slate-50">Log out</button></form>
           </div>
         </>

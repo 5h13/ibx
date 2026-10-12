@@ -6,6 +6,7 @@ import { notFound } from 'next/navigation';
 import { createClient } from '@/core/auth/supabaseServer';
 import { createAdminClient } from '@/core/auth/supabaseAdmin';
 import { getSessionProfile } from '@/core/auth/getSessionProfile';
+import { isAdminTier } from '@/core/auth/types';
 import { DocumentHeader, DocumentPrintStyles, DOCUMENT_BUSINESS_COLUMNS, DOCUMENT_PAGE_CLASS } from '@/shared/documents';
 import { DocumentActions } from '@/shared/documents/DocumentActions';
 import { pesoDoc as peso, requireAnySection } from '@/shared/documents/access';
@@ -20,7 +21,10 @@ export default async function StatementPage(props: { params: Promise<{ customerI
   const sp = (await props.searchParams) ?? {};
   // Build 91: an agent opens the statement of his own client (checked by agent_customer_statement)
   const me = await getSessionProfile();
-  const agent = me?.user.role === 'agent';
+  // Build 106: a staff login linked to an agent, without Sales / Finance access, opens it as an agent
+  const staffOk = !!me && (isAdminTier(me) || me.access.some((a) => a.section_code === 'sales' || a.section_code === 'finance'));
+  const linked = me && me.user.role !== 'agent' && !staffOk ? (await createClient().rpc('current_agent_id')).data : null;
+  const agent = me?.user.role === 'agent' || !!linked;
   if (!agent) await requireAnySection(['sales', 'finance'], ['finance.ar', 'sales.counter', 'sales.ar_collect', 'sales.quotes']);
   const db = createClient();
   let st: any = null; let error: any = null; let businessId: string | null = null;

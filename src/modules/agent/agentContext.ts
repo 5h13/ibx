@@ -13,9 +13,10 @@ export type AgentContext = { profile: SessionProfile; agentId: string | null; st
 export async function getAgentContext(b?: string | null): Promise<AgentContext> {
   const profile = await getSessionProfile();
   if (!profile) redirect('/login');
-  if (profile.user.role !== 'agent') redirect('/dashboard');
   const db = createClient();
   const { data: agentId } = await db.rpc('current_agent_id');
+  // Build 106: a staff login linked to an agent record may open the agent app too
+  if (profile.user.role !== 'agent' && !agentId) redirect('/dashboard');
   if (!agentId) return { profile, agentId: null, stores: [], store: null, error: 'Your login is not linked to an agent record yet. Ask the Business Admin to link it (Settings → Users).' };
   const { data: stores, error } = await db.rpc('agent_stores');
   if (error) return { profile, agentId, stores: [], store: null, error: error.message };
