@@ -49,6 +49,76 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
   ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
 }
 
+// Build 105 — the store logo as a faint watermark over the product photo. The logo's own background (the flat colour
+// around its edges: PILI's light blue, ISHABELLA's navy, ATON's gold frame) is removed so only the artwork shows;
+// near-white artwork is tinted slate so it does not vanish on a white photo. Cropped to the artwork.
+function watermarkFrom(logo: HTMLImageElement): HTMLCanvasElement | null {
+  const k = Math.min(1, 600 / Math.max(logo.width, logo.height));
+  const w = Math.max(1, Math.round(logo.width * k)), h = Math.max(1, Math.round(logo.height * k));
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const x = c.getContext('2d', { willReadFrequently: true })!;
+  x.drawImage(logo, 0, 0, w, h);
+  let img: ImageData;
+  try { img = x.getImageData(0, 0, w, h); } catch { return null; }
+  const d = img.data, edge: number[][] = [];
+  const ring = Math.max(1, Math.round(Math.min(w, h) * 0.03));
+  for (let yy = 0; yy < h; yy++) for (let xx = 0; xx < w; xx++) {
+    if (xx >= ring && yy >= ring && xx < w - ring && yy < h - ring) continue;
+    const i = (yy * w + xx) * 4; if (d[i + 3] > 200) edge.push([d[i], d[i + 1], d[i + 2]]);
+  }
+  const transparentBg = edge.length < (2 * (w + h) * ring) * 0.3;     // already a cut-out logo
+  const med = (n: number) => { const v = edge.map((p) => p[n]).sort((a, b) => a - b); return v[Math.floor(v.length / 2)] ?? 0; };
+  const bg = transparentBg ? null : [med(0), med(1), med(2)];
+  let minX = w, minY = h, maxX = -1, maxY = -1;
+  for (let i = 0, p = 0; i < d.length; i += 4, p++) {
+    let a = d[i + 3] / 255;
+    if (bg) { const dist = Math.hypot(d[i] - bg[0], d[i + 1] - bg[1], d[i + 2] - bg[2]); a *= Math.min(1, Math.max(0, (dist - 45) / 50)); }
+    const lum = (d[i] + d[i + 1] + d[i + 2]) / 3;
+    if (lum > 200) { const t = Math.min(1, (lum - 200) / 40); d[i] = d[i] * (1 - t) + 120 * t; d[i + 1] = d[i + 1] * (1 - t) + 135 * t; d[i + 2] = d[i + 2] * (1 - t) + 155 * t; }
+    d[i + 3] = Math.round(a * 255);
+    if (d[i + 3] > 30) { const px = p % w, py = (p / w) | 0; if (px < minX) minX = px; if (px > maxX) maxX = px; if (py < minY) minY = py; if (py > maxY) maxY = py; }
+  }
+  if (maxX < 0) return null;
+  // drop small stray specks (e.g. a frame's shaded corner): keep shapes at least 5 % the size of the biggest
+  const lab = new Int32Array(w * h), sizes: number[] = [0];
+  for (let p0 = 0; p0 < w * h; p0++) {
+    if (lab[p0] || d[p0 * 4 + 3] <= 30) continue;
+    const id = sizes.length; let n = 0; const st = [p0]; lab[p0] = id;
+    while (st.length) {
+      const q = st.pop()!; n++;
+      const qx = q % w, qy = (q / w) | 0;
+      for (const [nx, ny] of [[qx + 1, qy], [qx - 1, qy], [qx, qy + 1], [qx, qy - 1]]) {
+        if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+        const r = ny * w + nx; if (!lab[r] && d[r * 4 + 3] > 30) { lab[r] = id; st.push(r); }
+      }
+    }
+    sizes.push(n);
+  }
+  const big = Math.max(...sizes);
+  minX = w; minY = h; maxX = -1; maxY = -1;
+  for (let p0 = 0; p0 < w * h; p0++) {
+    const id = lab[p0];
+    if (id && sizes[id] < big * 0.05) { d[p0 * 4 + 3] = 0; continue; }
+    if (id) { const px = p0 % w, py = (p0 / w) | 0; if (px < minX) minX = px; if (px > maxX) maxX = px; if (py < minY) minY = py; if (py > maxY) maxY = py; }
+  }
+  if (maxX < 0) return null;
+  x.putImageData(img, 0, 0);
+  const out = document.createElement('canvas'); out.width = maxX - minX + 1; out.height = maxY - minY + 1;
+  out.getContext('2d')!.drawImage(c, minX, minY, out.width, out.height, 0, 0, out.width, out.height);
+  return out;
+}
+
+function drawWatermark(ctx: CanvasRenderingContext2D, wm: HTMLCanvasElement, S: number, top: number, height: number) {
+  const box = Math.min(height, S) * 0.62, k = Math.min(box / wm.width, box / wm.height);
+  const ww = wm.width * k, wh = wm.height * k, wx = (S - ww) / 2, wy = top + (height - wh) / 2;
+  // a white copy, "screened" on: lightens the product's dark parts (invisible on white)
+  const sil = document.createElement('canvas'); sil.width = Math.ceil(ww); sil.height = Math.ceil(wh);
+  const sc = sil.getContext('2d')!; sc.drawImage(wm, 0, 0, ww, wh); sc.globalCompositeOperation = 'source-in'; sc.fillStyle = '#ffffff'; sc.fillRect(0, 0, ww, wh);
+  ctx.save(); ctx.globalAlpha = 0.22; ctx.globalCompositeOperation = 'screen'; ctx.drawImage(sil, wx, wy); ctx.restore();
+  // the artwork in its own colours at 18 %: shows on the white background
+  ctx.save(); ctx.globalAlpha = 0.18; ctx.drawImage(wm, wx, wy, ww, wh); ctx.restore();
+}
+
 export const validUntil = (days = 7) =>
   new Date(Date.now() + days * 86400000).toLocaleDateString('en-US', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', year: 'numeric' });
 
@@ -95,6 +165,8 @@ export async function drawShareCard(brand: ShareBrand, agent: ShareAgent, item: 
   if (photo) {
     const k = Math.min((S - 16) / photo.width, (pH - 8) / photo.height);
     ctx.drawImage(photo, (S - photo.width * k) / 2, pTop + (pH - photo.height * k) / 2, photo.width * k, photo.height * k);
+    const wm = logo ? watermarkFrom(logo) : null;   // Build 105: faint store logo across the product
+    if (wm) drawWatermark(ctx, wm, S, pTop, pH);
   } else {
     ctx.fillStyle = '#f4f4f2'; ctx.fillRect(0, pTop, S, pH);
     ctx.fillStyle = '#9a9a94'; ctx.font = `400 34px ${FONT}`; ctx.textAlign = 'center'; ctx.fillText('No photo', S / 2, pTop + pH / 2); ctx.textAlign = 'left';
