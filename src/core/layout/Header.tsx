@@ -2,6 +2,7 @@
 import { displayName } from '@/core/auth/loginEmail';
 import type { SessionProfile } from '@/core/auth/types';
 import { ActingBusinessSwitcher } from './ActingBusinessSwitcher';
+import { MobileAccountMenu } from './MobileAccountMenu';
 import { RoleAuditSwitcher } from './RoleAuditSwitcher';
 import { NotificationBell } from '@/shared/notifications/NotificationBell';
 import { parseTheme, headerBackground, THEME_PRESETS } from '@/core/theme/brandTheme';
@@ -15,6 +16,12 @@ type Notification = { id: string; title: string; message: string | null; action_
 // keys the new Business Branding admin page (U033) writes, and tolerates
 // every other shape (empty object, or keys from before this feature) by
 // just falling back to the plain, unbranded header it always showed.
+// Build 108: the role written as words ("business_admin" → "Business Admin")
+export function roleName(role: string): string {
+  if (role === 'super_admin') return '5H13 Super Admin';
+  return role.split('_').filter(Boolean).map((w) => w[0]!.toUpperCase() + w.slice(1)).join(' ');
+}
+
 function accentColor(branding: Branding | null | undefined): string | null {
   const c = branding?.primary_color;
   return typeof c === 'string' && /^#[0-9a-fA-F]{6}$/.test(c) ? c : null;
@@ -33,34 +40,35 @@ export function Header({ profile, businesses = [], notifications = [], agentApp 
       className="bg-slate-900 text-white shadow-md"
       style={{ ...(theme ? { background: headerBackground(theme) } : {}), ...(accent && !theme ? { borderBottom: `3px solid ${accent}` } : {}) }}
     >
-      <div className="max-w-7xl mx-auto px-4 py-3 flex flex-col sm:flex-row justify-between items-center gap-4">
-        <div className="flex items-center gap-3">
+      {/* Build 108: one row on a phone — brand on the left (clear of the menu button), bell and account button on the right */}
+      <div className="max-w-7xl mx-auto py-3 pl-14 pr-3 md:px-4 flex justify-between items-center gap-3 md:gap-4">
+        <div className="flex min-w-0 items-center gap-3">
           {logoUrl && (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={logoUrl} alt={`${bizName ?? ''} logo`} className="h-12 w-12 rounded-xl object-contain" />
+            <img src={logoUrl} alt={`${bizName ?? ''} logo`} className="h-10 w-10 shrink-0 rounded-xl object-contain md:h-12 md:w-12" />
           )}
           {bizName && (theme || logoUrl) ? (
-            <div className="leading-tight">
-              <h1 className="text-xl font-extrabold uppercase tracking-wide">{bizName}</h1>
-              <p className="text-[11px] font-semibold uppercase tracking-widest text-slate-300">{tagline || '5H13 Business Solutions'}</p>
+            <div className="min-w-0 leading-tight">
+              <h1 className="truncate text-sm font-extrabold uppercase tracking-normal sm:text-base md:text-xl md:tracking-wide">{bizName}</h1>
+              <p className="truncate text-[10px] font-semibold uppercase tracking-widest text-slate-300 md:text-[11px]">{tagline || '5H13 Business Solutions'}</p>
               {profile.user.role === 'super_admin' && <p className="text-[10px] uppercase tracking-wide text-slate-400">Acting as this business</p>}
             </div>
           ) : (
-            <div className="flex items-center gap-3">
+            <div className="flex min-w-0 items-center gap-3">
               {!actingBusiness && (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src="/brand/5h13-logo.jpg" alt="5H13" className="h-12 w-12 rounded-xl object-cover shadow" />
+                <img src="/brand/5h13-logo.jpg" alt="5H13" className="h-10 w-10 shrink-0 rounded-xl object-cover shadow md:h-12 md:w-12" />
               )}
-              <div className="leading-tight">
-                <h1 className="text-xl font-extrabold tracking-wide">5H13 BUSINESS SOLUTIONS</h1>
-                <p className="text-xs font-semibold uppercase tracking-widest" style={!actingBusiness ? { color: '#fcd116' } : undefined}>
+              <div className="min-w-0 leading-tight">
+                <h1 className="truncate text-sm font-extrabold tracking-normal sm:text-base md:text-xl md:tracking-wide">5H13 BUSINESS SOLUTIONS</h1>
+                <p className="truncate text-[10px] font-semibold uppercase tracking-widest md:text-xs" style={!actingBusiness ? { color: '#fcd116' } : undefined}>
                   {profile.user.role === 'super_admin' && bizName ? `Acting as ${bizName}` : bizName ?? 'Business Management System'}
                 </p>
               </div>
             </div>
           )}
         </div>
-        <div className="flex items-center gap-3 text-sm text-slate-300">
+        <div className="hidden md:flex flex-wrap items-center justify-end gap-3 text-sm text-slate-300">
           {profile.user.role === 'super_admin' && (
             <ActingBusinessSwitcher businesses={businesses} actingBusinessId={profile.user.business_id} />
           )}
@@ -72,7 +80,7 @@ export function Header({ profile, businesses = [], notifications = [], agentApp 
           <NotificationBell notifications={notifications} />
           <span>
             <a href="/profile" className="hover:underline" title="My profile">{displayName(profile.user)}</a> &middot;{' '}
-            <span className="uppercase text-slate-400">{profile.user.role}</span>
+            <span className="text-slate-400">{roleName(profile.user.role)}</span>
           </span>
           <form action="/api/auth/signout" method="post">
             <button
@@ -82,6 +90,22 @@ export function Header({ profile, businesses = [], notifications = [], agentApp 
               Logout
             </button>
           </form>
+        </div>
+        <div className="flex shrink-0 items-center gap-2 md:hidden">
+          <NotificationBell notifications={notifications} compact />
+          <MobileAccountMenu name={displayName(profile.user)} role={roleName(profile.user.role)}>
+            {profile.user.role === 'super_admin' && (
+              <div className="[&_label]:flex-wrap [&_select]:w-full"><ActingBusinessSwitcher businesses={businesses} actingBusinessId={profile.user.business_id} /></div>
+            )}
+            {!profile.audit && (profile.user.role === 'super_admin' || profile.user.role === 'business_admin') && (
+              <RoleAuditSwitcher isSuperAdmin={profile.user.role === 'super_admin'} businesses={businesses} defaultBusinessId={profile.user.business_id} alignLeft />
+            )}
+            <div className="grid gap-2">
+              {agentApp && <a href="/agent" className="button text-center">Agent app</a>}
+              <a href="/profile" className="button-secondary text-center">My profile</a>
+              <form action="/api/auth/signout" method="post"><button type="submit" className="button-secondary w-full">Logout</button></form>
+            </div>
+          </MobileAccountMenu>
         </div>
       </div>
       {!actingBusiness && <div aria-hidden className="h-1 w-full" style={{ background: 'linear-gradient(90deg, #fcd116 0%, #fcd116 33%, #0038a8 33%, #0038a8 66%, #ce1126 66%, #ce1126 100%)' }} />}

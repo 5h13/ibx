@@ -75,7 +75,7 @@ function IssueDrForm({ order, vatBooklet, onDone }: { order: StoreOrder; vatBook
   return (
     <div className="space-y-4 text-sm">
       <p className="text-slate-600">{order.order_number} · {order.customer}{order.client_po ? ` · client PO ${order.client_po}` : ''} · terms {order.payment_terms ?? '—'} · {order.vat_applied ? 'with VAT' : 'without VAT'}</p>
-      <table className="w-full">
+      <table className="m-cards w-full">
         <thead><tr className="border-b text-left text-xs uppercase text-slate-500"><th className="p-2">Line</th><th className="p-2 text-right">Ordered</th><th className="p-2 text-right">Delivered</th><th className="p-2 text-right">Can deliver now</th><th className="p-2 text-right">Price</th><th className="p-2">Lot</th><th className="p-2 w-28">This DR</th></tr></thead>
         <tbody>{rows.map((r) => {
           const l = lineOf(r.lineId);
@@ -211,7 +211,7 @@ export function OrdersTab({ orders, readOnly, canRelease, canCancel = false, vat
                 {canCancel && o.drs.length === 0 && <PopupAction label="Cancel order…" title={`Cancel ${o.order_number}`} variant="secondary">{(close) => <CancelOrderForm order={o} onDone={(m) => { onMessage(m); close(); }} />}</PopupAction>}
               </div>
             </div>
-            <table className="mt-2 w-full text-xs">
+            <table className="m-cards mt-2 w-full text-xs">
               <thead><tr className="border-b text-left uppercase text-slate-500"><th className="p-1">Line</th><th className="p-1 text-right">Ordered</th><th className="p-1 text-right">DR issued</th><th className="p-1 text-right">Released</th><th className="p-1 text-right">Reserved</th><th className="p-1">Source</th></tr></thead>
               <tbody>{o.lines.map((l) => (
                 <tr key={l.id} className="border-b last:border-0"><td className="p-1">{l.description}</td><td className="p-1 text-right">{q(l.ordered)} {l.unit}</td><td className="p-1 text-right">{q(l.delivered)}</td><td className="p-1 text-right">{q(l.released)}</td>

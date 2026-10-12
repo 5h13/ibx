@@ -83,7 +83,7 @@ export function ChecksTab({ checks, today, canHandle, customers, walkInId, onMes
       <p className="text-slate-500">Customer checks received at the counter. Post-dated checks stay in Checks on hand until their date; a reminder goes to approvers and Finance when the date arrives.
         {' '}On hand now: <b>{peso(onHand.reduce((s, k) => s + Number(k.amount), 0))}</b> ({onHand.length}).</p>
       <div className="overflow-x-auto">
-        <table className="w-full">
+        <table className="m-cards w-full">
           <thead><tr className="border-b text-left text-xs uppercase text-slate-500"><th className="p-2">Check</th><th className="p-2">Bank</th><th className="p-2">Date on check</th><th className="p-2">From</th><th className="p-2">Received</th><th className="p-2 text-right">Amount</th><th className="p-2">Status</th><th className="p-2" /></tr></thead>
           <tbody>
             {checks.length === 0 && <tr><td colSpan={8} className="p-4 text-center text-slate-500">No checks received yet.</td></tr>}

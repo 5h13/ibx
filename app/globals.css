@@ -46,3 +46,41 @@ body { background: rgb(var(--bg-subtle)); }
 @keyframes ibx-busy-ring { to { transform: rotate(360deg); } }
 .ibx-busy-ring::after { content: ""; position: absolute; inset: 0; border-radius: 9999px; border: 3px solid transparent; border-top-color: #0038a8; border-right-color: #ce1126; animation: ibx-busy-ring 0.9s linear infinite; }
 @media (prefers-reduced-motion: reduce) { .ibx-busy-ring::after { animation-duration: 2.4s; } }
+
+/* Build 108 — phone frame. A table with class "m-cards" shows each row as a card on a phone (below 640px).
+   MobileTableLabels (AuthedShell) copies each column heading into the cells as data-label, marks the first cell
+   as the card title (or the column given in data-m-title) and the last "Actions"/"Decision" cell as the buttons.
+   Build 109: every rule is scoped to the table's own rows, so a small table inside a card is left alone. */
+@media (max-width: 639px) {
+  table.m-cards, table.m-cards > tbody, table.m-cards > tfoot { display: block; width: 100%; min-width: 0 !important; }
+  table.m-cards > thead { display: none; }
+  table.m-cards > tbody > tr, table.m-cards > tfoot > tr {
+    display: block; margin: 0.5rem; padding: 0.6rem 0.75rem; border: 1px solid rgb(var(--bd)); border-radius: 0.75rem;
+    background: rgb(var(--bg-surface));
+  }
+  table.m-cards > tbody > tr > td, table.m-cards > tfoot > tr > td {
+    display: block; position: relative !important; left: auto !important; box-shadow: none !important; z-index: auto !important;
+    padding: 0.2rem 0 0.2rem 42% !important; border: 0 !important; text-align: right !important;
+    white-space: normal !important; min-width: 0 !important; max-width: none !important; width: auto !important;
+    overflow-wrap: anywhere; background: transparent !important;
+  }
+  table.m-cards > tbody > tr > td::before, table.m-cards > tfoot > tr > td::before {
+    content: attr(data-label); position: absolute; left: 0; top: 0.2rem; width: 40%; text-align: left;
+    font-size: 0.75rem; font-weight: 400; text-transform: none; letter-spacing: 0; color: rgb(var(--tx-muted));
+  }
+  /* inputs and pickers in a card fit the value column */
+  table.m-cards > tbody > tr > td input, table.m-cards > tbody > tr > td select, table.m-cards > tbody > tr > td textarea { min-width: 0 !important; max-width: 100%; }
+  table.m-cards > tbody > tr > td:empty { display: none !important; }
+  table.m-cards > tbody > tr > td:is(:not([data-label]), [data-label=""], [data-m])::before { content: none; }
+  table.m-cards > tbody > tr > td:is(:not([data-label]), [data-label=""], [data-m]) { padding-left: 0 !important; text-align: left !important; }
+  table.m-cards > tbody > tr > td[data-m="title"] { font-size: 0.95rem; font-weight: 600; padding-bottom: 0.35rem !important; }
+  table.m-cards > tbody > tr > td[data-m="actions"] {
+    display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.4rem; padding-top: 0.6rem !important;
+    border-top: 1px solid rgb(var(--bd)) !important;
+  }
+  table.m-cards > tbody > tr > td[data-m="actions"] > * { margin: 0 !important; }
+  table.m-cards > tbody > tr > td[data-m="actions"] > div { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+  table.m-cards > tbody > tr > td[data-m="actions"] button:not(.button):not(.button-secondary):not(.button-danger) {
+    border: 1px solid rgb(var(--bd-input)); border-radius: 0.5rem; padding: 0.4rem 0.75rem; text-decoration: none; margin: 0 !important;
+  }
+}

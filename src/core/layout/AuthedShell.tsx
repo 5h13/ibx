@@ -1,5 +1,6 @@
 // src/core/layout/AuthedShell.tsx
 import { WelcomeGreeting } from '@/core/ui/WelcomeGreeting';
+import { MobileTableLabels } from '@/core/ui/MobileTableLabels';
 import { redirect } from 'next/navigation';
 import type { ReactNode } from 'react';
 import type { SessionProfile } from '@/core/auth/types';
@@ -67,8 +68,9 @@ export async function AuthedShell({ profile, children }: { profile: SessionProfi
       <div className="flex md:flex-1 md:min-h-0">
         <ResponsiveNav profile={profile} shortcuts={shortcuts} />
         <main className="flex-1 min-w-0 md:overflow-y-auto">
-          {/* U035: extra top padding on mobile clears the fixed hamburger button ResponsiveNav renders there. */}
-          <div className="max-w-5xl mx-auto p-6 pt-16 md:pt-6">{children}</div>
+          {/* Build 108: the menu button now sits inside the header row on a phone, so no extra top gap; slimmer side margins. */}
+          <div className="max-w-5xl mx-auto px-3 py-4 md:p-6">{children}</div>
+          <MobileTableLabels />
         </main>
       </div>
     </div>

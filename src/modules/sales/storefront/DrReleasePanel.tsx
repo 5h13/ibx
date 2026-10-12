@@ -17,7 +17,7 @@ export function DrReleasePanel({ drs, locations }: { drs: Dr[]; locations: { id:
   const [loc, setLoc] = useState<Record<string, string>>({});
   const [pending, start] = useTransition();
   return (
-    <section className="space-y-3 rounded-xl border bg-white p-4">
+    <section className="space-y-3 rounded-xl border bg-white p-3 sm:p-4">
       <div>
         <h3 className="font-semibold">DRs to release (from the Storefront)</h3>
         <p className="text-sm text-slate-500">DRs issued from sales orders. Confirm when the items physically leave; the stock is issued then.</p>

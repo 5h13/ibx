@@ -91,7 +91,7 @@ export function ArCollectionForm({ customers, walkInId, onDone }: { customers: C
       {customerId && <a className="text-xs underline" href={`/finance/accounts-receivable/statement/${customerId}`} target="_blank" rel="noreferrer">Print statement of account</a>}
       {invoices && invoices.length === 0 && <p className="text-slate-500">This customer has no unpaid approved invoices.</p>}
       {invoices && invoices.length > 0 && (
-        <table className="w-full">
+        <table className="m-cards w-full" data-m-title={1}>
           <thead><tr className="border-b text-left text-xs uppercase text-slate-500"><th className="p-2" /><th className="p-2">Invoice</th><th className="p-2">Date</th><th className="p-2">Due</th><th className="p-2 text-right">Total</th><th className="p-2 text-right">Paid</th><th className="p-2 text-right">Balance</th>{!oneInvoice && <th className="p-2 text-right">This payment</th>}</tr></thead>
           <tbody>{invoices.map((i) => (
             <tr key={i.invoice_id} className="border-b">
@@ -175,7 +175,7 @@ export function ReturnForm({ saleNumber = '', onDone }: { saleNumber?: string; o
       {sale && (
         <>
           <div className="text-slate-600">{sale.sale_number}{sale.dr_number ? ` · ${sale.dr_number}` : ''}{sale.si_number ? ` · SI ${sale.si_number}` : ''} · {sale.sale_date} · {sale.customer} · total {peso(sale.total)}{Number(sale.ar_balance) > 0 && <> · unpaid balance <b className="text-amber-700">{peso(sale.ar_balance)}</b></>}</div>
-          <table className="w-full">
+          <table className="m-cards w-full">
             <thead><tr className="border-b text-left text-xs uppercase text-slate-500"><th className="p-2">Item</th><th className="p-2 text-right">Sold</th><th className="p-2 text-right">Already returned</th><th className="p-2 text-right">Price</th><th className="p-2 w-28">Return qty</th><th className="p-2 w-44">Condition</th></tr></thead>
             <tbody>{sale.lines.map((l) => {
               const left = Number(l.sold) - Number(l.returned);
@@ -228,7 +228,7 @@ export function ReturnForm({ saleNumber = '', onDone }: { saleNumber?: string; o
 export function ReturnsTab({ returns, payments }: { returns: any[]; payments: any[] }) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-sm">
+      <table className="m-cards w-full text-sm">
         <thead><tr className="border-b text-left text-xs uppercase text-slate-500"><th className="p-2">Return</th><th className="p-2">Sale</th><th className="p-2">Customer</th><th className="p-2">Reason</th><th className="p-2 text-right">Value</th><th className="p-2 text-right">Off balance</th><th className="p-2">Refund</th></tr></thead>
         <tbody>
           {returns.length === 0 && <tr><td colSpan={7} className="p-4 text-center text-slate-500">No returns on this date.</td></tr>}
@@ -363,7 +363,7 @@ export function ClosingsTab({ closings, canApprove, me, onMessage }: { closings:
   const badge = (s: string) => s === 'approved' ? 'bg-emerald-100 text-emerald-800' : s === 'returned' ? 'bg-red-100 text-red-800' : 'bg-amber-100 text-amber-800';
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-sm">
+      <table className="m-cards w-full text-sm">
         <thead><tr className="border-b text-left text-xs uppercase text-slate-500"><th className="p-2">Closing</th><th className="p-2">Day</th><th className="p-2 text-right">Sales</th><th className="p-2 text-right">Expected cash</th><th className="p-2 text-right">Counted</th><th className="p-2 text-right">Variance</th><th className="p-2">Status</th><th className="p-2" /></tr></thead>
         <tbody>
           {closings.length === 0 && <tr><td colSpan={8} className="p-4 text-center text-slate-500">No closings yet.</td></tr>}

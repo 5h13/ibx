@@ -27,8 +27,9 @@ const LABELS: Record<BadgeStatus, string> = {
 
 export function StatusBadge({ status }: { status: BadgeStatus }) {
   return (
-    <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${STYLES[status]}`}>
-      {LABELS[status]}
+    // Build 108: statuses not listed above (picked, packed, in_transit, delivered …) used to show an empty badge
+    <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${STYLES[status] ?? 'bg-slate-100 text-slate-700'}`}>
+      {LABELS[status] ?? String(status ?? '').replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase())}
     </span>
   );
 }

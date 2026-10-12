@@ -13,7 +13,7 @@ import { startRoleAuditAction } from '@/core/auth/roleAuditActions';
 
 type Business = { id: string; code: string; legal_name: string; trade_name: string | null };
 
-export function RoleAuditSwitcher({ isSuperAdmin, businesses, defaultBusinessId }: { isSuperAdmin: boolean; businesses: Business[]; defaultBusinessId: string | null }) {
+export function RoleAuditSwitcher({ isSuperAdmin, businesses, defaultBusinessId, alignLeft = false }: { isSuperAdmin: boolean; businesses: Business[]; defaultBusinessId: string | null; alignLeft?: boolean }) {
   const [open, setOpen] = useState(false);
   const [roles, setRoles] = useState<string[]>([]);
   const [businessId, setBusinessId] = useState(defaultBusinessId ?? '');
@@ -48,7 +48,7 @@ export function RoleAuditSwitcher({ isSuperAdmin, businesses, defaultBusinessId 
         Switch role ▾
       </button>
       {open && (
-        <div className="absolute right-0 z-50 mt-2 w-72 rounded-lg border bg-white p-3 text-left text-sm text-slate-800 shadow-xl">
+        <div className={`absolute ${alignLeft ? 'left-0' : 'right-0'} z-50 mt-2 w-[min(18rem,calc(100vw-2.5rem))] rounded-lg border bg-white p-3 text-left text-sm text-slate-800 shadow-xl`}>
           <div className="mb-2 font-semibold">Audit as role</div>
           <p className="mb-2 text-xs text-slate-500">Your account genuinely takes these roles until you return. Anything you do while switched is real.</p>
           {isSuperAdmin && (

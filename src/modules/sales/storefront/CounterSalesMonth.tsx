@@ -65,7 +65,7 @@ export async function CounterSalesMonth({ year, month }: { year: number; month: 
         ))}
       </div>
       <div className="overflow-x-auto bg-white rounded-lg shadow-sm">
-        <table className="min-w-full text-sm">
+        <table className="m-cards min-w-full text-sm">
           <thead>
             <tr className="text-left text-xs text-slate-500 border-b">
               <th className="p-2">Date</th><th className="p-2 text-right">Sales</th><th className="p-2 text-right">Amount</th>

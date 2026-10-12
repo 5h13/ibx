@@ -32,7 +32,7 @@ export function OpenQuotes({ userId, canEnter, canApprove }: { userId: string; c
       </div>
       {msg && <div className="border-b px-4 py-2 text-sm text-slate-700">{msg}</div>}
       <div className="overflow-x-auto">
-        <table className="w-full text-sm">
+        <table className="m-cards w-full text-sm">
           <thead><tr className="border-b text-left text-xs text-slate-500"><th className="p-2">PO</th><th className="p-2">Supplier</th><th className="p-2">Item</th><th className="p-2 text-right">Ordered</th><th className="p-2 text-right">Received</th><th className="p-2">Quote</th><th className="p-2 text-right">Days open</th><th className="p-2"></th></tr></thead>
           <tbody>{rows.map((r) => (
             <tr key={r.id} className="border-b align-top">

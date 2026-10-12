@@ -49,7 +49,7 @@ const lotPricing = (l: Line, lotId: string): Partial<Line> => {
 const qtyText = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 3 });
 const manilaToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila' }).format(new Date());
 function Tile({ label, value, hint }: { label: string; value: string; hint?: string }) {
-  return <div className="rounded-lg border bg-white p-3"><div className="text-xs uppercase tracking-wide text-slate-500">{label}</div><div className="mt-1 text-lg font-semibold">{value}</div>{hint && <div className="text-xs text-slate-500">{hint}</div>}</div>;
+  return <div className="rounded-lg border bg-white p-3"><div className="text-xs uppercase tracking-wide text-slate-500">{label}</div><div className="mt-1 text-lg font-semibold">{value}</div>{hint && <div className="line-clamp-2 text-xs text-slate-500 sm:line-clamp-none">{hint}</div>}</div>;
 }
 
 /** Payments + documents (used when creating and when completing an approved sale). */
@@ -222,7 +222,7 @@ function SaleForm({ ctx, customers: initialCustomers, agents, onDone, fromOrder 
         <CatalogItemPicker key={pickerKey} onSelect={(it) => it && addItem(it.id)} placeholder="Search item by name or code to add…" />
         {lines.length > 0 && (
           <div className="overflow-x-auto rounded border">
-            <table className="w-full text-sm">
+            <table className="m-cards w-full text-sm">
               <thead><tr className="border-b bg-slate-50 text-left text-xs uppercase text-slate-500"><th className="p-2">Item</th><th className="p-2">Lot</th><th className="p-2 w-24">Qty</th><th className="p-2 w-32">Price</th><th className="p-2 text-right">Amount</th><th className="p-2" /></tr></thead>
               <tbody>
                 {lines.map((l, i) => {
@@ -353,7 +353,7 @@ function SaleDetail({ sale, items, payments, returnItems = [], canRequestCancel 
       </div>
       {sale.late_entry && <div className="rounded bg-amber-50 p-2 text-amber-800">Entered late — sale date {sale.sale_date}. Reason: {sale.late_reason}</div>}
       {sale.sales_order_id && <div className="rounded bg-slate-50 p-2">From sales order {sale.order?.order_number ?? ''} · {sale.release_status === 'released' ? 'released by the Warehouse' : 'waiting for the Warehouse to release the items'}</div>}
-      <table className="w-full"><thead><tr className="border-b text-left text-xs uppercase text-slate-500"><th className="p-2">Item</th><th className="p-2 text-right">Qty</th><th className="p-2 text-right">Store price</th><th className="p-2 text-right">Price</th><th className="p-2 text-right">Amount</th></tr></thead>
+      <table className="m-cards w-full"><thead><tr className="border-b text-left text-xs uppercase text-slate-500"><th className="p-2">Item</th><th className="p-2 text-right">Qty</th><th className="p-2 text-right">Store price</th><th className="p-2 text-right">Price</th><th className="p-2 text-right">Amount</th></tr></thead>
         <tbody>{items.map((i) => {
           const ret = returnItems.filter((r) => r.sale_item_id === i.id);
           return <tr key={i.id} className="border-b align-top"><td className="p-2">{i.description}{i.below_floor && <span className="ml-2 rounded bg-amber-100 px-1 text-xs text-amber-800">approved price</span>}
@@ -453,14 +453,15 @@ export function StorefrontManagement({ ctx, date, today, sales, open, items, pay
       </ActionBar>
       )}
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
         <Tile label={`Sales · ${date}`} value={peso(done.reduce((s, x) => s + Number(x.total), 0))} hint={`${done.length} completed sale(s)`} />
         <Tile label="Collected (net)" value={peso(collected)} hint={[byMethod.map((m) => `${m.l} ${peso(m.amount)}`).join(' · ') || 'No payments yet', arCollected > 0 ? `incl. old AR ${peso(arCollected)}` : '', refunded > 0 ? `after refunds ${peso(refunded)}` : ''].filter(Boolean).join(' · ')} />
         <Tile label="Charged to AR" value={peso(done.reduce((s, x) => s + Number(x.balance), 0))} hint="Unpaid balances of charge / partly paid sales" />
         <Tile label="Awaiting approval" value={String(toApprove)} hint={`Prices, no-cost items, late entries, cancellations${pendingClosings ? ` · ${pendingClosings} closing(s) to approve` : ''}`} />
       </div>
 
-      <div className="flex flex-wrap gap-2">
+      {/* Build 109: one row that scrolls sideways on a phone */}
+      <div className="-mx-3 flex gap-2 overflow-x-auto px-3 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0 [&>button]:shrink-0 [&>button]:whitespace-nowrap">
         <button className={tab === 'register' ? 'button' : 'button-secondary'} onClick={() => setTab('register')}>Sales register</button>
         <button className={tab === 'approval' ? 'button' : 'button-secondary'} onClick={() => setTab('approval')}>Awaiting approval ({toApprove})</button>
         <button className={tab === 'orders' ? 'button' : 'button-secondary'} onClick={() => setTab('orders')}>Orders{ordersOpen ? ` (${ordersOpen} open)` : ''}</button>
@@ -472,16 +473,16 @@ export function StorefrontManagement({ ctx, date, today, sales, open, items, pay
       </div>
 
       {tab === 'register' && (
-        <section className="space-y-3 rounded-xl border bg-white p-4">
+        <section className="space-y-3 rounded-xl border bg-white p-3 sm:p-4">
           <Form method="get" className="flex flex-wrap items-center gap-2 text-sm">
             <label>Date <input className="input w-auto" type="date" name="date" defaultValue={date} /></label>
-            <input className="input w-64" name="q" defaultValue={search} placeholder="Or search all dates: sale / DR / SI / hardcopy DR no., customer" />
+            <input className="input w-full sm:w-64" name="q" defaultValue={search} placeholder="Or search all dates: sale / DR / SI / hardcopy DR no., customer" />
             <button className="button-secondary">Show</button>
             {search && <a className="text-slate-500 underline" href="/sales/storefront">Clear search</a>}
           </Form>
           {search && <p className="text-xs text-slate-500">Sales matching “{search}” on any date (latest 100).</p>}
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="m-cards w-full text-sm">
               <thead><tr className="border-b text-left text-xs uppercase text-slate-500"><th className="p-2">Sale</th><th className="p-2">Customer</th><th className="p-2">DR / SI</th><th className="p-2 text-right">Total</th><th className="p-2 text-right">Paid</th><th className="p-2 text-right">To AR</th><th className="p-2">Status</th><th className="p-2" /></tr></thead>
               <tbody>
                 {sales.length === 0 && <tr><td colSpan={8} className="p-4 text-center text-slate-500">{search ? 'No sale matches.' : 'No sales on this date.'}</td></tr>}
@@ -504,26 +505,26 @@ export function StorefrontManagement({ ctx, date, today, sales, open, items, pay
       )}
 
       {tab === 'orders' && (
-        <section className="space-y-3 rounded-xl border bg-white p-4">
+        <section className="space-y-3 rounded-xl border bg-white p-3 sm:p-4">
           <OrdersTab orders={orders} readOnly={ro || !can.counter || !ctx.location_id} canRelease={ctx.can_setup} canCancel={!ro && ctx.can_approve} vatBooklet={!!ctx.booklet_vat} onMessage={setMessage} />
         </section>
       )}
 
       {tab === 'returns' && (
-        <section className="space-y-3 rounded-xl border bg-white p-4">
+        <section className="space-y-3 rounded-xl border bg-white p-3 sm:p-4">
           <Form method="get" className="flex flex-wrap items-center gap-2 text-sm"><input type="hidden" name="tab" value="returns" /><label>Date <input className="input w-auto" type="date" name="date" defaultValue={date} /></label><button className="button-secondary">Show</button></Form>
           <ReturnsTab returns={returns} payments={dayPayments} />
         </section>
       )}
 
       {tab === 'checks' && (
-        <section className="space-y-3 rounded-xl border bg-white p-4">
+        <section className="space-y-3 rounded-xl border bg-white p-3 sm:p-4">
           <ChecksTab checks={checks} today={today} canHandle={!!ctx.can_handle_checks || ctx.can_approve} customers={customers} walkInId={ctx.walk_in_customer_id} onMessage={setMessage} />
         </section>
       )}
 
       {tab === 'closing' && (
-        <section className="space-y-3 rounded-xl border bg-white p-4">
+        <section className="space-y-3 rounded-xl border bg-white p-3 sm:p-4">
           <p className="text-sm text-slate-500">Each day is closed by the cashier with the cash count and approved by a Sales approver or Business Admin. A returned closing unlocks the day for a recount.</p>
           <ClosingsTab closings={closings} canApprove={ctx.can_approve && !ro} me={me} onMessage={setMessage} />
         </section>
@@ -536,17 +537,24 @@ export function StorefrontManagement({ ctx, date, today, sales, open, items, pay
       {tab === 'agent_payments' && !ro && can.ar && <AgentPaymentsTab reports={agentPayments} onMessage={setMessage} />}
 
       {tab === 'approval' && (
-        <section className="space-y-3 rounded-xl border bg-white p-4">
+        <section className="space-y-3 rounded-xl border bg-white p-3 sm:p-4">
           {toApprove === 0 && <p className="text-sm text-slate-500">Nothing is waiting for approval.</p>}
           {open.map((s) => (
-            <div key={s.id} className="flex flex-wrap items-center justify-between gap-3 border-b pb-3">
-              <div className="text-sm"><div className="font-medium">{s.sale_number} · {s.customer?.legal_name} · {peso(s.total)}{s.late_entry ? ` · dated ${s.sale_date}` : ''}</div>
+            // Build 109: a card on a phone — what needs approving, line by line, and large buttons
+            <div key={s.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3 sm:rounded-none sm:border-0 sm:border-b sm:p-0 sm:pb-3">
+              <div className="min-w-0 text-sm"><div className="font-medium">{s.sale_number} · {s.customer?.legal_name} · {peso(s.total)}{s.late_entry ? ` · dated ${s.sale_date}` : ''}</div>
                 <div className="text-xs text-slate-500">{s.status === 'approved' ? 'Approved — take payment to complete' : `Waiting for an approver: ${(s.approval_reasons ?? []).map((x: string) => REASON_LABEL[x] ?? x).join(', ') || 'price below the floor'}`}
-                  {itemsOf(s.id).some((i) => i.below_floor) && ` · ${itemsOf(s.id).filter((i) => i.below_floor).map((i) => `${i.description} at ${peso(i.unit_price)}${Number(i.floor_price) > 0 ? ` (min ${peso(i.floor_price)})` : ' (no cost on record)'}`).join('; ')}`}
-                  {s.late_reason && ` · late: ${s.late_reason}`}</div></div>
-              {!ro && <div className="flex flex-wrap gap-2">
-                {s.status === 'pending_approval' && ctx.can_approve && s.created_by === me && <span className="text-xs text-slate-500">You made this sale — another approver signs off</span>}
-                {s.status === 'pending_approval' && ctx.can_approve && s.created_by !== me && <button className="button" disabled={pending} onClick={() => act(() => approveSaleAction(s.id), `${s.sale_number} approved.`)}>Approve</button>}
+                  {s.late_reason && ` · late: ${s.late_reason}`}</div>
+                {s.status !== 'approved' && itemsOf(s.id).some((i) => i.below_floor) && (
+                  <ul className="mt-1 space-y-0.5 text-xs font-medium text-amber-800">
+                    {itemsOf(s.id).filter((i) => i.below_floor).map((i) => (
+                      <li key={i.id}>{Number(i.floor_price) > 0 ? 'Below the 7% floor' : 'No cost on record'}: {i.description} at {peso(i.unit_price)}{Number(i.floor_price) > 0 ? ` (min ${peso(i.floor_price)})` : ''}</li>
+                    ))}
+                  </ul>
+                )}</div>
+              {!ro && <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap [&>button]:w-full sm:[&>button]:w-auto">
+                {s.status === 'pending_approval' && ctx.can_approve && s.created_by === me && <span className="col-span-2 text-xs text-slate-500">You made this sale — another approver signs off</span>}
+                {s.status === 'pending_approval' && ctx.can_approve && s.created_by !== me && <button className="button col-span-2 py-3 sm:py-2" disabled={pending} onClick={() => act(() => approveSaleAction(s.id), `${s.sale_number} approved.`)}>Approve</button>}
                 {s.status === 'approved' && can.counter && <PopupAction label="Take payment" title={`Complete ${s.sale_number}`} wide>{(close) => <CompleteForm sale={s} vatBooklet={!!ctx.booklet_vat} onDone={(m) => { setMessage(m); close(); }} />}</PopupAction>}
                 <PopupAction label="View" title={`Sale ${s.sale_number}`} variant="secondary" wide><SaleDetail sale={s} items={itemsOf(s.id)} payments={[]} /></PopupAction>
                 <button className="button-secondary" disabled={pending} onClick={() => act(() => cancelSaleAction(s.id), `${s.sale_number} cancelled.`)}>Cancel</button>
@@ -554,7 +562,7 @@ export function StorefrontManagement({ ctx, date, today, sales, open, items, pay
             </div>
           ))}
           {cancelRequests.map((s) => (
-            <div key={s.id} className="flex flex-wrap items-center justify-between gap-3 border-b pb-3">
+            <div key={s.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3 sm:rounded-none sm:border-0 sm:border-b sm:p-0 sm:pb-3">
               <div className="text-sm"><div className="font-medium">Cancel {s.sale_number} · {s.customer?.legal_name} · {peso(s.total)} · {s.sale_date}</div>
                 <div className="text-xs text-slate-500">Completed sale — cancellation requested: {s.cancel_reason}</div></div>
               {!ro && <div className="flex flex-wrap gap-2">

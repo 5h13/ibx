@@ -71,10 +71,10 @@ export function AgentOrdersTab({ orders, canSell, onMessage, renderSale }: { ord
   const sent = orders.filter((o) => o.status === 'sent');
   const done = orders.filter((o) => o.status === 'completed' || o.status === 'converted');
   return (
-    <section className="space-y-3 rounded-xl border bg-white p-4">
+    <section className="space-y-3 rounded-xl border bg-white p-3 sm:p-4">
       <p className="text-sm text-slate-500">Orders agents took for their clients. <b>Make the sale</b> opens a new counter sale with the client, items and the agent&apos;s prices filled in (change quantities or lots as needed); the order is marked done when the sale is saved. No stock? <b>Sales order / P.O.</b> turns it into a sales order whose short lines are ordered from the supplier. Return an order to the agent if it cannot be filled.</p>
       {!canSell && <p className="text-sm text-amber-700">Set the store&apos;s stock location first (Store settings).</p>}
-      <table className="w-full text-sm">
+      <table className="m-cards w-full text-sm">
         <thead className="text-left text-xs uppercase text-slate-500"><tr><th className="p-2">Order</th><th className="p-2">Agent</th><th className="p-2">Client</th><th className="p-2 text-right">Total</th><th className="p-2"></th></tr></thead>
         <tbody>
           {sent.map((o) => (
@@ -141,9 +141,9 @@ export function AgentPaymentsTab({ reports, onMessage }: { reports: any[]; onMes
   const waiting = reports.filter((r) => r.status === 'pending');
   const decided = reports.filter((r) => r.status !== 'pending');
   return (
-    <section className="space-y-3 rounded-xl border bg-white p-4">
+    <section className="space-y-3 rounded-xl border bg-white p-3 sm:p-4">
       <p className="text-sm text-slate-500">Payments agents collected from their clients, per DR / SI. Confirm when the money is handed in — it posts like a counter AR payment and goes into today&apos;s closing.</p>
-      <table className="w-full text-sm">
+      <table className="m-cards w-full text-sm">
         <thead className="text-left text-xs uppercase text-slate-500"><tr><th className="p-2">Report</th><th className="p-2">Agent / client</th><th className="p-2">DRs</th><th className="p-2">How</th><th className="p-2 text-right">Amount</th><th className="p-2"></th></tr></thead>
         <tbody>
           {waiting.map((r) => (

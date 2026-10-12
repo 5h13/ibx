@@ -73,17 +73,18 @@ export function PopupAction({
       <button type="button" disabled={disabled} onClick={show} className={variant === 'primary' ? 'button' : 'button-secondary'}>{label}</button>
       {open && (
         <div
-          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4"
+          // Build 108: full screen on a phone (no margins, no rounded corners); a centred window from 640px up
+          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-0 sm:p-4"
           role="dialog" aria-modal="true" aria-label={title ?? (typeof label === 'string' ? label : undefined)}
           onMouseDown={(e) => { if (e.target === e.currentTarget) close(); }}
         >
-          <div className={`my-8 w-full ${wide ? 'max-w-5xl' : 'max-w-3xl'} rounded-xl bg-white text-left shadow-xl`}>
-            <div className="flex items-center justify-between border-b p-4">
+          <div className={`min-h-full w-full sm:my-8 sm:min-h-0 ${wide ? 'max-w-5xl' : 'max-w-3xl'} bg-white text-left shadow-xl sm:rounded-xl`}>
+            <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b bg-white p-4 sm:static">
               <h3 className="text-lg font-semibold">{title ?? label}</h3>
               <button type="button" className="button-secondary" onClick={close}>Close</button>
             </div>
             <div
-              className="p-5"
+              className="p-4 sm:p-5"
               onSubmitCapture={() => { submitted.current = true; }}
               onReset={() => { if (submitted.current) close(); }}
             >
