@@ -102,21 +102,27 @@ function Items({items,locations,onHand,catalogItems,locationSettings,pending,run
  </section>
 }
 
-type Line={inventory_item_id:string;quantity:number;damaged_qty:number;rejected_qty:number;unit_cost:number;lot_number:string;expiry_date:string;description?:string;over_receipt_approved?:boolean};
+type Line={inventory_item_id:string;quantity:number;damaged_qty:number;rejected_qty:number;unit_cost:number;lot_number:string;expiry_date:string;description?:string;over_receipt_approved?:boolean;from_dr?:boolean};
 const blankLine=():Line=>({inventory_item_id:'',quantity:1,damaged_qty:0,rejected_qty:0,unit_cost:0,lot_number:'',expiry_date:''});
 const RECEIPT_STATUS:Record<string,(s:string)=>boolean>={all:()=>true,open:s=>s!=='posted',pending:s=>['draft','prepared','reviewed'].includes(s),approved:s=>s==='approved',posted:s=>s==='posted'};
 function Receipts({receipts,receiptItems,locations,items,orders,suppliers,pending,run,msg,profile,showCost,view}:any){
  const canApproveOver=hasSectionWorkflowRole(profile,'logistics','approver');
  const[poId,setPoId]=useState('');const[poStatus,setPoStatus]=useState<any[]>([]);const[locationId,setLocationId]=useState('');
  const[lines,setLines]=useState<Line[]>([blankLine()]);
- // Build 119: read the supplier's DR (photo, scan, PDF or pasted text) and fill the delivered quantities of this PO
+ // Build 120: an ad-hoc receipt (no PO) can be filled from the supplier's DR (photo, scan, PDF or pasted text).
+ // Each DR row is matched to the catalog, then to that item's stock record; the quantity becomes the delivered
+ // quantity and the DR's rate is the line's unit cost — shown as read from the DR, not editable at receiving.
+ // A PO receipt fills itself from the PO (quantities only), so it has no DR reader.
  const[readingDr,setReadingDr]=useState(false);const[drNote,setDrNote]=useState('');
  const fillFromDr=(picks:PastedPick[])=>{
-  const qtyByInv=new Map<string,number>();
-  for(const p of picks){const row=poStatus.find((r:any)=>r.procurement_item_id===p.item_id&&r.inventory_item_id);if(row)qtyByInv.set(row.inventory_item_id,(qtyByInv.get(row.inventory_item_id)??0)+p.quantity);}
-  const notOnDr=lines.filter(l=>l.inventory_item_id&&!qtyByInv.has(l.inventory_item_id));
-  setLines(lines.filter(l=>l.inventory_item_id&&qtyByInv.has(l.inventory_item_id)).map(l=>({...l,quantity:qtyByInv.get(l.inventory_item_id)!})).concat([...qtyByInv.keys()].filter(id=>!lines.some(l=>l.inventory_item_id===id)).map(id=>({...blankLine(),inventory_item_id:id,quantity:qtyByInv.get(id)!,description:poStatus.find((r:any)=>r.inventory_item_id===id)?.description||''}))));
-  setDrNote(`${qtyByInv.size} line(s) filled from the supplier's DR.${notOnDr.length?` Not on the DR, so taken off this receipt: ${notOnDr.map(l=>l.description||itemLabel(l.inventory_item_id)).join(', ')} (use Add line if they did arrive).`:''}`);
+  const add=new Map<string,{qty:number;cost:number|null;desc:string}>();const noStock:string[]=[];
+  for(const p of picks){const inv=items.find((x:any)=>x.active&&x.procurement_item_id===p.item_id);
+   if(!inv){noStock.push(p.item_name);continue;}
+   const cur=add.get(inv.id);add.set(inv.id,{qty:(cur?.qty??0)+p.quantity,cost:cur?.cost??(showCost?(p.price??null):null),desc:inv.item_name});}   // the rate only for users who may set costs (the server keeps cost from others anyway)
+  const kept=lines.filter(l=>l.inventory_item_id&&!add.has(l.inventory_item_id));
+  setLines([...kept,...[...add.entries()].map(([id,v])=>({...blankLine(),inventory_item_id:id,quantity:v.qty,unit_cost:v.cost??0,from_dr:v.cost!=null,description:v.desc}))]);
+  const noRate=showCost?[...add.values()].filter(v=>v.cost==null).length:0;
+  setDrNote(`${add.size} line(s) filled from the supplier's DR.${noRate?` ${noRate} without a readable rate — unit cost left at 0.`:''}${noStock.length?` In the catalog but with no stock record, so not added: ${noStock.join(', ')}.`:''}`);
   setReadingDr(false);
  };
  const[open,setOpen]=useState<string|null>(view.receipt||null);
@@ -143,14 +149,14 @@ function Receipts({receipts,receiptItems,locations,items,orders,suppliers,pendin
   <F l="Delivery reference"><input className="input" name="delivery_reference" placeholder="Supplier DR / waybill no."/></F>
   {selectedPo&&<div className="md:col-span-4 rounded-lg bg-slate-50 p-3 text-sm grid md:grid-cols-4 gap-2"><div><div className="text-xs text-slate-500">Purchase order</div><b>{selectedPo.po_number}</b></div><div><div className="text-xs text-slate-500">Order date</div>{selectedPo.order_date||'—'}</div><div><div className="text-xs text-slate-500">Expected delivery</div>{selectedPo.expected_delivery_date||'—'}</div><div><div className="text-xs text-slate-500">Deliver to</div>{selectedPo.delivery_address||'—'}</div><div className="md:col-span-4 text-xs text-slate-500">Lines are pre-filled with each item's outstanding quantity (ordered minus what other receipts of this PO already accepted, in any status). Damaged and rejected units stay outstanding.</div></div>}
   {!selectedPo&&<div className="md:col-span-4 rounded-lg bg-amber-50 p-3 text-xs text-amber-800">Ad-hoc receipt: not linked to a purchase order. It is flagged as ad-hoc in the receiving register and reports.</div>}
-  {selectedPo&&<div className="md:col-span-4 space-y-2">
-   <button type="button" className="button-secondary" disabled={!poStatus.length} onClick={()=>{setReadingDr(!readingDr);setDrNote('')}}>{readingDr?'Close':'Read supplier DR (photo / PDF / text)'}</button>
-   {readingDr&&<PasteListPanel title="Read the supplier's DR" onlyItems={poStatus.map((r:any)=>r.procurement_item_id).filter(Boolean)} onAdd={(picks)=>fillFromDr(picks)} onClose={()=>setReadingDr(false)}
-     hint="Upload a photo, scan or PDF of the supplier's DR (or paste its lines). Each line is matched only to the items on this PO; the quantities become the delivered quantities. Lines that are not on the PO are left out."/>}
+  {!selectedPo&&<div className="md:col-span-4 space-y-2">
+   <button type="button" className="button-secondary" onClick={()=>{setReadingDr(!readingDr);setDrNote('')}}>{readingDr?'Close':'Read supplier DR (photo / PDF / text)'}</button>
+   {readingDr&&<PasteListPanel title="Read the supplier's DR" onAdd={(picks)=>fillFromDr(picks)} onClose={()=>setReadingDr(false)}
+     hint="Upload a photo, scan or PDF of the supplier's DR (or paste its lines). Only the item rows are used; each is matched to the catalog, its quantity becomes the delivered quantity and the DR's rate the unit cost."/>}
    {drNote&&<p className="text-xs text-slate-600">{drNote}</p>}
   </div>}
   <div className="md:col-span-4 border rounded-lg p-3 space-y-2"><div className="flex justify-between"><b>Received lines</b><button type="button" className="button-secondary" onClick={()=>setLines([...lines,blankLine()])}>Add line</button></div>
-   <div className="hidden md:grid md:grid-cols-12 gap-2 text-xs text-slate-500"><span className="md:col-span-3">Item</span><span>Delivered</span><span>Damaged</span><span>Rejected</span><span>Accepted</span><span className="md:col-span-2">Lot</span><span className="md:col-span-2">Expiry</span>{showCost&&!poId?<span>Unit cost</span>:<span/>}</div>
+   <div className="hidden md:grid md:grid-cols-12 gap-2 text-xs text-slate-500"><span className="md:col-span-3">Item</span><span>Delivered</span><span>Damaged</span><span>Rejected</span><span>Accepted</span><span className="md:col-span-2">Lot</span><span className="md:col-span-2">Expiry</span>{!poId&&(showCost||lines.some(l=>l.from_dr))?<span>Unit cost</span>:<span/>}</div>
    {lines.map((l,i)=>{const o=poId?outstanding(l.inventory_item_id):null;const accepted=Number(l.quantity||0)-Number(l.damaged_qty||0)-Number(l.rejected_qty||0);const over=o?accepted-Number(o.outstanding):0;
     return <div key={i} className="space-y-1"><div className="grid md:grid-cols-12 gap-2"><select className="input md:col-span-3" value={l.inventory_item_id} onChange={e=>set(i,{inventory_item_id:e.target.value})}><option value="">Item</option>{items.filter((x:any)=>x.active).map((x:any)=><option key={x.id} value={x.id}>{x.item_code} — {x.item_name}</option>)}</select>
      <input className="input" type="number" min=".001" step=".001" title="Delivered" value={l.quantity} onChange={e=>set(i,{quantity:Number(e.target.value)})}/>
@@ -159,7 +165,7 @@ function Receipts({receipts,receiptItems,locations,items,orders,suppliers,pendin
      <div className={`input bg-slate-50 ${accepted<0?'text-red-700':''}`} title="Accepted = delivered − damaged − rejected; only this goes into stock">{qty(accepted)}</div>
      <input className="input md:col-span-2" placeholder="Lot" value={l.lot_number} onChange={e=>set(i,{lot_number:e.target.value})}/>
      <input className="input md:col-span-2" type="date" value={l.expiry_date} onChange={e=>set(i,{expiry_date:e.target.value})}/>
-     {showCost&&!poId?<input className="input" type="number" min="0" step=".01" title="Unit cost" value={l.unit_cost} onChange={e=>set(i,{unit_cost:Number(e.target.value)})}/>:<span/>}</div>
+     {!poId&&l.from_dr?<div className="input bg-slate-50 text-xs" title="Rate read from the supplier's DR; receiving does not change it">{Number(l.unit_cost).toLocaleString(undefined,{minimumFractionDigits:2})}<span className="block text-[10px] text-slate-500">from DR</span></div>:showCost&&!poId?<input className="input" type="number" min="0" step=".01" title="Unit cost" value={l.unit_cost} onChange={e=>set(i,{unit_cost:Number(e.target.value)})}/>:<span/>}</div>
      {o&&<div className="text-xs text-slate-500">Ordered {qty(o.ordered)} · already received {qty(o.received)} · <b>outstanding {qty(o.outstanding)}</b></div>}
      {poId&&l.inventory_item_id&&!o&&<div className="text-xs text-red-700">This item is not on the selected purchase order.</div>}
      {over>0&&<div className="text-xs text-red-700">Over-receipt: {qty(over)} more than outstanding. {canApproveOver?<label className="ml-2 inline-flex items-center gap-1 text-slate-700"><input type="checkbox" checked={!!l.over_receipt_approved} onChange={e=>set(i,{over_receipt_approved:e.target.checked})}/> Approve the over-receipt (recorded in the audit log)</label>:'Reduce the accepted quantity, or ask a logistics approver / Business Admin to record it.'}</div>}

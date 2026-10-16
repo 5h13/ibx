@@ -1,6 +1,7 @@
 # Build 120 — My Profile as the staff home (time and leave)
 
-No migration. Deploy: `git add -A`, commit, push.
+Deploy: `supabase db push` (`20270120_paste_match_sizes.sql`, matching only), `git add -A`, commit, push.
+(The My Profile part was already committed by the owner as "my profile update"; this adds the Paste list fixes below.)
 
 ## What changed
 - **My Profile opens on "Time and leave"** (second tab: "My details" — sign-in, nickname, email, employee record).
@@ -30,3 +31,21 @@ No migration. Deploy: `git add -A`, commit, push.
 2. Sign out and in again the same day → Dashboard.
 3. Request a half-day leave → shows "waiting for review"; HR sees it in Admin → Leave.
 4. Correct a day → HR sees it in Admin → Timekeeping.
+
+## Paste list fixes (owner's test with a supplier DR photo, 2026-10-16)
+- **Sideways photos**: the picture is turned upright first (camera orientation, then the direction with the most
+  clear words); a "Turn ↻ and read again" link if it still reads wrong. Tables are read row by row.
+- **Only products are read from a supplier document**: when the text has several item rows carrying amounts or stock
+  codes, the letterhead, address, phone, e-mail, Bill To, names and totals are dropped. Each row keeps its
+  description and quantity; the supplier's stock code, location code, rate and amount are taken off
+  (common misreads handled: "pe"/"pec" for pc, "SO" for 50, "4(" / "13]" / "60|").
+  Tested on the Winterpine DR photo: 13 of 13 rows, right quantities. A plain client list is read as before.
+- **Matching** (migration 20270120): sizes stay whole (1/4, 3/8, 0.71), so the four Soft Drawn sizes are told apart;
+  joined / split words match ("Soft Drawn" ↔ SOFTDRAWN). A match on the size plus a word is taken even when the
+  supplier's wording has extra words. proof120 (9 checks).
+- **Goods receipt**: "Read supplier DR" is on **ad-hoc receipts only** (no PO), matched against the whole catalog
+  and then the item's stock record. Quantities fill the delivered quantity; for users who may see costs the DR's rate
+  fills the unit cost, shown "from DR" and not editable. A PO receipt fills itself from the PO (quantities only).
+
+## Tests
+- typecheck, production build; tests/db-harness/runall120.sh: proofs 78–120, 650 checks, 0 failed.

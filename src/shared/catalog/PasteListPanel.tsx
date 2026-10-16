@@ -4,12 +4,12 @@
 import { useState, useTransition } from 'react';
 import { errorText } from '@/core/errors/appError';
 import { parsePastedList } from './pasteParse';
-import { readFileText } from './readFileText';
+import { readFileTextTurned } from './readFileText';
 import { pasteMatchAction, pasteRememberAction, type PasteCandidate } from './pasteActions';
 
-export type PastedPick = { item_id: string; item_code: string; item_name: string; unit: string | null; quantity: number; text: string };
+export type PastedPick = { item_id: string; item_code: string; item_name: string; unit: string | null; quantity: number; text: string; price?: number | null };
 export type PastedMissing = { text: string; quantity: number };
-type Row = { key: number; text: string; raw: string; quantity: string; qtyFound: boolean; candidates: PasteCandidate[]; pick: string; status: 'matched' | 'choose' | 'none' };
+type Row = { key: number; text: string; raw: string; quantity: string; price: number | null; qtyFound: boolean; candidates: PasteCandidate[]; pick: string; status: 'matched' | 'choose' | 'none' };
 
 const SAMPLE = 'innova evaporator old - 2\ncabin innova - 1\nexp valve 9a96 - 2';
 
@@ -30,17 +30,24 @@ export function PasteListPanel({ businessId = null, onAdd, onClose, allowMissing
   const [error, setError] = useState('');
   const [pending, start] = useTransition();
   const [reading, setReading] = useState('');
-  // Build 119: text from a picture (JPG / PNG) or PDF, read on this device, lands in the box to be checked
-  const readFile = async (file: File | null | undefined) => {
+  // Build 119: text from a picture (JPG / PNG) or PDF, read on this device, lands in the box to be checked.
+  // Build 120: the picture is turned upright automatically; "Turn and read again" if it still reads wrong.
+  const [last, setLast] = useState<{ file: File; turn: 0 | 90 | 180 | 270; before: string; got: string } | null>(null);
+  const readFile = async (file: File | null | undefined, turn: 0 | 90 | 180 | 270 | 'auto' = 'auto', before?: string) => {
     if (!file) return;
     setError(''); setReading('Starting…');
     try {
-      const t = (await readFileText(file, setReading)).trim();
+      const base = before ?? text;
+      const r = await readFileTextTurned(file, setReading, turn);
+      const t = r.text.trim();
       if (!t) setError('No text found in that file.');
-      else setText((old) => (old.trim() ? `${old.trim()}\n${t}` : t));
+      const merged = t ? (base.trim() ? `${base.trim()}\n${t}` : t) : base;
+      setText(merged);
+      setLast(r.turn === null ? null : { file, turn: r.turn, before: base, got: merged });
     } catch (e) { setError(errorText(e)); }
     setReading('');
   };
+  const turnAgain = () => { if (last) readFile(last.file, (((last.turn + 90) % 360) as 0 | 90 | 180 | 270), last.before); };
   const onPaste = (e: React.ClipboardEvent) => {
     const f = [...(e.clipboardData?.files ?? [])].find((x) => x.type.startsWith('image/'));
     if (f) { e.preventDefault(); readFile(f); }
@@ -55,10 +62,14 @@ export function PasteListPanel({ businessId = null, onAdd, onClose, allowMissing
       setRows(lines.map((l, i) => {
         const c = got[i]?.candidates ?? [];
         const top = c[0];
-        const clear = !!top && (top.remembered || c.length === 1 || (top.missed.length === 0 && (c[1]?.score ?? -1) < top.score));
         // a weak best match (fewer than half of the client's words) is not picked for him: skip until chosen
-        const weak = !!top && !top.remembered && top.matched.length * 2 < top.matched.length + top.missed.length;
-        return { key: i, text: l.text, raw: l.raw, quantity: String(l.quantity), qtyFound: l.qtyFound, candidates: c,
+        // Build 120: a supplier's wording carries extra words ("0.71mm / 0.028\" x 15M (standard)"), so a match on the
+        // size plus a word (e.g. "soft drawn 1/4") is also taken as a real match.
+        const sized = !!top && top.matched.length >= 2 && top.matched.some((w) => /\d/.test(w));
+        // clear: remembered, the only candidate, or clearly ahead of the next one with every word (or the size) matched
+        const clear = !!top && (top.remembered || c.length === 1 || ((top.missed.length === 0 || sized) && (c[1]?.score ?? -1) < top.score));
+        const weak = !!top && !top.remembered && !sized && top.matched.length * 2 < top.matched.length + top.missed.length;
+        return { key: i, text: l.text, raw: l.raw, quantity: String(l.quantity), price: l.price ?? null, qtyFound: l.qtyFound, candidates: c,
                  pick: top && !weak ? top.item_id : allowMissing && !top && (got[i]?.words?.length ?? 0) > 0 ? 'missing' : 'skip', status: !top ? 'none' : clear && !weak ? 'matched' : 'choose' };
       }));
     } catch (e) { setError(errorText(e)); }
@@ -76,7 +87,7 @@ export function PasteListPanel({ businessId = null, onAdd, onClose, allowMissing
       if (r.pick === 'missing') { missing.push({ text: r.text, quantity: Number(r.quantity) }); continue; }
       const c = r.candidates.find((x) => x.item_id === r.pick);
       if (!c) continue;
-      picks.push({ item_id: c.item_id, item_code: c.item_code, item_name: c.item_name, unit: c.unit, quantity: Number(r.quantity), text: r.text });
+      picks.push({ item_id: c.item_id, item_code: c.item_code, item_name: c.item_name, unit: c.unit, quantity: Number(r.quantity), text: r.text, price: r.price });
       remember.push({ phrase: r.text, item_id: c.item_id });
     }
     if (!picks.length && !missing.length) { setError('Nothing chosen to add.'); return; }
@@ -101,6 +112,7 @@ export function PasteListPanel({ businessId = null, onAdd, onClose, allowMissing
               <input type="file" className="hidden" accept="image/png,image/jpeg,image/webp,application/pdf" onChange={(e) => { readFile(e.target.files?.[0]); e.target.value = ''; }} />
             </label>
             {reading && <span className="text-xs text-slate-500">{reading}</span>}
+            {!reading && last && last.got === text && <button type="button" className="text-xs underline" onClick={turnAgain} title="Use this when the text above is gibberish">Picture read wrong? Turn ↻ and read again</button>}
           </div>
           <p className="text-[11px] text-slate-500">Pictures and PDFs are read on this device (nothing is uploaded). Check the text above — fix any misread word — then Read list. A screenshot can also be pasted straight into the box (Ctrl+V).</p>
         </>

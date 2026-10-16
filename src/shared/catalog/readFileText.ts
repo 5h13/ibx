@@ -4,6 +4,7 @@
 //   * Scanned PDF or picture: read with Tesseract OCR (English). Nothing is uploaded anywhere.
 // The libraries and the English language file are served by the app itself (public/ocr, see README.txt)
 // and loaded only when a file is chosen — no outside CDN.
+// Build 120: photos are turned upright first (sideways DR photos read as noise) and tables are read row by row.
 const TESS_URL = '/ocr/tesseract.min.js';
 const PDF_URL = '/ocr/pdf.min.mjs';
 const PDF_WORKER = '/ocr/pdf.worker.min.mjs';
@@ -43,7 +44,49 @@ async function getWorker(): Promise<any> {
 async function ocr(image: Blob | HTMLCanvasElement, onProgress?: (msg: string) => void, label = ''): Promise<string> {
   const w = await getWorker();
   progressFn = onProgress; progressLabel = label;
-  try { const r = await w.recognize(image); return String(r?.data?.text ?? ''); } finally { progressFn = undefined; }
+  // Build 120: read as one block of rows (PSM 6) — supplier DRs and lists are tables; the automatic
+  // layout mode split their columns apart and lost the quantities.
+  try { await w.setParameters({ tessedit_pageseg_mode: '6' }); const r = await w.recognize(image); return String(r?.data?.text ?? ''); }
+  finally { progressFn = undefined; }
+}
+
+// ---------------------------------------------------------------- Build 120: photos taken sideways --
+// The text reader only reads upright text; a DR photographed sideways came out as noise. The picture is
+// turned upright from its camera orientation, made grey, kept to a readable size, and then — unless the
+// person turned it themselves — read small in all four directions; the direction with the most clear
+// words is used.
+type Turn = 0 | 90 | 180 | 270;
+function draw(src: CanvasImageSource, w: number, h: number, turn: Turn, maxSide: number): HTMLCanvasElement {
+  const k = Math.min(1, maxSide / Math.max(w, h));
+  const sw = Math.round(w * k), sh = Math.round(h * k);
+  const c = document.createElement('canvas');
+  const side = turn === 90 || turn === 270;
+  c.width = side ? sh : sw; c.height = side ? sw : sh;
+  const g = c.getContext('2d')!;
+  g.filter = 'grayscale(1) contrast(1.15)';
+  g.translate(c.width / 2, c.height / 2); g.rotate((turn * Math.PI) / 180);
+  g.drawImage(src, -sw / 2, -sh / 2, sw, sh);
+  return c;
+}
+async function clearWords(c: HTMLCanvasElement): Promise<number> {
+  const w = await getWorker();
+  await w.setParameters({ tessedit_pageseg_mode: '3' });
+  const r = await w.recognize(c);
+  return ((r?.data?.words ?? []) as any[]).filter((x) => Number(x.confidence) >= 60 && String(x.text ?? '').replace(/[^a-z0-9]/gi, '').length > 2).length;
+}
+async function upright(src: CanvasImageSource, w: number, h: number, onProgress?: (msg: string) => void): Promise<Turn> {
+  onProgress?.('Finding which way is up…');
+  let best: Turn = 0, bestN = -1;
+  for (const t of [0, 90, 270, 180] as Turn[]) {
+    const n = await clearWords(draw(src, w, h, t, 900));
+    if (n > bestN) { best = t; bestN = n; }
+  }
+  return best;
+}
+async function readPicture(src: CanvasImageSource, w: number, h: number, turn: Turn | 'auto', onProgress?: (msg: string) => void, label = 'the picture') {
+  const t = turn === 'auto' ? await upright(src, w, h, onProgress) : turn;
+  const text = await ocr(draw(src, w, h, t, 2600), onProgress, label);
+  return { text, turn: t };
 }
 
 /** text of one PDF page, line by line (items grouped by their height on the page) */
@@ -58,11 +101,13 @@ async function pageText(page: any): Promise<string> {
   return [...rows.entries()].sort((a, b) => b[0] - a[0]).map(([, r]) => r.sort((a, b) => a.x - b.x).map((p) => p.s).join(' ')).join('\n');
 }
 
-export async function readFileText(file: File, onProgress?: (msg: string) => void): Promise<string> {
+/** Reads a picture or PDF into text. `turn`: 'auto' finds which way is up; a number forces that turn (clockwise). */
+export async function readFileTextTurned(file: File, onProgress?: (msg: string) => void, turn: Turn | 'auto' = 'auto'): Promise<{ text: string; turn: Turn | null }> {
   const name = file.name.toLowerCase();
-  if (file.type.startsWith('image/') || /\.(jpe?g|png)$/.test(name)) {
+  if (file.type.startsWith('image/') || /\.(jpe?g|png|webp)$/.test(name)) {
     onProgress?.('Loading the text reader…');
-    return ocr(file, onProgress, 'the picture');
+    const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' } as any);   // camera orientation applied
+    try { return await readPicture(bmp, bmp.width, bmp.height, turn, onProgress); } finally { bmp.close?.(); }
   }
   if (file.type === 'application/pdf' || name.endsWith('.pdf')) {
     onProgress?.('Opening the PDF…');
@@ -70,6 +115,7 @@ export async function readFileText(file: File, onProgress?: (msg: string) => voi
     const doc = await pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
     const n = Math.min(doc.numPages, MAX_PAGES);
     const parts: string[] = [];
+    let used: Turn | null = null;
     for (let p = 1; p <= n; p++) {
       const page = await doc.getPage(p);
       let t = await pageText(page);
@@ -79,12 +125,17 @@ export async function readFileText(file: File, onProgress?: (msg: string) => voi
         const canvas = document.createElement('canvas');
         canvas.width = vp.width; canvas.height = vp.height;
         await page.render({ canvasContext: canvas.getContext('2d')!, viewport: vp }).promise;
-        t = await ocr(canvas, onProgress, `page ${p}`);
+        const r = await readPicture(canvas, canvas.width, canvas.height, used ?? turn, onProgress, `page ${p}`);   // later pages keep page 1's direction
+        t = r.text; used = r.turn;
       }
       parts.push(t);
     }
     if (doc.numPages > MAX_PAGES) parts.push(`(only the first ${MAX_PAGES} pages were read)`);
-    return parts.join('\n');
+    return { text: parts.join('\n'), turn: used };
   }
   throw new Error('Choose a JPG, PNG or PDF file.');
+}
+
+export async function readFileText(file: File, onProgress?: (msg: string) => void): Promise<string> {
+  return (await readFileTextTurned(file, onProgress)).text;
 }
