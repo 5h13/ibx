@@ -22,7 +22,10 @@ import {
   createRevenueRecognitionDraftAction,
   refreshSalesMonthlySummaryAction,
   quoteStockAction,
+  quotePricesAction,
+  type QuotePrice,
 } from "./revenueActions";
+import { PriceHistoryPanel } from "./PriceHistoryPanel";
 import { GoSignalForm, ORDERABLE, OrderView, QuoteView } from "./QuoteChain";
 import { CustomerBox } from "./storefront/CustomerBox";
 import { addCustomerAction } from "./storefront/actions";
@@ -566,7 +569,10 @@ function QuotationForm({
   const [showPreview, setShowPreview] = useState(true);
   const [formError, setFormError] = useState("");
   // CAT-13: every line is a catalog item; "not in catalog" is an explicit escape that needs a reason (flagged on the quote).
-  const blankLine = () => ({ catalog_item_id: "", description: "", quantity: 1, unit: "unit", unit_price: 0, not_in_catalog: false, custom_reason: "" });
+  const blankLine = () => ({ catalog_item_id: "", description: "", quantity: 1, unit: "unit", unit_price: 0 as number | string, not_in_catalog: false, custom_reason: "", price_edited: false });
+  // Build 115: engine prices per item for the chosen customer (same as the save)
+  const [prices, setPrices] = useState<Record<string, QuotePrice>>({});
+  const [historyFor, setHistoryFor] = useState<number | null>(null);
   const [lines, setLines] = useState([blankLine()]);
   const [picked, setPicked] = useState<Record<string, any>>({});
   // DOC-01: stock on hand per catalog item (quantities only, this business)
@@ -590,8 +596,21 @@ function QuotationForm({
     const srp = acq * (1 + markup / 100);
     return srp * (1 - disc / 100);
   };
+  // Build 115 — UIA-20: ask the pricing engine (store, customer) and apply to lines whose price was not typed
+  const loadPrices = (cust: string, ids: string[]) => {
+    const want = [...new Set(ids.filter(Boolean))];
+    if (!want.length) return;
+    quotePricesAction(cust || null, want)
+      .then((rows) => {
+        const by = Object.fromEntries(rows.map((r) => [r.item_id, r]));
+        setPrices((pr) => ({ ...pr, ...by }));
+        setLines((ls) => ls.map((l) => (l.catalog_item_id && by[l.catalog_item_id] && !l.price_edited ? { ...l, unit_price: by[l.catalog_item_id].price } : l)));
+      })
+      .catch(() => undefined);
+  };
   const choose = (i: number, item: any) => {
     if (item) setPicked((p) => ({ ...p, [item.id]: item }));
+    if (item) loadPrices(customerId, [item.id]);
     if (item && !stock[item.id])
       quoteStockAction([item.id])
         .then((rows) => setStock((st) => ({ ...st, ...Object.fromEntries(rows.map((r) => [r.item_id, { store: r.on_hand_store, all: r.on_hand_business, type: r.item_type }])) })))
@@ -599,7 +618,7 @@ function QuotationForm({
     setLines(
       lines.map((l, j) =>
         j === i
-          ? { ...l, catalog_item_id: item?.id || "", description: item?.item_name || "", unit: item?.unit || "unit", unit_price: item ? priceFor(item) : 0, not_in_catalog: false, custom_reason: "" }
+          ? { ...l, catalog_item_id: item?.id || "", description: item?.item_name || "", unit: item?.unit || "unit", unit_price: item ? (prices[item.id]?.price ?? 0) : 0, not_in_catalog: false, custom_reason: "", price_edited: false }
           : l,
       ),
     );
@@ -608,12 +627,7 @@ function QuotationForm({
     setCustomerId(cust);
     const t = custList.find((x) => x.id === cust)?.payment_terms;
     if (t) setTerms(t);
-    setLines(
-      lines.map((l) => {
-        const item = l.catalog_item_id ? itemById(l.catalog_item_id) : null;
-        return item ? { ...l, unit_price: priceFor(item, cust) } : l;
-      }),
-    );
+    loadPrices(cust, lines.map((l) => l.catalog_item_id));
   };
   const saveNewCustomer = () => {
     setCustError("");
@@ -630,6 +644,14 @@ function QuotationForm({
     });
   };
   const r2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
+  // UIA-19: a typed price at or above the floor is a change; below it needs the Sales approver
+  const lineFlag = (l: any): "" | "changed" | "below" => {
+    const p = l.catalog_item_id ? prices[l.catalog_item_id] : null;
+    if (!p || !l.price_edited) return "";
+    const v = r2(Number(l.unit_price) || 0);
+    if (Math.abs(v - p.price) < 0.005) return "";
+    return (p.no_cost ? v < p.srp - 0.005 : v < p.floor - 0.005) ? "below" : "changed";
+  };
   const lineAmount = (l: any) => r2((Number(l.quantity) || 0) * r2(Number(l.unit_price) || 0));
   const filled = lines.filter((l) => l.catalog_item_id || (l.not_in_catalog && l.description));
   const subtotal = r2(filled.reduce((t, l) => t + lineAmount(l), 0));
@@ -659,6 +681,8 @@ function QuotationForm({
         setFormError("");
         if (!customerId) { setFormError("Choose the customer (or add a new one)."); return; }
         if (discountProblem) { setFormError(discountProblem); return; }
+        if (lines.some((l) => !(Number(l.quantity) >= 1) || !Number.isInteger(Number(l.quantity)))) { setFormError("Quantities must be whole numbers (1 or more)."); return; }
+        if (lines.some((l) => l.price_edited && !(Number(l.unit_price) >= 0))) { setFormError("Enter a valid price on every changed line."); return; }
         fd.set("discount_mode", discMode);
         fd.set("discount_value", discValue.trim() || "0");
         fd.set(
@@ -770,10 +794,11 @@ function QuotationForm({
             <input
               className="input md:col-span-1"
               type="number"
-              min="0.001"
-              step="0.001"
+              min="1"
+              step="1"
+              inputMode="numeric"
               value={l.quantity}
-              onChange={(e) => setLines(lines.map((x, j) => (j === i ? { ...x, quantity: Number(e.target.value) } : x)))}
+              onChange={(e) => setLines(lines.map((x, j) => (j === i ? { ...x, quantity: Math.max(0, Math.trunc(Number(e.target.value) || 0)) } : x)))}
             />
             <input
               className="input md:col-span-2"
@@ -782,14 +807,35 @@ function QuotationForm({
               onChange={(e) => setLines(lines.map((x, j) => (j === i ? { ...x, unit: e.target.value } : x)))}
             />
             <input
-              className="input md:col-span-2"
+              className={`input md:col-span-2 ${lineFlag(l) === "below" ? "border-red-500" : ""}`}
               type="number"
+              min="0"
               step="0.01"
               value={l.unit_price}
-              readOnly={!l.not_in_catalog}
-              onChange={(e) => setLines(lines.map((x, j) => (j === i ? { ...x, unit_price: Number(e.target.value) } : x)))}
+              readOnly={!l.not_in_catalog && !l.catalog_item_id}
+              title={l.catalog_item_id ? "Type a price to change it (below the floor needs the Sales approver)" : undefined}
+              onChange={(e) => setLines(lines.map((x, j) => (j === i ? { ...x, unit_price: e.target.value, price_edited: !x.not_in_catalog } : x)))}
             />
             <div className="md:col-span-12 -mt-1 flex flex-wrap gap-x-4 text-xs text-slate-500">
+              {!l.not_in_catalog && l.catalog_item_id && prices[l.catalog_item_id] && (
+                <span>
+                  Store price (SRP) {money(prices[l.catalog_item_id].srp)}
+                  {Number(prices[l.catalog_item_id].customer_discount_percent) > 0 && ` · customer ${Number(prices[l.catalog_item_id].customer_discount_percent)}% → ${money(prices[l.catalog_item_id].price)}`}
+                  {" · "}cost {prices[l.catalog_item_id].no_cost ? "none on record" : money(prices[l.catalog_item_id].acquisition_cost)} · floor {money(prices[l.catalog_item_id].floor)}
+                </span>
+              )}
+              {lineFlag(l) === "below" && <span className="font-medium text-red-700">Below the floor — the quotation needs the Sales approver</span>}
+              {lineFlag(l) === "changed" && <span className="text-blue-700">Price changed from {money(prices[l.catalog_item_id]?.price)}</span>}
+              {l.price_edited && (
+                <button type="button" className="underline" onClick={() => setLines(lines.map((x, j) => (j === i ? { ...x, unit_price: prices[x.catalog_item_id]?.price ?? x.unit_price, price_edited: false } : x)))}>
+                  Use the store price
+                </button>
+              )}
+              {l.catalog_item_id && (
+                <button type="button" className="underline" onClick={() => setHistoryFor(historyFor === i ? null : i)}>
+                  {historyFor === i ? "Hide price history" : "Price history"}
+                </button>
+              )}
               {!l.not_in_catalog && l.catalog_item_id && itemById(l.catalog_item_id) && <span>{costAgeLabel(itemById(l.catalog_item_id)?.cost_updated_at)}</span>}
               {!l.not_in_catalog && l.catalog_item_id && stock[l.catalog_item_id] && stock[l.catalog_item_id].type !== "service" && (
                 <span className={Number(stock[l.catalog_item_id].all ?? 0) < Number(l.quantity) ? "font-medium text-amber-700" : ""}>
@@ -814,6 +860,11 @@ function QuotationForm({
                 Not in catalog
               </label>
             </div>
+            {historyFor === i && l.catalog_item_id && (
+              <div className="md:col-span-12">
+                <PriceHistoryPanel itemId={l.catalog_item_id} customerId={customerId} />
+              </div>
+            )}
             {lines.length > 1 && (
               <button type="button" className="text-xs text-red-600" onClick={() => setLines(lines.filter((_, j) => j !== i))}>
                 Remove
@@ -846,7 +897,7 @@ function QuotationForm({
                 <tbody>
                   {filled.length === 0 && <tr><td colSpan={6} className="py-3 text-center text-slate-500">No lines yet.</td></tr>}
                   {filled.map((l, n) => (
-                    <tr key={n} className="border-b"><td className="py-1">{n + 1}</td><td className="py-1">{l.description}{l.not_in_catalog && <span className="ml-1 text-xs text-amber-700">(not in catalog)</span>}</td>
+                    <tr key={n} className="border-b"><td className="py-1">{n + 1}</td><td className="py-1">{l.description}{l.not_in_catalog && <span className="ml-1 text-xs text-amber-700">(not in catalog)</span>}{lineFlag(l) === "below" && <span className="ml-1 text-xs text-red-700">(below floor — Sales approver)</span>}</td>
                       <td className="py-1 text-right">{Number(l.quantity).toLocaleString()}</td><td className="py-1">{l.unit}</td><td className="py-1 text-right">{money(l.unit_price)}</td><td className="py-1 text-right">{money(lineAmount(l))}</td></tr>
                   ))}
                 </tbody>

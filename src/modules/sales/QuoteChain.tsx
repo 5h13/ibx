@@ -77,6 +77,8 @@ export function QuoteView({ quotationId, onRevised }: { quotationId: string; onR
             <tr key={i.id} className="border-b align-top">
               {isDraft && <td className="p-2">{askable(st) && <input type="checkbox" aria-label="Ask Procurement for this line" checked={!!ask[i.id]} onChange={(e) => setAsk({ ...ask, [i.id]: e.target.checked })} />}</td>}
               <td className="p-2">{i.description}
+                {i.below_floor && <div className="text-xs font-medium text-red-700">Below the floor ({money(i.floor_price)}) — needs the Sales approver</div>}
+                {i.price_overridden && !i.below_floor && <div className="text-xs text-blue-700">Price changed from {money(i.engine_unit_price)}</div>}
                 {!i.catalog_item_id && <div className="text-xs font-medium text-amber-700">Not in catalog{i.custom_reason ? ` — ${i.custom_reason}` : ' (no reason recorded)'}</div>}
                 {st?.price_request_status === 'awaiting' && <div className="text-xs text-amber-700">Awaiting supplier price from Procurement{st.price_request_note ? ` · “${st.price_request_note}”` : ''}
                   {isDraft && <button type="button" className="ml-2 underline" disabled={pending} onClick={() => start(async () => {
@@ -95,7 +97,9 @@ export function QuoteView({ quotationId, onRevised }: { quotationId: string; onR
           {Number(q.tax_amount) > 0 && <tr>{isDraft && <td />}<td colSpan={4} className="p-2 text-right text-slate-500">Tax</td><td className="p-2 text-right">{money(q.tax_amount)}</td></tr>}
           {Number(q.other_charges) > 0 && <tr>{isDraft && <td />}<td colSpan={4} className="p-2 text-right text-slate-500">Other charges</td><td className="p-2 text-right">{money(q.other_charges)}</td></tr>}
           <tr>{isDraft && <td />}<td colSpan={4} className="p-2 text-right font-semibold">Total</td><td className="p-2 text-right font-semibold">{money(q.total_amount)}</td></tr>
-          {q.vat_applied && <tr>{isDraft && <td />}<td colSpan={4} className="p-2 text-right text-slate-500">VAT 12% (included)</td><td className="p-2 text-right">{money(q.vat_amount)}</td></tr>}
+          {q.vat_applied
+            ? <tr>{isDraft && <td />}<td colSpan={4} className="p-2 text-right text-slate-500">VAT 12% (included)</td><td className="p-2 text-right">{money(q.vat_amount)}</td></tr>
+            : <tr>{isDraft && <td />}<td colSpan={5} className="p-2 text-right text-xs text-slate-500">Prices are not subject to VAT.</td></tr>}
         </tfoot>
       </table>
       {d.history.length > 1 && (
