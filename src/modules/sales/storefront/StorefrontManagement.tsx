@@ -342,6 +342,26 @@ function DecideCancelForm({ sale, onDone }: { sale: any; onDone: (msg: string) =
   );
 }
 
+// UIA-06: a completed sale whose items came back shows "Returned" (everything) or "Partly returned".
+// The stored status stays "completed"; this only reads the return lines.
+function returnState(items: any[], returnItems: any[]): '' | 'returned' | 'partly_returned' {
+  let sold = 0, back = 0;
+  for (const i of items) {
+    sold += Number(i.quantity) || 0;
+    back += returnItems.filter((r) => r.sale_item_id === i.id).reduce((t, r) => t + (Number(r.quantity) || 0), 0);
+  }
+  if (back <= 0) return '';
+  return back >= sold ? 'returned' : 'partly_returned';
+}
+function statusText(sale: any, items: any[], returnItems: any[]) {
+  if (sale.status === 'completed' && sale.cancel_status !== 'approved') {
+    const r = returnState(items, returnItems);
+    if (r === 'returned') return 'Returned';
+    if (r === 'partly_returned') return 'Partly returned';
+  }
+  return String(sale.status).replace('_', ' ');
+}
+
 function SaleDetail({ sale, items, payments, returnItems = [], canRequestCancel = false, onMessage }: { sale: any; items: any[]; payments: any[]; returnItems?: any[]; canRequestCancel?: boolean; onMessage?: (m: string) => void }) {
   return (
     <div className="space-y-4 text-sm">
@@ -349,7 +369,7 @@ function SaleDetail({ sale, items, payments, returnItems = [], canRequestCancel 
         <div><span className="text-slate-500">Customer</span><div className="font-medium">{sale.customer?.legal_name}</div></div>
         {sale.agent?.name && <div><span className="text-slate-500">Agent</span><div className="font-medium">{sale.agent.name}</div></div>}
         <div><span className="text-slate-500">DR / SI</span><div className="font-medium">{sale.dr_number ?? '—'} / {sale.si_number ?? '—'}</div>{sale.hardcopy_dr_no && <div className="text-xs text-slate-500">Hardcopy DR no. {sale.hardcopy_dr_no}</div>}</div>
-        <div><span className="text-slate-500">Status</span><div className="font-medium capitalize">{String(sale.status).replace('_', ' ')}{sale.cancel_status === 'approved' ? ' · cancelled (reversed)' : sale.cancel_status === 'requested' ? ' · cancellation requested' : ''}</div></div>
+        <div><span className="text-slate-500">Status</span><div className="font-medium capitalize">{statusText(sale, items, returnItems)}{sale.cancel_status === 'approved' ? ' · cancelled (reversed)' : sale.cancel_status === 'requested' ? ' · cancellation requested' : ''}</div></div>
       </div>
       {sale.late_entry && <div className="rounded bg-amber-50 p-2 text-amber-800">Entered late — sale date {sale.sale_date}. Reason: {sale.late_reason}</div>}
       {sale.sales_order_id && <div className="rounded bg-slate-50 p-2">From sales order {sale.order?.order_number ?? ''} · {sale.release_status === 'released' ? 'released by the Warehouse' : 'waiting for the Warehouse to release the items'}</div>}
@@ -493,9 +513,9 @@ export function StorefrontManagement({ ctx, date, today, sales, open, items, pay
                     <td className="p-2 text-xs">{s.dr_number ?? '—'}<br />{s.si_number ? `SI ${s.si_number}` : '—'}{s.hardcopy_dr_no && <><br />Hardcopy {s.hardcopy_dr_no}</>}</td>
                     <td className="p-2 text-right">{peso(s.total)}</td><td className="p-2 text-right">{peso(s.amount_paid)}</td>
                     <td className="p-2 text-right">{Number(s.balance) > 0 ? <span className="text-amber-700">{peso(s.balance)}</span> : '—'}</td>
-                    <td className="p-2 capitalize">{String(s.status).replace('_', ' ')}{s.cancel_status === 'approved' ? <div className="text-xs text-red-700">cancelled (reversed)</div> : s.cancel_status === 'requested' ? <div className="text-xs text-amber-700">cancel requested</div> : null}</td>
+                    <td className="p-2 capitalize">{(() => { const t = statusText(s, itemsOf(s.id), returnItems); return t === 'Returned' ? <span className="rounded bg-red-100 px-1.5 py-0.5 font-medium text-red-800">Returned</span> : t === 'Partly returned' ? <span className="rounded bg-amber-100 px-1.5 py-0.5 font-medium text-amber-800">Partly returned</span> : t; })()}{s.cancel_status === 'approved' ? <div className="text-xs text-red-700">cancelled (reversed)</div> : s.cancel_status === 'requested' ? <div className="text-xs text-amber-700">cancel requested</div> : null}</td>
                     <td className="p-2 whitespace-nowrap"><div className="flex gap-2"><PopupAction label="View" title={`Sale ${s.sale_number}`} variant="secondary" wide>{(close) => <SaleDetail sale={s} items={itemsOf(s.id)} payments={paysOf(s.id)} returnItems={returnItems} canRequestCancel={!ro} onMessage={(m) => { setMessage(m); close(); }} />}</PopupAction>
-                      {!ro && can.counter && s.status === 'completed' && s.cancel_status !== 'approved' && <PopupAction label="Return" title={`Return / refund · ${s.sale_number}`} variant="secondary" wide>{(close) => <ReturnForm saleNumber={s.sale_number} onDone={(m) => { setMessage(m); close(); }} />}</PopupAction>}</div></td>
+                      {!ro && can.counter && s.status === 'completed' && s.cancel_status !== 'approved' && returnState(itemsOf(s.id), returnItems) !== 'returned' && <PopupAction label="Return" title={`Return / refund · ${s.sale_number}`} variant="secondary" wide>{(close) => <ReturnForm saleNumber={s.sale_number} onDone={(m) => { setMessage(m); close(); }} />}</PopupAction>}</div></td>
                   </tr>
                 ))}
               </tbody>

@@ -91,7 +91,7 @@ export function QuoteView({ quotationId, onRevised }: { quotationId: string; onR
         })}</tbody>
         <tfoot>
           <tr>{isDraft && <td />}<td colSpan={4} className="p-2 text-right text-slate-500">Subtotal</td><td className="p-2 text-right">{money(q.subtotal)}</td></tr>
-          {Number(q.discount_amount) > 0 && <tr>{isDraft && <td />}<td colSpan={4} className="p-2 text-right text-slate-500">Discount</td><td className="p-2 text-right">−{money(q.discount_amount)}</td></tr>}
+          {Number(q.discount_amount) > 0 && <tr>{isDraft && <td />}<td colSpan={4} className="p-2 text-right text-slate-500">Discount{q.discount_percent != null ? ` (${Number(q.discount_percent)}%)` : ""}</td><td className="p-2 text-right">−{money(q.discount_amount)}</td></tr>}
           {Number(q.tax_amount) > 0 && <tr>{isDraft && <td />}<td colSpan={4} className="p-2 text-right text-slate-500">Tax</td><td className="p-2 text-right">{money(q.tax_amount)}</td></tr>}
           {Number(q.other_charges) > 0 && <tr>{isDraft && <td />}<td colSpan={4} className="p-2 text-right text-slate-500">Other charges</td><td className="p-2 text-right">{money(q.other_charges)}</td></tr>}
           <tr>{isDraft && <td />}<td colSpan={4} className="p-2 text-right font-semibold">Total</td><td className="p-2 text-right font-semibold">{money(q.total_amount)}</td></tr>

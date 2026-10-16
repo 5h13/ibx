@@ -18,7 +18,7 @@ export default async function FinanceProcurementPage(
   // converted ids so it can show a distinct state instead of leaving the PR
   // looking identical to one still awaiting conversion.
   const convertedRequisitionIds=new Set((orders??[]).map((o:any)=>o.requisition_id).filter(Boolean));
-  const approvedRequisitionsAwaitingPo=(ape??[]).filter((r:any)=>!convertedRequisitionIds.has(r.id));
+  const approvedRequisitionsAwaitingPo=(approvedPrs??[]).filter /* UIA-11: was reading the error variable, so the list was always empty */((r:any)=>!convertedRequisitionIds.has(r.id));
   // Build 77 — "Requested by": the users table only shows a user their own row,
   // so the embedded requester was blank for everybody else's PRs. Names of the
   // people on PRs/POs in this store come from procurement_user_names().

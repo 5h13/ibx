@@ -52,7 +52,7 @@ export default async function QuotationPrintPage(props: { params: Promise<{ id: 
         <tbody>{(items ?? []).map((i: any, n: number) => <tr key={i.id} className="border-b"><td className="py-1">{n + 1}</td><td className="py-1">{i.description}{i.notes && <div className="text-xs">{i.notes}</div>}</td><td className="py-1 text-right">{Number(i.quantity)}</td><td className="py-1">{i.unit}</td><td className="py-1 text-right">{peso(i.unit_price)}</td><td className="py-1 text-right">{peso(i.amount)}</td></tr>)}</tbody>
         <tfoot>
           <tr><td colSpan={5} className="pt-2 text-right">Subtotal</td><td className="pt-2 text-right">{peso(q.subtotal)}</td></tr>
-          {Number(q.discount_amount) > 0 && <tr><td colSpan={5} className="text-right">Discount</td><td className="text-right">−{peso(q.discount_amount)}</td></tr>}
+          {Number(q.discount_amount) > 0 && <tr><td colSpan={5} className="text-right">Discount{q.discount_percent != null ? ` (${Number(q.discount_percent)}%)` : ''}</td><td className="text-right">−{peso(q.discount_amount)}</td></tr>}
           {Number(q.tax_amount) > 0 && <tr><td colSpan={5} className="text-right">Tax</td><td className="text-right">{peso(q.tax_amount)}</td></tr>}
           {Number(q.other_charges) > 0 && <tr><td colSpan={5} className="text-right">Other charges</td><td className="text-right">{peso(q.other_charges)}</td></tr>}
           <tr><td colSpan={5} className="pt-1 text-right font-semibold">TOTAL</td><td className="pt-1 text-right font-semibold">{peso(q.total_amount)}</td></tr>

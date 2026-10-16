@@ -11,7 +11,6 @@ import {
   approveQuotationAction,
   approveSalesOrderAction,
   createCommissionAction,
-  createDeliveryFromOrderAction,
   createOpportunityAction,
   createQuotationAction,
   markQuotationSentAction,
@@ -25,6 +24,8 @@ import {
   quoteStockAction,
 } from "./revenueActions";
 import { GoSignalForm, ORDERABLE, OrderView, QuoteView } from "./QuoteChain";
+import { CustomerBox } from "./storefront/CustomerBox";
+import { addCustomerAction } from "./storefront/actions";
 const money = (n: any) => `₱${Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 export default function RevenuePipelineManagement({
   opportunities,
@@ -60,7 +61,9 @@ export default function RevenuePipelineManagement({
   const dialog = useDialog();
   const [tab, setTab] = useState("pipeline");
   // Build 82: ?tab=quotations (5H13 Shortcuts)
-  useEffect(() => { const t = new URLSearchParams(window.location.search).get('tab'); if (t === 'quotations') setTab('quotations'); }, []);
+  const [highlight, setHighlight] = useState('');
+  useEffect(() => { const q = new URLSearchParams(window.location.search); const t = q.get('tab'); if (t === 'quotations' || t === 'orders') setTab(t); const o = q.get('order'); if (o) setHighlight(o); }, []);
+  useEffect(() => { if (tab === 'orders' && highlight) document.getElementById(`so-${highlight}`)?.scrollIntoView({ block: 'center' }); }, [tab, highlight]);
   const [pending, start] = useTransition();
   const [message, setMessage] = useState("");
   const [showSuperseded, setShowSuperseded] = useState(false);
@@ -307,7 +310,7 @@ export default function RevenuePipelineManagement({
             <Table
               headers={["Order", "Customer", "Client PO / go-signal", "Total", "Status", "Actions"]}
               rows={orders.map((o) => (
-                <tr key={o.id} className="border-b">
+                <tr key={o.id} id={`so-${o.order_number}`} className={`border-b ${highlight === o.order_number ? "bg-amber-50" : ""}`}>
                   <td className="p-3 font-medium">
                     {o.order_number}
                     <div className="text-xs font-normal text-slate-500">{o.order_date}</div>
@@ -352,22 +355,10 @@ export default function RevenuePipelineManagement({
                         Approve
                       </button>
                     )}
-                    {o.status === "approved" && (
-                      <button
-                        className="button-sm"
-                        onClick={() => {
-                          const l = locations[0]?.id;
-                          if (!l) {
-                            dialog.alert("Create a logistics warehouse/location first.", { tone: "danger" });
-                            return;
-                          }
-                          dialog.prompt("Delivery number").then((n) => {
-                            if (n) run(() => createDeliveryFromOrderAction(o.id, n, l));
-                          });
-                        }}
-                      >
-                        Send to warehouse
-                      </button>
+                    {/* UIA-09: DRs for an approved order are issued at Storefront → Orders (system-numbered); the old
+                        "Send to warehouse" asked the approver to type a delivery number and is removed. */}
+                    {["approved", "processing"].includes(o.status) && (
+                      <a className="button-sm" href="/sales/storefront?tab=orders">Issue DR at Storefront</a>
                     )}
                   </td>
                 </tr>
@@ -563,6 +554,17 @@ function QuotationForm({
   const close = usePopupClose();
   const [customerId, setCustomerId] = useState("");
   const [terms, setTerms] = useState("");
+  // Build 112 — UIA-13/14/16 + preview: searchable customer box with "+ New customer", discount in ₱ or %, live preview.
+  const [custList, setCustList] = useState<any[]>(() => customers.filter((x) => x.active));
+  const [adding, setAdding] = useState(false);
+  const [newCust, setNewCust] = useState({ name: "", phone: "", address: "", tax_id: "" });
+  const [custError, setCustError] = useState("");
+  const [discMode, setDiscMode] = useState<"amount" | "percent">("amount");
+  const [discValue, setDiscValue] = useState("");
+  const [otherCharges, setOtherCharges] = useState("");
+  const [vat, setVat] = useState(false);
+  const [showPreview, setShowPreview] = useState(true);
+  const [formError, setFormError] = useState("");
   // CAT-13: every line is a catalog item; "not in catalog" is an explicit escape that needs a reason (flagged on the quote).
   const blankLine = () => ({ catalog_item_id: "", description: "", quantity: 1, unit: "unit", unit_price: 0, not_in_catalog: false, custom_reason: "" });
   const [lines, setLines] = useState([blankLine()]);
@@ -602,9 +604,63 @@ function QuotationForm({
       ),
     );
   };
+  const pickCustomer = (cust: string) => {
+    setCustomerId(cust);
+    const t = custList.find((x) => x.id === cust)?.payment_terms;
+    if (t) setTerms(t);
+    setLines(
+      lines.map((l) => {
+        const item = l.catalog_item_id ? itemById(l.catalog_item_id) : null;
+        return item ? { ...l, unit_price: priceFor(item, cust) } : l;
+      }),
+    );
+  };
+  const saveNewCustomer = () => {
+    setCustError("");
+    run(async () => {
+      try {
+        const id = await addCustomerAction({ name: newCust.name, phone: newCust.phone, address: newCust.address, tax_id: newCust.tax_id });
+        setCustList((c) => [{ id, customer_code: "new", legal_name: newCust.name.trim(), phone: newCust.phone || null, address: newCust.address || null, active: true }, ...c]);
+        pickCustomer(id);
+        setAdding(false);
+        setNewCust({ name: "", phone: "", address: "", tax_id: "" });
+      } catch (e) {
+        setCustError(errorText(e));
+      }
+    });
+  };
+  const r2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
+  const lineAmount = (l: any) => r2((Number(l.quantity) || 0) * r2(Number(l.unit_price) || 0));
+  const filled = lines.filter((l) => l.catalog_item_id || (l.not_in_catalog && l.description));
+  const subtotal = r2(filled.reduce((t, l) => t + lineAmount(l), 0));
+  const discNum = Number(discValue || 0);
+  const discountAmount = discMode === "percent" ? r2((subtotal * discNum) / 100) : r2(discNum);
+  const discountPct = subtotal > 0 ? (discountAmount / subtotal) * 100 : 0;
+  const other = r2(Number(otherCharges || 0));
+  const total = r2(subtotal - discountAmount + other);
+  const vatAmount = vat ? r2((total * 12) / 112) : 0;
+  const discountProblem = (() => {
+    if (discValue.trim() === "") return "";
+    if (!Number.isFinite(discNum) || discNum < 0) return "The discount cannot be negative.";
+    if (!/^\d+(\.\d{1,2})?$/.test(discValue.trim())) return "Use at most 2 decimals (e.g. 10, 12.5 or 150.75).";
+    if (discMode === "percent" && discNum > 100) return "A percentage discount cannot be more than 100%.";
+    if (subtotal > 0 && discountAmount > subtotal) return `The discount (${money(discountAmount)}) is more than the lines total (${money(subtotal)}).`;
+    return "";
+  })();
+  const custName = custList.find((x) => x.id === customerId)?.legal_name;
   return (
     <Form
+      onKeyDown={(e: any) => {
+        // UIA-15: Enter inside a field never saves the quotation; only the Save button does.
+        const t = e.target as HTMLElement;
+        if (e.key === "Enter" && t.tagName === "INPUT" && (t as HTMLInputElement).type !== "submit") e.preventDefault();
+      }}
       action={(fd) => {
+        setFormError("");
+        if (!customerId) { setFormError("Choose the customer (or add a new one)."); return; }
+        if (discountProblem) { setFormError(discountProblem); return; }
+        fd.set("discount_mode", discMode);
+        fd.set("discount_value", discValue.trim() || "0");
         fd.set(
           "lines",
           JSON.stringify(
@@ -623,33 +679,11 @@ function QuotationForm({
           <input className="input bg-slate-50" value="Assigned when saved" readOnly tabIndex={-1} />
         </Field>
         <Field l="Customer">
-          <select
-            className="input"
-            name="customer_id"
-            value={customerId}
-            onChange={(e) => {
-              const cust = e.target.value;
-              setCustomerId(cust);
-              const terms = customers.find((x) => x.id === cust)?.payment_terms;
-              if (terms) setTerms(terms);
-              setLines(
-                lines.map((l) => {
-                  const item = l.catalog_item_id ? itemById(l.catalog_item_id) : null;
-                  return item ? { ...l, unit_price: priceFor(item, cust) } : l;
-                }),
-              );
-            }}
-            required
-          >
-            <option value="">Select</option>
-            {customers
-              .filter((x) => x.active)
-              .map((x) => (
-                <option key={x.id} value={x.id}>
-                  {x.customer_code} — {x.legal_name}
-                </option>
-              ))}
-          </select>
+          <input type="hidden" name="customer_id" value={customerId} />
+          <CustomerBox customers={custList} value={customerId} onChange={pickCustomer} />
+          <button type="button" className="mt-1 text-xs text-blue-700 underline" onClick={() => setAdding(!adding)}>
+            {adding ? "Cancel new customer" : "+ New customer"}
+          </button>
         </Field>
         <Field l="Opportunity">
           <select className="input" name="opportunity_id">
@@ -667,16 +701,25 @@ function QuotationForm({
         <Field l="Valid until">
           <input className="input" name="valid_until" type="date" />
         </Field>
-        <Field l="Discount">
-          <input className="input" name="discount_amount" type="number" step="0.01" defaultValue="0" />
+        <Field l="Discount (whole quotation)">
+          <div className="flex gap-1">
+            <select className="input w-20" value={discMode} onChange={(e) => setDiscMode(e.target.value as "amount" | "percent")} aria-label="Discount type">
+              <option value="amount">₱</option>
+              <option value="percent">%</option>
+            </select>
+            <input className={`input ${discountProblem ? "border-red-500" : ""}`} type="text" inputMode="decimal" placeholder={discMode === "percent" ? "e.g. 10" : "e.g. 500"} value={discValue} onChange={(e) => setDiscValue(e.target.value)} />
+          </div>
+          <div className={`text-xs ${discountProblem ? "text-red-700" : "text-slate-500"}`}>
+            {discountProblem || (discountAmount > 0 ? (discMode === "percent" ? `= ${money(discountAmount)} off` : `= ${discountPct.toFixed(2)}% of the lines total`) : "Amount in pesos or a percentage of the lines total")}
+          </div>
         </Field>
         <Field l="VAT (SF-03d)">
           <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" name="vat_applied" value="1" /> With VAT — prices include 12% VAT (the sales order follows)
+            <input type="checkbox" name="vat_applied" value="1" checked={vat} onChange={(e) => setVat(e.target.checked)} /> With VAT — prices include 12% VAT (the sales order follows)
           </label>
         </Field>
         <Field l="Other charges">
-          <input className="input" name="other_charges" type="number" step="0.01" defaultValue="0" />
+          <input className="input" name="other_charges" type="number" min="0" step="0.01" value={otherCharges} placeholder="0" onChange={(e) => setOtherCharges(e.target.value)} />
         </Field>
         <Field l="Payment terms">
           <input className="input" name="payment_terms" value={terms} onChange={(e) => setTerms(e.target.value)} placeholder="e.g. 30 days, COD" />
@@ -685,6 +728,17 @@ function QuotationForm({
           <input className="input" name="delivery_lead_time" placeholder="e.g. within the day, 3-5 days" />
         </Field>
       </div>
+      {adding && (
+        <div className="grid gap-2 rounded border p-3 sm:grid-cols-4">
+          <input className="input sm:col-span-2" placeholder="Customer / company name *" value={newCust.name} onChange={(e) => setNewCust({ ...newCust, name: e.target.value })} />
+          <input className="input" placeholder="Phone" value={newCust.phone} onChange={(e) => setNewCust({ ...newCust, phone: e.target.value })} />
+          <input className="input" placeholder="TIN" value={newCust.tax_id} onChange={(e) => setNewCust({ ...newCust, tax_id: e.target.value })} />
+          <input className="input sm:col-span-3" placeholder="Address" value={newCust.address} onChange={(e) => setNewCust({ ...newCust, address: e.target.value })} />
+          <button type="button" className="button" disabled={pending || !newCust.name.trim()} onClick={saveNewCustomer}>Save customer</button>
+          <p className="text-xs text-slate-500 sm:col-span-4">The new customer gets the store as agent (change it on the customer record) and is selected for this quotation.</p>
+          {custError && <p className="text-sm text-red-700 sm:col-span-4">{custError}</p>}
+        </div>
+      )}
       <div className="border rounded-lg p-3 space-y-2">
         <div className="font-medium">
           Line items{" "}
@@ -775,7 +829,42 @@ function QuotationForm({
           Add line
         </button>
       </div>
-      <button className="button" disabled={pending}>
+      <div className="rounded-lg border">
+        <div className="flex items-center justify-between border-b bg-slate-50 px-3 py-2">
+          <span className="font-medium">Preview</span>
+          <button type="button" className="text-xs underline" onClick={() => setShowPreview(!showPreview)}>{showPreview ? "Hide preview" : "Show preview"}</button>
+        </div>
+        {showPreview && (
+          <div className="space-y-2 p-3 text-sm">
+            <div className="flex flex-wrap justify-between gap-2">
+              <div><span className="text-xs uppercase text-slate-500">Prepared for</span><div className="font-semibold">{custName || "— choose a customer —"}</div></div>
+              <div className="text-right text-xs text-slate-500">QUOTATION · number assigned when saved<div>Payment: {terms || "As agreed"}</div></div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse text-sm">
+                <thead><tr className="border-b-2 text-left text-xs uppercase text-slate-500"><th className="py-1">#</th><th className="py-1">Description</th><th className="py-1 text-right">Qty</th><th className="py-1">Unit</th><th className="py-1 text-right">Unit price</th><th className="py-1 text-right">Amount</th></tr></thead>
+                <tbody>
+                  {filled.length === 0 && <tr><td colSpan={6} className="py-3 text-center text-slate-500">No lines yet.</td></tr>}
+                  {filled.map((l, n) => (
+                    <tr key={n} className="border-b"><td className="py-1">{n + 1}</td><td className="py-1">{l.description}{l.not_in_catalog && <span className="ml-1 text-xs text-amber-700">(not in catalog)</span>}</td>
+                      <td className="py-1 text-right">{Number(l.quantity).toLocaleString()}</td><td className="py-1">{l.unit}</td><td className="py-1 text-right">{money(l.unit_price)}</td><td className="py-1 text-right">{money(lineAmount(l))}</td></tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr><td colSpan={5} className="pt-2 text-right">Subtotal</td><td className="pt-2 text-right">{money(subtotal)}</td></tr>
+                  {discountAmount > 0 && <tr className={discountProblem ? "text-red-700" : ""}><td colSpan={5} className="text-right">Discount{discMode === "percent" ? ` (${discNum}%)` : ""}</td><td className="text-right">−{money(discountAmount)}</td></tr>}
+                  {other > 0 && <tr><td colSpan={5} className="text-right">Other charges</td><td className="text-right">{money(other)}</td></tr>}
+                  <tr><td colSpan={5} className="pt-1 text-right font-semibold">TOTAL</td><td className="pt-1 text-right font-semibold">{money(total)}</td></tr>
+                  <tr><td colSpan={6} className="text-right text-xs text-slate-500">{vat ? `VAT-inclusive: VATable sales ${money(total - vatAmount)} · VAT 12% ${money(vatAmount)}` : "Prices are not subject to VAT."}</td></tr>
+                </tfoot>
+              </table>
+            </div>
+            <p className="text-xs text-slate-500">Catalog prices are confirmed by the pricing engine when the quotation is saved.</p>
+          </div>
+        )}
+      </div>
+      {formError && <p className="text-sm text-red-700">{formError}</p>}
+      <button className="button" disabled={pending || !!discountProblem}>
         Save quotation
       </button>
     </Form>

@@ -29,7 +29,7 @@ function NoteForm({ label, placeholder, onSubmit }: { label: string; placeholder
 
 // Build 95 — an agent order the store cannot fill from stock becomes a sales order: each line from stock or
 // "order from supplier". The Sales approver approves it; the supplier lines then go to Procurement as a PR → PO.
-function ToSalesOrderForm({ o, onDone }: { o: any; onDone: (m: string) => void }) {
+function ToSalesOrderForm({ o, onDone }: { o: any; onDone: (m: string, orderNumber?: string) => void }) {
   const lines: any[] = o.lines ?? [];
   const [pick, setPick] = useState<Record<string, 'stock' | 'source'>>(() =>
     Object.fromEntries(lines.filter((l) => l.item_type !== 'service').map((l) => [l.item_id, Number(l.available ?? 0) >= Number(l.quantity) ? 'stock' : 'source'])));
@@ -39,7 +39,7 @@ function ToSalesOrderForm({ o, onDone }: { o: any; onDone: (m: string) => void }
   const toSource = Object.values(pick).filter((v) => v === 'source').length;
   return (
     <div className="space-y-3 text-sm">
-      <p className="text-slate-600">Makes a sales order for <b>{o.customer}</b> with the agent&apos;s prices. Lines marked <b>Order from supplier</b> go to Procurement as a purchase request (then a P.O.) as soon as the Sales approver approves the sales order.</p>
+      <p className="text-slate-600">Makes a sales order for <b>{o.customer}</b> with the agent&apos;s prices. Lines marked <b>Order from supplier</b> go to Procurement as a purchase request (then a P.O.) as soon as the Sales approver approves the sales order. A line with less stock on record than ordered starts as <b>Order from supplier</b>; switch it to <b>From stock</b> if the goods are on hand (e.g. before the opening stock count is loaded).</p>
       <div className="divide-y rounded border">
         {lines.map((l) => (
           <div key={l.item_id} className="flex flex-wrap items-center gap-2 p-2">
@@ -59,7 +59,7 @@ function ToSalesOrderForm({ o, onDone }: { o: any; onDone: (m: string) => void }
         setError('');
         try {
           const r = await agentOrderToSalesOrderAction(o.id, Object.entries(pick).map(([item_id, fulfilment]) => ({ item_id, fulfilment })), note);
-          onDone(`${o.order_number} → sales order ${r.order_number}${r.lines_to_source ? ` (${r.lines_to_source} line(s) to order from the supplier once approved)` : ''}. Waiting for the Sales approver.`);
+          onDone(`${o.order_number} → sales order ${r.order_number}${r.lines_to_source ? ` (${r.lines_to_source} line(s) to order from the supplier once approved)` : ''}. Waiting for the Sales approver in Sales / Revenue Pipeline → Sales orders.`, r.order_number);
         } catch (e) { setError(errorText(e)); }
       })}>{pending ? 'Saving…' : `Make sales order${toSource ? ` · ${toSource} to order` : ''}`}</button>
     </div>
@@ -68,12 +68,18 @@ function ToSalesOrderForm({ o, onDone }: { o: any; onDone: (m: string) => void }
 
 export function AgentOrdersTab({ orders, canSell, onMessage, renderSale }: { orders: any[]; canSell: boolean; onMessage: (m: string) => void; renderSale: (order: any, close: () => void) => ReactNode }) {
   const [open, setOpen] = useState<string | null>(null);
+  // UIA-08: after "Make sales order" the result stays on screen with a link to the order.
+  const [made, setMade] = useState<{ text: string; order: string } | null>(null);
   const sent = orders.filter((o) => o.status === 'sent');
   const done = orders.filter((o) => o.status === 'completed' || o.status === 'converted');
   return (
     <section className="space-y-3 rounded-xl border bg-white p-3 sm:p-4">
       <p className="text-sm text-slate-500">Orders agents took for their clients. <b>Make the sale</b> opens a new counter sale with the client, items and the agent&apos;s prices filled in (change quantities or lots as needed); the order is marked done when the sale is saved. No stock? <b>Sales order / P.O.</b> turns it into a sales order whose short lines are ordered from the supplier. Return an order to the agent if it cannot be filled.</p>
       {!canSell && <p className="text-sm text-amber-700">Set the store&apos;s stock location first (Store settings).</p>}
+      {made && <div className="flex flex-wrap items-center gap-2 rounded border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-900">
+        <span className="flex-1">{made.text}</span>
+        <a className="button-sm" href={`/sales/revenue?tab=orders&order=${encodeURIComponent(made.order)}`}>Open sales order {made.order}</a>
+        <button type="button" className="text-xs underline" onClick={() => setMade(null)}>Dismiss</button></div>}
       <table className="m-cards w-full text-sm">
         <thead className="text-left text-xs uppercase text-slate-500"><tr><th className="p-2">Order</th><th className="p-2">Agent</th><th className="p-2">Client</th><th className="p-2 text-right">Total</th><th className="p-2"></th></tr></thead>
         <tbody>
@@ -90,7 +96,7 @@ export function AgentOrdersTab({ orders, canSell, onMessage, renderSale }: { ord
                   <PopupAction label="Make the sale" title={`Sale for agent order ${o.order_number}`} wide disabled={!canSell}>{(close) => renderSale(o, close)}</PopupAction>
                   <PopupAction label={(o.lines ?? []).some((l: any) => l.item_type !== 'service' && Number(l.available ?? 0) < Number(l.quantity)) ? 'No stock → sales order / P.O.' : 'Sales order / P.O.'}
                     title={`Sales order for agent order ${o.order_number}`} wide variant="secondary">
-                    {(close) => <ToSalesOrderForm o={o} onDone={(m) => { onMessage(m); close(); }} />}
+                    {(close) => <ToSalesOrderForm o={o} onDone={(m, n) => { onMessage(m); if (n) setMade({ text: m, order: n }); close(); }} />}
                   </PopupAction>
                   <PopupAction label="Return to agent" title={`Return ${o.order_number} to ${o.agent}`} variant="secondary">
                     {(close) => <NoteForm label="Return to agent" placeholder="Why (e.g. out of stock, wrong item)" onSubmit={async (n) => { await agentOrderReturnAction(o.id, n); onMessage(`${o.order_number} returned to ${o.agent}.`); close(); }} />}
@@ -110,7 +116,9 @@ export function AgentOrdersTab({ orders, canSell, onMessage, renderSale }: { ord
           {!sent.length && <tr><td colSpan={5} className="p-4 text-center text-slate-500">No agent orders waiting.</td></tr>}
         </tbody>
       </table>
-      {done.length > 0 && <div className="text-xs text-slate-500">Done this week: {done.map((o) => `${o.order_number} → ${o.status === 'converted' ? `sales order ${o.sales_order_number ?? ''}` : o.sale_number ?? 'sale'}`).join(' · ')}</div>}
+      {done.length > 0 && <div className="text-xs text-slate-500">Done this week: {done.map((o, i) => <span key={o.id}>{i > 0 && ' · '}{o.order_number} → {o.status === 'converted'
+        ? (o.sales_order_number ? <a className="text-blue-700 underline" href={`/sales/revenue?tab=orders&order=${encodeURIComponent(o.sales_order_number)}`}>sales order {o.sales_order_number}</a> : 'sales order')
+        : (o.sale_number ?? 'sale')}</span>)}</div>}
     </section>
   );
 }
