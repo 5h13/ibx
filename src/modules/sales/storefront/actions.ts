@@ -62,7 +62,7 @@ export async function setStoreLocationAction(locationId: string) {
   refresh();
 }
 
-export async function submitSaleAction(input: { customer_id?: string | null; lines: SaleLineInput[]; payments: PaymentInput[]; si_number?: string; issue_dr: boolean; notes?: string; sale_date?: string; late_reason?: string; hardcopy_dr_no?: string }) {
+export async function submitSaleAction(input: { customer_id?: string | null; lines: SaleLineInput[]; payments: PaymentInput[]; si_number?: string; issue_dr: boolean; vat?: boolean; notes?: string; sale_date?: string; late_reason?: string; hardcopy_dr_no?: string }) {
   await needFn('sales.counter', 'counter sales');
   const p = await signedIn();
   const r = await rpc<{ id: string; sale_number: string; status: string; total: number; reasons: string[] }>('storefront_submit_sale', { p: input });
@@ -215,6 +215,16 @@ export async function setReceivingAccountActiveAction(accountId: string, active:
 export async function bookletOptionsAction() {
   await signedIn();
   return rpc<{ id: string; code: string; name: string; vat_registered: boolean }[]>('storefront_booklet_options');
+}
+// Build 118: the store's second SI booklet (the other kind: VAT-registered or non-VAT); null removes it
+export async function setBooklet2Action(businessId: string | null) {
+  await signedIn();
+  await rpc('storefront_set_booklet2', { p_booklet_business: businessId });
+  refresh();
+}
+export async function bookletPairAction() {
+  await signedIn();
+  return rpc<{ first: { id: string; code: string; name: string; vat_registered: boolean } | null; second: { id: string; code: string; name: string; vat_registered: boolean } | null; vat_booklet: string | null; nonvat_booklet: string | null }>('storefront_booklet_pair');
 }
 export async function setBookletAction(businessId: string) {
   await signedIn();

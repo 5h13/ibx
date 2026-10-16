@@ -8,7 +8,7 @@
 import { useEffect, useState, useTransition } from 'react';
 import { errorText } from '@/core/errors/appError';
 import {
-  addReceivingAccountAction, bookletOptionsAction, receivingAccountsAction, setBookletAction, setReceivingAccountActiveAction, setVatRegisteredAction,
+  addReceivingAccountAction, bookletOptionsAction, bookletPairAction, setBooklet2Action, receivingAccountsAction, setBookletAction, setReceivingAccountActiveAction, setVatRegisteredAction,
   type PaymentInput, type ReceivingAccount,
 } from './actions';
 import { METHODS, methodLabel } from './storefrontShared';
@@ -18,6 +18,8 @@ type Ctx = { business_id: string; is_super_admin?: boolean; booklet_business_id?
 export function StoreSettingsExtra({ ctx, onMessage }: { ctx: Ctx; onMessage: (m: string) => void }) {
   const [booklets, setBooklets] = useState<{ id: string; code: string; name: string; vat_registered: boolean }[]>([]);
   const [booklet, setBooklet] = useState(ctx.booklet_business_id ?? ctx.business_id);
+  const [booklet2, setBooklet2] = useState('');
+  const [booklet2Saved, setBooklet2Saved] = useState('');
   const [accounts, setAccounts] = useState<ReceivingAccount[]>([]);
   const [add, setAdd] = useState<{ method: PaymentInput['method']; name: string; number: string; bank: string }>({ method: 'gcash', name: '', number: '', bank: '' });
   const [error, setError] = useState('');
@@ -25,6 +27,7 @@ export function StoreSettingsExtra({ ctx, onMessage }: { ctx: Ctx; onMessage: (m
   const reload = () => receivingAccountsAction().then(setAccounts).catch((e) => setError(errorText(e)));
   useEffect(() => {
     bookletOptionsAction().then(setBooklets).catch((e) => setError(errorText(e)));
+    bookletPairAction().then((p) => { setBooklet2(p.second?.id ?? ''); setBooklet2Saved(p.second?.id ?? ''); }).catch(() => undefined);
     reload();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const run = (fn: () => Promise<unknown>, ok: string) => start(async () => { setError(''); try { await fn(); onMessage(ok); await reload(); } catch (e) { setError(errorText(e)); } });
@@ -41,6 +44,15 @@ export function StoreSettingsExtra({ ctx, onMessage }: { ctx: Ctx; onMessage: (m
         </label>
         <p className="text-xs text-slate-500">A sale with an SI from a VAT-registered booklet carries VAT (prices include VAT: price × 12/112); a DR-only sale has none. The sale stays in this store's books either way; SI numbers are checked across every store using the same booklet.{chosen && !chosen.vat_registered ? ' This booklet is non-VAT, so no VAT is charged.' : ''}</p>
         <button type="button" className="button-secondary" disabled={pending || booklet === (ctx.booklet_business_id ?? ctx.business_id)} onClick={() => run(() => setBookletAction(booklet), 'SI booklet saved.')}>Save booklet</button>
+        {/* Build 118: a second booklet of the other kind, so the cashier can issue SIs With VAT and Without VAT */}
+        <label className="block">Second SI booklet ({chosen?.vat_registered ? 'for sales without VAT' : 'for sales with VAT'}, optional)
+          <select className="input mt-1" value={booklet2} onChange={(e) => setBooklet2(e.target.value)}>
+            <option value="">None</option>
+            {booklets.filter((b) => b.vat_registered !== !!chosen?.vat_registered).map((b) => <option key={b.id} value={b.id}>{b.name} ({b.code}){b.id === ctx.business_id ? ' — this store' : ''} · {b.vat_registered ? 'VAT-registered' : 'non-VAT'}</option>)}
+          </select>
+        </label>
+        <p className="text-xs text-slate-500">On a new sale the cashier chooses With VAT or Without VAT; an SI is then taken from the booklet of that kind. Without a booklet of that kind, issue the DR only.</p>
+        <button type="button" className="button-secondary" disabled={pending || booklet2 === booklet2Saved} onClick={() => run(async () => { await setBooklet2Action(booklet2 || null); setBooklet2Saved(booklet2); }, booklet2 ? 'Second SI booklet saved.' : 'Second SI booklet removed.')}>Save second booklet</button>
         {ctx.is_super_admin && (
           <div className="flex items-center gap-3 rounded bg-slate-50 p-2">
             <span>This business is <b>{ctx.own_vat ? 'VAT-registered' : 'not VAT-registered'}</b></span>

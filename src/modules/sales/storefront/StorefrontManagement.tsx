@@ -53,7 +53,9 @@ function Tile({ label, value, hint }: { label: string; value: string; hint?: str
 }
 
 /** Payments + documents (used when creating and when completing an approved sale). */
-export function PaymentBlock({ total, pays, setPays, si, setSi, dr, setDr, vatBooklet = false, drFixed = false, vatNote }: { total: number; pays: Pay[]; setPays: (p: Pay[]) => void; si: string; setSi: (v: string) => void; dr: boolean; setDr: (v: boolean) => void; vatBooklet?: boolean; drFixed?: boolean; vatNote?: string }) {
+export function PaymentBlock({ total, pays, setPays, si, setSi, dr, setDr, vatBooklet = false, drFixed = false, vatNote, vat = null }: { total: number; pays: Pay[]; setPays: (p: Pay[]) => void; si: string; setSi: (v: string) => void; dr: boolean; setDr: (v: boolean) => void; vatBooklet?: boolean; drFixed?: boolean; vatNote?: string; vat?: boolean | null }) {
+  // Build 118: SI is its own choice (tick to enter the booklet number)
+  const [siOn, setSiOn] = useState(si.trim() !== '');
   const paid = r2(pays.reduce((s, p) => s + (Number.isFinite(num(p.amount)) ? num(p.amount) : 0), 0));
   const balance = r2(total - paid);
   const set = (i: number, patch: Partial<Pay>) => setPays(pays.map((p, j) => (j === i ? { ...p, ...patch } : p)));
@@ -74,10 +76,14 @@ export function PaymentBlock({ total, pays, setPays, si, setSi, dr, setDr, vatBo
       </div>
       <div className="flex flex-wrap items-center gap-4 text-sm">
         <label className="flex items-center gap-2"><input type="checkbox" checked={dr} disabled={drFixed} onChange={(e) => setDr(e.target.checked)} /> Issue DR (numbered by the system)</label>
-        <label className="flex items-center gap-2">SI number <input className="input w-40" value={si} onChange={(e) => setSi(e.target.value)} placeholder="From BIR booklet" /></label>
+        <label className="flex items-center gap-2"><input type="checkbox" checked={siOn} onChange={(e) => { setSiOn(e.target.checked); if (!e.target.checked) setSi(''); }} /> Issue SI</label>
+        {siOn && <label className="flex items-center gap-2">SI number <input className="input w-40" value={si} autoFocus onChange={(e) => setSi(e.target.value)} placeholder="From BIR booklet" /></label>}
       </div>
       {vatNote && <p className="text-xs text-slate-600">{vatNote}</p>}
-      {!vatNote && si.trim() && vatBooklet && total > 0 && <p className="text-xs text-slate-600">With an SI from a VAT-registered booklet this sale carries VAT: prices include VAT of {peso(r2(total * 12 / 112))} (VATable sales {peso(r2(total - r2(total * 12 / 112)))}).</p>}
+      {!vatNote && vat !== null && total > 0 && <p className="text-xs text-slate-600">{vat
+        ? `With VAT: prices include VAT of ${peso(r2(total * 12 / 112))} (VATable sales ${peso(r2(total - r2(total * 12 / 112)))}).${siOn ? ' The SI comes from the store\'s VAT-registered booklet.' : ''}`
+        : `Without VAT.${siOn ? ' The SI comes from the store\'s non-VAT booklet.' : ''}`}</p>}
+      {!vatNote && vat === null && si.trim() && vatBooklet && total > 0 && <p className="text-xs text-slate-600">With an SI from a VAT-registered booklet this sale carries VAT: prices include VAT of {peso(r2(total * 12 / 112))} (VATable sales {peso(r2(total - r2(total * 12 / 112)))}).</p>}
     </div>
   );
 }
@@ -97,6 +103,7 @@ function SaleForm({ ctx, customers: initialCustomers, agents, onDone, fromOrder 
   const [pays, setPays] = useState<Pay[]>([{ method: 'cash', amount: '', reference: '' }]);
   const [si, setSi] = useState('');
   const [dr, setDr] = useState(true);
+  const [vat, setVat] = useState<boolean>(!!ctx.booklet_vat);   // Build 118: VAT choice per sale
   const [notes, setNotes] = useState(fromOrder ? [`Agent order ${fromOrder.order_number} (${fromOrder.agent})`, fromOrder.notes].filter(Boolean).join(' · ') : '');
   const [saleDate, setSaleDate] = useState(manilaToday());
   const [lateReason, setLateReason] = useState('');
@@ -182,7 +189,7 @@ function SaleForm({ ctx, customers: initialCustomers, agents, onDone, fromOrder 
           customer_id: customerId, notes,
           lines: lines.map((l) => ({ item_id: l.item_id, quantity: l.qty, unit_price: num(l.price), lot_id: l.lot_id || null })),
           payments: below ? [] : paysToInput(pays),
-          si_number: si, issue_dr: dr, sale_date: saleDate, late_reason: late ? lateReason : undefined, hardcopy_dr_no: hardcopy.trim() || undefined,
+          si_number: si, issue_dr: dr, vat, sale_date: saleDate, late_reason: late ? lateReason : undefined, hardcopy_dr_no: hardcopy.trim() || undefined,
         });
         let linked = '';
         if (fromOrder) { try { await agentOrderDoneAction(fromOrder.id, r.id); linked = ` Agent order ${fromOrder.order_number} completed.`; } catch (e) { linked = ` (Agent order not marked done: ${errorText(e)})`; } }
@@ -268,10 +275,16 @@ function SaleForm({ ctx, customers: initialCustomers, agents, onDone, fromOrder 
           <label className="flex items-center gap-2">Sale date <input className="input w-auto" type="date" max={manilaToday()} value={saleDate} onChange={(e) => setSaleDate(e.target.value || manilaToday())} /></label>
           {late && <input className="input max-w-md" placeholder="Why is this sale entered late? *" value={lateReason} onChange={(e) => setLateReason(e.target.value)} />}
         </div>
+        <div className="flex flex-wrap items-center gap-4 text-sm">
+          <span className="font-medium">VAT</span>
+          <label className="flex items-center gap-2"><input type="radio" name="sale-vat" checked={vat} onChange={() => setVat(true)} /> With VAT (12% included in the price)</label>
+          <label className="flex items-center gap-2"><input type="radio" name="sale-vat" checked={!vat} onChange={() => setVat(false)} /> Without VAT</label>
+          {vat && total > 0 && <span className="text-xs text-slate-500">VAT {peso(r2(total * 12 / 112))} · VATable {peso(r2(total - r2(total * 12 / 112)))}</span>}
+        </div>
         <label className="flex flex-wrap items-center gap-2 text-sm">Hardcopy DR no. <input className="input w-48" value={hardcopy} maxLength={40} onChange={(e) => setHardcopy(e.target.value)} placeholder="Optional — handwritten DR on site" /></label>
         {below
           ? <div className="rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">{[belowPrice && 'A price is below the 7% floor', noCost && 'an item has no cost on record', late && `the sale is dated ${saleDate} (entered late)`, reservedHit && 'it takes stock reserved for sales orders'].filter(Boolean).join('; ')}. The sale goes to an approver first; payment and documents are taken after approval ({peso(total)}).</div>
-          : <PaymentBlock total={total} pays={pays} setPays={setPays} si={si} setSi={setSi} dr={dr} setDr={setDr} vatBooklet={!!ctx.booklet_vat} />}
+          : <PaymentBlock total={total} pays={pays} setPays={setPays} si={si} setSi={setSi} dr={dr} setDr={setDr} vatBooklet={!!ctx.booklet_vat} vat={vat} />}
         <input className="input" placeholder="Notes (optional)" value={notes} onChange={(e) => setNotes(e.target.value)} />
       </section>
 
@@ -292,7 +305,7 @@ function CompleteForm({ sale, onDone, vatBooklet = false }: { sale: any; onDone:
   return (
     <div className="space-y-4">
       <p className="text-sm text-slate-600">{sale.sale_number} · {sale.customer?.legal_name} · approved{sale.late_entry ? ` · sale date ${sale.sale_date} (entered late)` : ''}</p>
-      <PaymentBlock total={Number(sale.total)} pays={pays} setPays={setPays} si={si} setSi={setSi} dr={dr} setDr={setDr} vatBooklet={vatBooklet} />
+      <PaymentBlock total={Number(sale.total)} pays={pays} setPays={setPays} si={si} setSi={setSi} dr={dr} setDr={setDr} vatBooklet={vatBooklet} vat={sale.vat_choice ?? null} />
       {error && <div className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
       <div className="flex justify-end"><button type="button" className="button" disabled={pending} onClick={() => start(async () => {
         try { await completeSaleAction(sale.id, { payments: paysToInput(pays), si_number: si, issue_dr: dr }); onDone(`${sale.sale_number} completed.`); }
