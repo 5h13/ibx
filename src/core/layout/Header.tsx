@@ -5,6 +5,7 @@ import { ActingBusinessSwitcher } from './ActingBusinessSwitcher';
 import { MobileAccountMenu } from './MobileAccountMenu';
 import { RoleAuditSwitcher } from './RoleAuditSwitcher';
 import { NotificationBell } from '@/shared/notifications/NotificationBell';
+import { InstallAppButton } from '@/core/ui/InstallAppButton';
 import { parseTheme, headerBackground, THEME_PRESETS } from '@/core/theme/brandTheme';
 
 type Branding = { primary_color?: string; logo_url?: string };
@@ -77,6 +78,7 @@ export function Header({ profile, businesses = [], notifications = [], agentApp 
             <RoleAuditSwitcher isSuperAdmin={profile.user.role === 'super_admin'} businesses={businesses} defaultBusinessId={profile.user.business_id} />
           )}
           {agentApp && <a href="/agent" className="rounded border border-slate-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-800" title="Open the agent app (your clients, catalogue, orders and commission)">Agent app</a>}
+          <InstallAppButton />
           <NotificationBell notifications={notifications} />
           <span>
             <a href="/profile" className="hover:underline" title="My profile">{displayName(profile.user)}</a> &middot;{' '}
@@ -101,6 +103,7 @@ export function Header({ profile, businesses = [], notifications = [], agentApp 
               <RoleAuditSwitcher isSuperAdmin={profile.user.role === 'super_admin'} businesses={businesses} defaultBusinessId={profile.user.business_id} alignLeft />
             )}
             <div className="grid gap-2">
+              <InstallAppButton full />
               {agentApp && <a href="/agent" className="button text-center">Agent app</a>}
               <a href="/profile" className="button-secondary text-center">My profile</a>
               <form action="/api/auth/signout" method="post"><button type="submit" className="button-secondary w-full">Logout</button></form>

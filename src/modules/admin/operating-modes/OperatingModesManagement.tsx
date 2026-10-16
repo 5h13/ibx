@@ -11,7 +11,7 @@ const MODES: { key: ModeKey; label: string; text: string }[] = [
   { key: 'single', label: 'Single-operator', text: 'One person runs the store: documents are approved by the system when prepared, and recorded as auto-approved.' },
   { key: 'custom', label: 'Custom', text: 'Choose for each approval point.' },
 ];
-const POINTS: { key: string; label: string; part2?: boolean }[] = [
+const POINTS: { key: string; label: string; note?: string }[] = [
   { key: 'quote', label: 'Quotation' },
   { key: 'sales_order', label: 'Sales order / go-signal' },
   { key: 'pr', label: 'Purchase requisition (PR)' },
@@ -19,9 +19,9 @@ const POINTS: { key: string; label: string; part2?: boolean }[] = [
   { key: 'supplier_payment', label: 'Supplier payment' },
   { key: 'receiving', label: 'Goods receipt (receiving)' },
   { key: 'expense', label: 'Expenses' },
-  { key: 'dr_release', label: 'DR release (Warehouse)', part2: true },
-  { key: 'returns', label: 'Returns / refunds', part2: true },
-  { key: 'price_exception', label: 'Price / discount exceptions', part2: true },
+  { key: 'dr_release', label: 'DR release (Warehouse)', note: 'Auto: the goods are released when the order DR is issued.' },
+  { key: 'returns', label: 'Returns, refunds and cancellations', note: 'Auto: refunds only the way the customer paid; no cancellation of a completed sale (use Return).' },
+  { key: 'price_exception', label: 'Counter exceptions and daily closing', note: 'Auto: below the 7% floor, late entry and closings go through with a warning; below 3% over cost and a reused payment reference are refused.' },
 ];
 const SETTINGS: { key: PointSetting; label: string }[] = [
   { key: 'two_step', label: 'Review + approve' },
@@ -74,7 +74,7 @@ function StoreCard({ store }: { store: Store }) {
         <tbody>
           {POINTS.map((p) => (
             <tr key={p.key} className="border-b">
-              <td className="p-2">{p.label}{p.part2 && <div className="text-xs text-amber-700">Saved now; takes effect with the next build (Storefront)</div>}</td>
+              <td className="p-2">{p.label}{p.note && <div className="text-xs text-slate-500">{p.note}</div>}</td>
               <td className="p-2">
                 {mode === 'custom' ? (
                   <select className="input w-auto" value={points[p.key]} onChange={(e) => setPoints({ ...points, [p.key]: e.target.value as PointSetting })}>

@@ -188,7 +188,7 @@ function SaleForm({ ctx, customers: initialCustomers, agents, onDone, fromOrder 
         if (fromOrder) { try { await agentOrderDoneAction(fromOrder.id, r.id); linked = ` Agent order ${fromOrder.order_number} completed.`; } catch (e) { linked = ` (Agent order not marked done: ${errorText(e)})`; } }
         onDone((r.status === 'pending_approval'
           ? `${r.sale_number} saved and sent for approval (${(r.reasons ?? []).map((x) => REASON_LABEL[x] ?? x).join(', ')}). Take payment when it is approved (Awaiting approval tab).`
-          : `${r.sale_number} completed — ${peso(r.total)}.`) + linked);
+          : `${r.sale_number} completed — ${peso(r.total)}.${(r.reasons ?? []).length ? ` Warning recorded for the owner: ${(r.reasons ?? []).map((x) => REASON_LABEL[x] ?? x).join(', ')}.` : ''}`) + linked);
       } catch (e) { setError(errorText(e)); }
     });
   }
@@ -398,9 +398,11 @@ function SaleDetail({ sale, items, payments, returnItems = [], canRequestCancel 
 const TABS = ['register', 'approval', 'orders', 'returns', 'checks', 'closing', 'agent_orders', 'agent_payments'] as const;
 
 export function StorefrontManagement({ ctx, date, today, sales, open, items, payments, dayPayments, returns, closings, customers, agents = [], locations, initialTab = 'register', dayCash = [], me = '',
-  cancelRequests = [], returnItems = [], checks = [], orders = [], search = '', can = { counter: true, ar: true, closing: true }, agentOrders = [], agentPayments = [] }: {
+  cancelRequests = [], returnItems = [], checks = [], orders = [], search = '', can = { counter: true, ar: true, closing: true }, agentOrders = [], agentPayments = [], modes = null }: {
   ctx: Ctx; date: string; today: string; sales: any[]; open: any[]; items: any[]; payments: any[]; dayPayments: any[]; returns: any[]; closings: any[]; dayCash?: any[]; me?: string;
   customers: Customer[]; agents?: Agent[]; locations: any[]; initialTab?: string; cancelRequests?: any[]; returnItems?: any[]; checks?: any[]; orders?: StoreOrder[]; search?: string;
+  /** Build 116: the store's operating-mode settings for the Storefront points */
+  modes?: { mode: string; dr_release: string; returns: string; price_exception: string } | null;
   /** Build 90: the user's storefront functions */
   can?: { counter: boolean; ar: boolean; closing: boolean };
   /** Build 91 */ agentOrders?: any[]; agentPayments?: any[];
@@ -434,6 +436,14 @@ export function StorefrontManagement({ ctx, date, today, sales, open, items, pay
         <p className="mt-1 text-sm text-slate-500">Counter sales for this store · selling from <b>{ctx.location_name ?? 'no location set'}</b>{ro ? ' · Finance view: figures and documents only' : ''}</p>
       </div>
       {!ro && !ctx.location_id && <div className="rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">{ctx.can_setup ? 'Choose the stock location this store sells from (Store settings) before the first sale.' : 'A Business Admin must choose the store’s stock location (Store settings) before sales can be recorded.'}</div>}
+      {modes?.mode === 'single' || (modes && [modes.dr_release, modes.returns, modes.price_exception].includes('auto')) ? (
+        <div className="rounded border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900">
+          {modes?.mode === 'single' ? 'Single-operator mode' : 'Custom operating mode'}:
+          {modes?.price_exception === 'auto' && ' sales below the 7% floor, late entries and closings go through with a warning to the owner; prices below 3% over cost and a payment reference used twice are refused.'}
+          {modes?.returns === 'auto' && ' Refunds go back the way the customer paid; a completed sale is reversed with Return (no cancellation).'}
+          {modes?.dr_release === 'auto' && ' An order DR releases the goods when it is issued.'}
+        </div>
+      ) : null}
       {message && <div className="rounded border bg-white p-3 text-sm">{message}</div>}
 
       {!ro && (
@@ -514,7 +524,7 @@ export function StorefrontManagement({ ctx, date, today, sales, open, items, pay
                     <td className="p-2 text-right">{peso(s.total)}</td><td className="p-2 text-right">{peso(s.amount_paid)}</td>
                     <td className="p-2 text-right">{Number(s.balance) > 0 ? <span className="text-amber-700">{peso(s.balance)}</span> : '—'}</td>
                     <td className="p-2 capitalize">{(() => { const t = statusText(s, itemsOf(s.id), returnItems); return t === 'Returned' ? <span className="rounded bg-red-100 px-1.5 py-0.5 font-medium text-red-800">Returned</span> : t === 'Partly returned' ? <span className="rounded bg-amber-100 px-1.5 py-0.5 font-medium text-amber-800">Partly returned</span> : t; })()}{s.cancel_status === 'approved' ? <div className="text-xs text-red-700">cancelled (reversed)</div> : s.cancel_status === 'requested' ? <div className="text-xs text-amber-700">cancel requested</div> : null}</td>
-                    <td className="p-2 whitespace-nowrap"><div className="flex gap-2"><PopupAction label="View" title={`Sale ${s.sale_number}`} variant="secondary" wide>{(close) => <SaleDetail sale={s} items={itemsOf(s.id)} payments={paysOf(s.id)} returnItems={returnItems} canRequestCancel={!ro} onMessage={(m) => { setMessage(m); close(); }} />}</PopupAction>
+                    <td className="p-2 whitespace-nowrap"><div className="flex gap-2"><PopupAction label="View" title={`Sale ${s.sale_number}`} variant="secondary" wide>{(close) => <SaleDetail sale={s} items={itemsOf(s.id)} payments={paysOf(s.id)} returnItems={returnItems} canRequestCancel={!ro && modes?.returns !== 'auto'} onMessage={(m) => { setMessage(m); close(); }} />}</PopupAction>
                       {!ro && can.counter && s.status === 'completed' && s.cancel_status !== 'approved' && returnState(itemsOf(s.id), returnItems) !== 'returned' && <PopupAction label="Return" title={`Return / refund · ${s.sale_number}`} variant="secondary" wide>{(close) => <ReturnForm saleNumber={s.sale_number} onDone={(m) => { setMessage(m); close(); }} />}</PopupAction>}</div></td>
                   </tr>
                 ))}

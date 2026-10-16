@@ -94,13 +94,14 @@ export default async function StorefrontPage(
     sales && can.counter ? db.rpc('storefront_agent_orders') : Promise.resolve({ data: [] as any[] }),
     sales && can.ar ? db.rpc('storefront_agent_payments') : Promise.resolve({ data: [] as any[] }),
   ]);
+  const { data: modes } = await db.rpc('workflow_store_points');   // Build 116
   return (
     <AuthedShell profile={profile}>
       <StorefrontManagement ctx={ctx as any} date={date} sales={saleRows ?? []} open={open ?? []} items={items ?? []} payments={payments ?? []}
         customers={(customers ?? []) as any} agents={((agents ?? []) as any[]).filter((a) => a.kind === 'freelance' || a.business_id === (ctx as any).business_id)} locations={locations ?? []} initialTab={searchParams?.tab}
         dayPayments={dayPayments ?? []} returns={returns ?? []} closings={closingsWithJournal} today={manilaToday()}
         dayCash={dayCash ?? []} me={profile.user.id} cancelRequests={cancelRequests ?? []} returnItems={returnItems ?? []}
-        checks={checks ?? []} orders={(orders ?? []) as any} search={search} can={can} agentOrders={(agentOrders ?? []) as any[]} agentPayments={(agentPayments ?? []) as any[]} />
+        checks={checks ?? []} orders={(orders ?? []) as any} search={search} can={can} agentOrders={(agentOrders ?? []) as any[]} agentPayments={(agentPayments ?? []) as any[]} modes={modes as any} />
     </AuthedShell>
   );
 }

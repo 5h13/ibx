@@ -7,10 +7,12 @@ export default function manifest(): MetadataRoute.Manifest {
     short_name: '5H13',
     description: 'Pili-Aire, Aton Aire and Ishabella — orders, clients, payments and expenses.',
     id: '/agent',
-    start_url: '/agent',
+    // Build 117: the installed app opens on the home page, which sends office users to the Dashboard and
+    // agents to the agent app (id kept as '/agent' so apps already installed on phones stay the same app)
+    start_url: '/',
     scope: '/',
     display: 'standalone',
-    orientation: 'portrait',
+    orientation: 'any',   // Build 117: a computer window or a tablet in landscape too
     // Build 102c: the phone's own start screen is the blue of the 5H13 launch screen (a phone draws it in one colour);
     // the app then shows the full blue → red launch screen for a moment (LaunchScreen in app/layout.tsx)
     background_color: '#0a37a6',

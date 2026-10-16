@@ -4,6 +4,7 @@ import './globals.css';
 import { DialogProvider } from '@/core/ui/Dialog';
 import { BusyIndicator } from '@/core/ui/BusyIndicator';
 import { LaunchScreen } from '@/core/ui/LaunchScreen';
+import { ServiceWorkerRegister } from '@/core/ui/InstallAppButton';
 import { LAUNCH_CSS } from '@/core/ui/launchCss';
 
 export const metadata = {
@@ -28,6 +29,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       </head>
       <body className="font-sans text-slate-800">
         <LaunchScreen />
+        <ServiceWorkerRegister />
         <BusyIndicator />
         <DialogProvider>{children}</DialogProvider>
       </body>
