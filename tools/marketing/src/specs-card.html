@@ -1,0 +1,1849 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>5H13 SPECS CARD EDITOR</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- html2canvas for PNG export -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/gif.js@0.2.0/dist/gif.js"></script>
+
+  <style>
+    /* Hide scrollbars for the spec list */
+    #specList::-webkit-scrollbar {
+        display: none;
+    }
+    #specList {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+    }
+
+    .rail-button::after {
+      display: none;
+    }
+
+    #photoThumbnails {
+      scrollbar-width: thin;
+      scrollbar-color: #475569 transparent;
+    }
+
+    #photoThumbnails::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    #photoThumbnails::-webkit-scrollbar-thumb {
+      background: #475569;
+      border-radius: 9999px;
+    }
+
+    #card {
+      width: 450px;
+      height: 630px;
+    }
+
+    #cardHeader {
+      height: 65px;
+    }
+
+    #imageContainer {
+      height: 310px;
+    }
+
+    #specList {
+      height: 190px;
+    }
+
+    .spec-row .remove-spec-row {
+      opacity: 0;
+      transition: opacity 120ms ease;
+    }
+
+    .spec-row:hover .remove-spec-row,
+    .spec-row:focus-within .remove-spec-row,
+    .spec-row .remove-spec-row:focus-visible {
+      opacity: 1;
+    }
+
+    #specHeightRange {
+      accent-color: #22d3ee;
+    }
+
+    #specIntakeOptions {
+      width: min(320px, calc(100vw - 24px));
+    }
+
+    #photoEmptyState {
+      display: flex;
+      width: 100%;
+      min-height: 112px;
+    }
+
+    .rail-button {
+      position: relative;
+    }
+
+    .rail-button::after {
+      position: absolute;
+      z-index: 50;
+      top: 50%;
+      left: calc(100% + 10px);
+      width: max-content;
+      max-width: 190px;
+      transform: translateY(-50%) translateX(-4px);
+      border: 1px solid rgba(148, 163, 184, 0.35);
+      border-radius: 6px;
+      background: #0b2545;
+      padding: 5px 8px;
+      color: #f8fafc;
+      content: attr(data-tooltip);
+      font-size: 11px;
+      font-weight: 600;
+      line-height: 1.2;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 120ms ease, transform 120ms ease;
+    }
+
+    .rail-button:hover::after,
+    .rail-button:focus-visible::after {
+      opacity: 1;
+      transform: translateY(-50%) translateX(0);
+    }
+
+    #portraitSpecsHeading,
+    #landscapeSpecsHeading,
+    #cardFooter {
+      display: none;
+    }
+
+    #card[data-layout="portrait"] #portraitSpecsHeading {
+      display: block;
+      order: 3;
+      flex: 0 0 auto;
+      margin: 2px 14px 5px;
+      color: #0876c8;
+      font-size: clamp(10px, 1.2vw, 15px);
+      font-weight: 900;
+      line-height: 1.2;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    #card[data-layout="portrait"] #cardFooter {
+      display: flex;
+      order: 1;
+      flex: 0 0 auto;
+      align-items: baseline;
+      gap: 4px;
+      min-width: 0;
+      margin: 0 14px;
+      color: #0b2545;
+      font-size: clamp(7px, 1vw, 9px);
+      font-weight: 600;
+      line-height: 1.25;
+    }
+
+    #card[data-layout="portrait"] #cardFooter strong {
+      flex: 0 0 auto;
+      font-weight: 900;
+      text-transform: uppercase;
+    }
+
+    #card[data-layout="portrait"] #cardFooter span {
+      min-width: 0;
+      white-space: normal;
+      overflow-wrap: anywhere;
+    }
+
+    #card[data-layout="portrait"] #imageContainer {
+      order: 2;
+    }
+
+    #card[data-layout="portrait"] #specList {
+      order: 4;
+    }
+
+    @media (hover: none) {
+      .spec-row .remove-spec-row {
+        opacity: 0.75;
+      }
+    }
+
+    @media (min-width: 768px) {
+      #card[data-layout="landscape"] {
+        display: grid;
+        grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+        grid-template-rows: 16% minmax(0, 1fr) 10%;
+        justify-content: stretch;
+        width: min(860px, calc(100vw - 360px));
+        height: min(560px, calc(100vh - 80px));
+      }
+
+      #card[data-layout="landscape"] #cardHeader {
+        grid-column: 1 / -1;
+        grid-row: 1;
+        height: auto;
+        min-height: 0;
+      }
+
+      #card[data-layout="landscape"] #imageContainer {
+        grid-column: 1;
+        grid-row: 2;
+        width: auto;
+        height: auto;
+        min-height: 0;
+        flex: initial;
+        margin: 12px 6px 12px 12px;
+      }
+
+      #card[data-layout="landscape"] #specList {
+        grid-column: 2;
+        grid-row: 2;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-template-rows: auto repeat(var(--spec-grid-rows, 3), minmax(0, 1fr));
+        align-content: stretch;
+        align-self: end;
+        gap: 8px;
+        min-height: 0;
+        box-sizing: border-box;
+        margin: 12px 12px 12px 6px;
+        padding: 8px;
+        border: 0;
+        overflow: hidden;
+      }
+
+      #card[data-layout="landscape"] #landscapeSpecsHeading {
+        display: block;
+        grid-column: 1 / -1;
+        align-self: center;
+        padding: 2px 4px 8px;
+        color: #0876c8;
+        font-size: clamp(12px, 1.8vw, 22px);
+        font-weight: 900;
+        line-height: 1.1;
+        text-transform: uppercase;
+      }
+
+      #card[data-layout="landscape"] .spec-row {
+        min-width: 0;
+        min-height: 0;
+        flex-direction: column;
+        align-items: flex-start;
+        justify-content: center;
+        gap: 3px;
+        padding: 7px 9px !important;
+        border: 1px solid rgba(7, 90, 150, 0.12);
+        border-radius: 6px;
+      }
+
+      #card[data-layout="landscape"] .spec-label,
+      #card[data-layout="landscape"] .spec-value {
+        max-width: 100%;
+        width: 100%;
+        flex: none;
+        text-align: left;
+        line-height: 1.15;
+      }
+
+      #card[data-layout="landscape"] .spec-label {
+        font-size: clamp(8px, 0.9vw, 12px);
+      }
+
+      #card[data-layout="landscape"] .spec-value {
+        font-size: clamp(11px, 1.25vw, 18px);
+      }
+
+      #card[data-layout="landscape"] #cardFooter {
+        display: flex;
+        grid-column: 1 / -1;
+        grid-row: 3;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+        padding: 0 14px;
+        border-top: 2px solid rgba(0, 78, 153, 0.45);
+        background: rgba(7, 118, 200, 0.12);
+        color: #0b2545;
+        font-size: clamp(8px, 0.85vw, 11px);
+        font-weight: 600;
+      }
+
+      #card[data-layout="landscape"] #cardFooter strong {
+        flex: 0 0 auto;
+        font-size: clamp(10px, 1.2vw, 16px);
+        font-weight: 900;
+        text-transform: uppercase;
+      }
+
+      #card[data-layout="landscape"] #cardFooter span {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      #card[data-layout="landscape"] #imagePlaceholderText {
+        top: 12px;
+        left: 12px;
+        right: 12px;
+        text-align: center;
+      }
+
+      #card[data-layout="portrait"] #portraitSpecsHeading {
+        margin-top: 3px;
+        font-size: 13px;
+      }
+    }
+
+    @media (min-width: 768px) {
+      #pageBody {
+        height: 100vh;
+        min-height: 0;
+        overflow: hidden;
+        padding: 12px;
+        gap: 18px;
+      }
+
+      #pageBody > aside[aria-label="Card controls"] {
+        height: min(760px, calc(100vh - 48px));
+      }
+
+      #pageBody #photoGalleryControls {
+        height: min(760px, calc(100vh - 48px));
+        margin-top: 0;
+      }
+
+      #editorWorkspace {
+        align-items: flex-start;
+        flex: 1 1 auto;
+        min-width: 0;
+        justify-content: center;
+      }
+
+      #card {
+        width: min(540px, calc(71.4286vh - 34px));
+        height: min(760px, calc(100vh - 48px));
+      }
+
+      #cardHeader {
+        height: 10.3%;
+        flex: 0 0 10.3%;
+      }
+
+      #imageContainer {
+        height: 55%;
+        min-height: 0;
+        flex: 0 0 var(--photo-area-basis, 55%);
+      }
+
+      #specList {
+        height: auto;
+        min-height: 0;
+        flex: 1 1 auto;
+      }
+
+      #pageBody > aside[aria-label="Card controls"] {
+        width: 68px;
+      }
+
+      #pageBody #photoGalleryControls {
+        width: 152px;
+      }
+
+      #editorWorkspace > div:first-child {
+        max-width: 100%;
+      }
+
+      #card[data-layout="landscape"] {
+        width: min(1100px, calc(100vw - 292px));
+        height: min(680px, calc(100vh - 48px));
+      }
+    }
+
+    @media (max-width: 767px) {
+      #pageBody {
+        min-height: 100vh;
+        height: auto;
+        overflow-x: hidden;
+        overflow-y: auto;
+        flex-wrap: wrap;
+        align-items: flex-start;
+        justify-content: center;
+        gap: 12px;
+        padding: 12px;
+      }
+
+      #pageBody > aside[aria-label="Card controls"] {
+        order: 1;
+        width: 100%;
+        height: auto;
+        min-height: 56px;
+        flex-direction: row;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 8px;
+        padding: 8px;
+      }
+
+      #pageBody > aside[aria-label="Card controls"] > div.flex.flex-col.items-center {
+        flex-direction: row;
+        border-top: 0;
+        border-left: 1px solid rgba(148, 163, 184, 0.35);
+        padding: 0 0 0 8px;
+      }
+
+      #specIntakeOptions {
+        position: fixed;
+        top: 84px;
+        right: 12px;
+        left: 12px;
+        z-index: 60;
+        width: auto;
+        max-height: calc(100vh - 96px);
+        overflow-y: auto;
+      }
+
+      #editorWorkspace {
+        order: 2;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        width: 100%;
+        min-width: 0;
+        justify-content: center;
+      }
+
+      #editorWorkspace > div:first-child {
+        max-width: 100%;
+      }
+
+      #card {
+        width: min(450px, calc(100vw - 24px));
+        height: min(630px, calc(100vh - 120px));
+      }
+
+      #card[data-layout="landscape"] {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        grid-template-rows: 16% minmax(0, 1fr) 12%;
+        width: min(520px, calc(100vw - 24px));
+        height: min(380px, calc(100vw * 0.9));
+      }
+
+      #card[data-layout="landscape"] #cardHeader {
+        grid-column: 1 / -1;
+        grid-row: 1;
+        height: auto;
+        min-height: 0;
+      }
+
+      #card[data-layout="landscape"] #imageContainer {
+        grid-column: 1;
+        grid-row: 2;
+        width: auto;
+        height: auto;
+        min-height: 0;
+        flex: initial;
+        margin: 8px 4px 8px 8px;
+      }
+
+      #card[data-layout="landscape"] #specList {
+        grid-column: 2;
+        grid-row: 2;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-template-rows: auto repeat(var(--spec-grid-rows, 3), minmax(0, 1fr));
+        align-self: end;
+        gap: 4px;
+        min-height: 0;
+        box-sizing: border-box;
+        margin: 8px 8px 8px 4px;
+        padding: 4px;
+        border: 0;
+        overflow: hidden;
+      }
+
+      #card[data-layout="landscape"] #landscapeSpecsHeading {
+        display: block;
+        grid-column: 1 / -1;
+        align-self: center;
+        padding: 2px;
+        color: #0876c8;
+        font-size: 11px;
+        font-weight: 900;
+        line-height: 1.1;
+        text-transform: uppercase;
+      }
+
+      #card[data-layout="landscape"] .spec-row {
+        min-width: 0;
+        min-height: 0;
+        flex-direction: column;
+        align-items: flex-start;
+        justify-content: center;
+        gap: 2px;
+        padding: 3px 4px !important;
+        border: 1px solid rgba(7, 90, 150, 0.12);
+        border-radius: 5px;
+      }
+
+      #card[data-layout="landscape"] .spec-label,
+      #card[data-layout="landscape"] .spec-value {
+        max-width: 100%;
+        width: 100%;
+        flex: none;
+        text-align: left;
+        line-height: 1.1;
+        font-size: 8px;
+      }
+
+      #card[data-layout="landscape"] #cardFooter {
+        display: flex;
+        grid-column: 1 / -1;
+        grid-row: 3;
+        align-items: center;
+        gap: 4px;
+        min-width: 0;
+        padding: 0 6px;
+        border-top: 1px solid rgba(0, 78, 153, 0.45);
+        background: rgba(7, 118, 200, 0.12);
+        color: #0b2545;
+        font-size: 7px;
+        font-weight: 600;
+      }
+
+      #card[data-layout="landscape"] #cardFooter strong {
+        flex: 0 0 auto;
+        font-size: 8px;
+        font-weight: 900;
+        text-transform: uppercase;
+      }
+
+      #card[data-layout="landscape"] #cardFooter span {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      #card[data-layout="landscape"] #imagePlaceholderText {
+        top: 10px;
+        left: 6px;
+        right: 6px;
+        text-align: center;
+      }
+
+      #card[data-layout="portrait"] #portraitSpecsHeading {
+        margin-top: 2px;
+        font-size: 11px;
+      }
+
+      #pageBody #photoGalleryControls {
+        order: 3;
+        width: min(450px, calc(100vw - 24px));
+        height: 250px;
+        margin: 0;
+      }
+
+      #photoThumbnails {
+        flex-direction: row;
+        justify-content: flex-start;
+        overflow-x: auto;
+        overflow-y: hidden;
+      }
+
+    }
+
+  </style>
+</head>
+
+<body id="pageBody" class="bg-[#0A192F] p-6 font-sans flex flex-row flex-nowrap items-center justify-center min-h-screen gap-6 transition-colors duration-500">
+
+  <!-- Sidebar with direct card controls -->
+  <aside aria-label="Card controls" class="relative z-10 w-16 h-[630px] flex flex-col items-center gap-3 bg-[#0B2545]/90 backdrop-blur rounded-2xl shadow-xl border border-slate-700 shrink-0 py-4">
+    <button type="button" id="themeToggle" class="rail-button w-10 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 text-white transition" aria-label="Open theme selection" title="Theme selection" data-tooltip="Theme" aria-expanded="false" aria-controls="themeOptions">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v2m0 14v2m9-9h-2M5 12H3m15.364-6.364l-1.414 1.414M7.05 16.95l-1.414 1.414m12.728 0l-1.414-1.414M7.05 7.05L5.636 5.636M16 12a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+    </button>
+    <div id="themeOptions" style="display: none;" class="absolute left-[calc(100%+0.75rem)] top-4 w-44 p-3 flex-col gap-2 bg-[#0B2545] rounded-xl shadow-xl border border-slate-700">
+      <span class="text-xs font-semibold text-slate-300 uppercase tracking-wider">Select Theme</span>
+      <button type="button" class="theme-button w-full px-3 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg transition" data-theme="pili" aria-pressed="true">Pili</button>
+      <button type="button" class="theme-button w-full px-3 py-2 bg-slate-800 text-slate-300 hover:bg-slate-700 text-sm font-medium rounded-lg transition" data-theme="aton" aria-pressed="false">Aton</button>
+      <button type="button" class="theme-button w-full px-3 py-2 bg-slate-800 text-slate-300 hover:bg-slate-700 text-sm font-medium rounded-lg transition" data-theme="ishabella" aria-pressed="false">Ishabella</button>
+    </div>
+
+    <button type="button" id="textToggle" class="rail-button w-10 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 text-white transition" aria-label="Open text size adjustment" title="Adjust header text size" data-tooltip="Adjust text" aria-expanded="false" aria-controls="textOptions">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7V4h16v3M9 20h6m-3-16v16m-5-9h10"/></svg>
+    </button>
+    <div id="textOptions" style="display: none;" class="absolute left-[calc(100%+0.75rem)] top-[4.25rem] w-44 p-3 flex flex-col gap-2 bg-[#0B2545] rounded-xl shadow-xl border border-slate-700">
+      <div class="flex justify-between items-center">
+        <span class="text-xs font-semibold text-slate-300 uppercase tracking-wider">Header Size</span>
+        <span id="fontSizeVal" class="text-xs text-cyan-400 font-bold" aria-live="polite">22px</span>
+      </div>
+      <div class="flex gap-2">
+        <button type="button" id="fontSizeDecrease" class="flex-1 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-white text-sm font-bold rounded-lg transition" aria-label="Decrease header font size">−</button>
+        <button type="button" id="fontSizeIncrease" class="flex-1 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-white text-sm font-bold rounded-lg transition" aria-label="Increase header font size">+</button>
+      </div>
+    </div>
+
+    <button type="button" id="layoutToggle" class="rail-button w-10 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 text-white transition" aria-label="Choose card layout" title="Choose card layout" data-tooltip="Card layout" aria-expanded="false" aria-controls="layoutOptions">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2" stroke-width="2"/><path stroke-linecap="round" stroke-width="2" d="M3 10h18M9 10v9"/></svg>
+    </button>
+    <div id="layoutOptions" style="display: none;" class="absolute left-[calc(100%+0.75rem)] top-[6.75rem] w-44 p-3 flex flex-col gap-2 bg-[#0B2545] rounded-xl shadow-xl border border-slate-700">
+      <span class="text-xs font-semibold text-slate-300 uppercase tracking-wider">Card Layout</span>
+      <button type="button" class="layout-button w-full px-3 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg transition" data-layout="portrait" aria-pressed="true">Portrait</button>
+      <button type="button" class="layout-button w-full px-3 py-2 bg-slate-800 text-slate-300 hover:bg-slate-700 text-sm font-medium rounded-lg transition" data-layout="landscape" aria-pressed="false">Landscape</button>
+    </div>
+
+    <button type="button" id="specHeightToggle" class="rail-button w-10 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 text-white transition" aria-label="Adjust specs table height" title="Adjust specs table height" data-tooltip="Specs height" aria-expanded="false" aria-controls="specHeightOptions">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5h16M4 10h16M4 15h16M4 20h16M8 3v4m8-4v4m-8 5v4m8-4v4m-8 5v4m8-4v4"/></svg>
+    </button>
+    <div id="specHeightOptions" style="display: none;" class="absolute left-[calc(100%+0.75rem)] top-[8.5rem] w-44 p-3 flex flex-col gap-2 bg-[#0B2545] rounded-xl shadow-xl border border-slate-700">
+      <div class="flex justify-between items-center">
+        <span id="specAdjustmentLabel" class="text-xs font-semibold text-slate-300 uppercase tracking-wider">Specs Table Height</span>
+        <span id="specHeightVal" class="text-xs text-cyan-400 font-bold" aria-live="polite">0%</span>
+      </div>
+      <input type="range" id="specHeightRange" class="w-full cursor-pointer" min="-10" max="5" step="1" value="0" aria-label="Specs table height adjustment">
+      <div class="flex justify-between text-[10px] text-slate-400"><span id="specAdjustmentMin">Compact</span><span id="specAdjustmentMax">Expanded</span></div>
+    </div>
+
+    <div class="flex flex-col items-center gap-2 border-t border-slate-700/60 pt-3">
+      <button type="button" id="uploadLogoBtn" class="rail-button w-10 h-10 rounded-xl bg-sky-600 hover:bg-sky-500 text-white shadow-md transition" aria-label="Upload logo" title="Upload logo" data-tooltip="Upload logo">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7h16M4 7l2 13h12l2-13M9 7V4h6v3m-6 5h6"/></svg>
+      </button>
+      <input type="file" id="logoInput" accept="image/*" class="hidden">
+    </div>
+
+    <button type="button" id="addSpecRow" class="rail-button w-10 h-10 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white shadow-md transition" aria-label="Add specification row" title="Add specification row" data-tooltip="Add spec row">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v14m-7-7h14"/></svg>
+    </button>
+
+    <button type="button" id="specIntakeToggle" class="rail-button w-10 h-10 rounded-xl bg-cyan-700 hover:bg-cyan-600 text-white shadow-md transition" aria-label="Open specification paste intake" title="Paste specification information" data-tooltip="Paste specs" aria-expanded="false" aria-controls="specIntakeOptions">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 4h8m-9 3h10m-9 4h8m-8 4h5m-8 5h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v13a2 2 0 002 2z"/></svg>
+    </button>
+    <div id="specIntakeOptions" style="display: none;" class="absolute left-[calc(100%+0.75rem)] top-[12rem] flex flex-col gap-2 rounded-xl border border-slate-700 bg-[#0B2545] p-3 shadow-xl">
+      <label for="specIntake" class="text-xs font-semibold uppercase tracking-wider text-slate-300">Paste specifications</label>
+      <p class="text-[10px] leading-relaxed text-slate-400">One per line as “Label: Value”, or paste two spreadsheet columns (label and value).</p>
+      <textarea id="specIntake" rows="8" class="w-full resize-y rounded-lg border border-slate-600 bg-slate-900 p-2 text-xs text-white placeholder:text-slate-500 focus:border-cyan-500 focus:outline-none focus:ring-1 focus:ring-cyan-500" placeholder="Voltage: 220V ~ 50/60Hz&#10;Oil Capacity: 300 ml" aria-describedby="specIntakeStatus"></textarea>
+      <div class="flex gap-2">
+        <button type="button" id="populateSpecTable" class="flex-1 rounded bg-emerald-700 px-2 py-2 text-xs font-semibold text-white hover:bg-emerald-600">Populate Table</button>
+        <button type="button" id="clearSpecTable" class="flex-1 rounded bg-rose-700 px-2 py-2 text-xs font-semibold text-white hover:bg-rose-600">Clear Table</button>
+      </div>
+      <p id="specIntakeStatus" class="min-h-4 text-[10px] text-slate-300" role="status" aria-live="polite"></p>
+    </div>
+
+    <button type="button" id="undoDeleteSpec" disabled class="rail-button w-10 h-10 rounded-xl bg-amber-700 hover:bg-amber-600 text-white shadow-md transition disabled:cursor-not-allowed disabled:opacity-40" aria-label="Undo deleted specification row" title="Undo deleted specification row" data-tooltip="Undo deleted spec">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a7 7 0 110 14h-1M3 10l5-5M3 10l5 5"/></svg>
+    </button>
+
+    <button type="button" id="exportGif" disabled class="rail-button w-10 h-10 rounded-xl bg-fuchsia-700 hover:bg-fuchsia-600 text-white shadow-md transition disabled:cursor-not-allowed disabled:opacity-40" aria-label="Export photo gallery as GIF" title="Export photo gallery as GIF" data-tooltip="Export GIF">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2" stroke-width="2"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 9h4v3H8v3h3m6-6h-3v6h3v-2h-2"/></svg>
+    </button>
+
+    <button id="downloadPng" class="rail-button mt-auto w-10 h-10 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white shadow-md transition" aria-label="Download PNG card" title="Download PNG card" data-tooltip="Export PNG">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2m-4-5l-4 4m0 0l-4-4m4 4V4"/></svg>
+    </button>
+  </aside>
+
+  <!-- MAIN EDITABLE PRODUCT CARD WORKSPACE -->
+  <div id="editorWorkspace" class="flex flex-row items-center gap-3">
+    <div class="flex flex-col items-center gap-2">
+      <div id="card"
+           class="relative rounded-3xl shadow-2xl overflow-hidden border flex flex-col justify-between transition-all duration-300 shrink-0">
+
+      <!-- Header -->
+      <div id="cardHeader" class="w-full px-5 py-3 flex items-center justify-between shadow-inner">
+          <div class="flex min-w-0 flex-1 items-center gap-3 overflow-hidden">
+              <img id="headerLogo" src="" alt="5H13 logo" class="w-12 h-12 rounded-xl object-contain drop-shadow shrink-0" style="display: none;">
+              <div id="logoPlaceholderText" class="w-12 h-12 rounded-full bg-cyan-100/90 flex items-center justify-center text-cyan-700 pointer-events-none">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-9 h-9" viewBox="0 0 40 40" fill="none" aria-hidden="true">
+                  <circle cx="20" cy="20" r="18" stroke="currentColor" stroke-width="2"/>
+                  <path d="M27 12c-2-3-7-4-11-2-5 2-7 8-5 13 2 6 9 9 15 6 4-2 6-6 5-10-1-4-5-6-8-5-3 1-4 4-3 6 1 2 3 3 5 2 1 0 2-1 2-2" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+                </svg>
+              </div>
+              <h1 id="modelName"
+                  class="min-w-0 flex-1 font-black tracking-wider uppercase outline-none rounded px-1 truncate"
+                  contenteditable="true" spellcheck="false" style="font-size: 22px;">
+                  VP115 VACUUM PUMP
+              </h1>
+          </div>
+      </div>
+
+      <!-- Main Image Area -->
+      <div id="imageContainer" class="mx-3 mt-3 rounded-2xl w-[calc(100%-24px)] flex items-center justify-center border relative overflow-hidden p-4 shadow-inner">
+        <img id="productImage"
+             src=""
+             alt="Product photo"
+             class="max-h-full max-w-full object-contain drop-shadow-md"
+             style="display: none;">
+        <div id="imagePlaceholderText" class="absolute text-xs font-semibold uppercase tracking-wider pointer-events-none">
+          5H13 SPECS CARD EDITOR
+        </div>
+      </div>
+
+      <h2 id="portraitSpecsHeading">TECHNICAL SPECIFICATIONS</h2>
+
+      <!-- Specs Grid -->
+      <div id="specList" class="mx-3 mb-3 rounded-xl border divide-y flex-1 flex flex-col overflow-hidden justify-end">
+        <h2 id="landscapeSpecsHeading">Technical Specifications</h2>
+
+        <div class="spec-row flex justify-between items-center px-4 py-1.5">
+          <span class="spec-label text-[11px] font-semibold uppercase tracking-wide" contenteditable="true" spellcheck="false">Voltage</span>
+          <span class="spec-value text-[11px] font-bold outline-none px-1 rounded" contenteditable="true">220V ~ 50/60Hz</span>
+        </div>
+
+        <div class="spec-row flex justify-between items-center px-4 py-1.5">
+          <span class="spec-label text-[11px] font-semibold uppercase tracking-wide" contenteditable="true" spellcheck="false">Free Air Displacement</span>
+          <span class="spec-value text-[11px] font-bold outline-none px-1 rounded" contenteditable="true">1.8 CFM</span>
+        </div>
+
+        <div class="spec-row flex justify-between items-center px-4 py-1.5">
+          <span class="spec-label text-[11px] font-semibold uppercase tracking-wide" contenteditable="true" spellcheck="false">Ultimate Vacuum</span>
+          <span class="spec-value text-[11px] font-bold outline-none px-1 rounded" contenteditable="true">0.05 Pa</span>
+        </div>
+
+        <div class="spec-row flex justify-between items-center px-4 py-1.5">
+          <span class="spec-label text-[11px] font-semibold uppercase tracking-wide" contenteditable="true" spellcheck="false">Motor Power</span>
+          <span class="spec-value text-[11px] font-bold outline-none px-1 rounded" contenteditable="true">1/4 HP</span>
+        </div>
+
+        <div class="spec-row flex justify-between items-center px-4 py-1.5">
+          <span class="spec-label text-[11px] font-semibold uppercase tracking-wide" contenteditable="true" spellcheck="false">Intake Fitting</span>
+          <span class="spec-value text-[11px] font-bold outline-none px-1 rounded" contenteditable="true">1/4&quot; Flare</span>
+        </div>
+
+        <div class="spec-row flex justify-between items-center px-4 py-1.5">
+          <span class="spec-label text-[11px] font-semibold uppercase tracking-wide" contenteditable="true" spellcheck="false">Oil Capacity</span>
+          <span class="spec-value text-[11px] font-bold outline-none px-1 rounded" contenteditable="true">300 ml</span>
+        </div>
+
+      </div>
+      <div id="cardFooter">
+        <strong>Key Features:</strong>
+        <span contenteditable="true" spellcheck="false">Durable Cast Aluminum Housing &bull; Thermal Overload Protection &bull; Low Noise Operation &bull; Serviceable Oil Fill Port</span>
+      </div>
+    </div>
+    </div>
+
+    <aside id="photoGalleryControls" aria-label="Photo navigation and editing" class="h-[630px] w-32 shrink-0 flex flex-col gap-2 rounded-xl border border-slate-700 bg-[#0B2545]/90 p-2 shadow-xl">
+      <h2 class="text-center text-[10px] font-bold uppercase tracking-wider text-slate-300">Photos</h2>
+      <button type="button" id="uploadPhotoBtn" class="w-full rounded bg-sky-700 px-2 py-1.5 text-[10px] font-semibold text-white hover:bg-sky-600" aria-label="Add photos" title="Add photos">
+        <svg xmlns="http://www.w3.org/2000/svg" class="mr-1 inline h-3.5 w-3.5 align-[-2px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+        Add photos
+      </button>
+      <input type="file" id="photoInput" accept="image/*" multiple class="hidden">
+      <div id="photoStatus" class="hidden rounded-lg bg-rose-950/90 px-2 py-1 text-[10px] text-white" role="status" aria-live="polite"></div>
+      <span id="photoCounter" class="truncate text-center text-[10px] font-medium text-white" aria-live="polite">No photos</span>
+      <div class="flex justify-center gap-2">
+        <button type="button" id="previousPhoto" class="rounded bg-slate-800 px-3 py-1 text-xs font-bold text-white hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-40" aria-label="Previous photo" title="Previous photo">↑</button>
+        <button type="button" id="nextPhoto" class="rounded bg-slate-800 px-3 py-1 text-xs font-bold text-white hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-40" aria-label="Next photo" title="Next photo">↓</button>
+      </div>
+      <div class="flex justify-center gap-2">
+        <button type="button" id="movePhotoEarlier" class="rounded bg-slate-800 px-2 py-1 text-[10px] font-semibold text-white hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-40" aria-label="Move selected photo earlier in the GIF sequence" title="Move earlier">Earlier</button>
+        <button type="button" id="movePhotoLater" class="rounded bg-slate-800 px-2 py-1 text-[10px] font-semibold text-white hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-40" aria-label="Move selected photo later in the GIF sequence" title="Move later">Later</button>
+      </div>
+      <label class="flex items-center justify-center gap-1 text-center text-[10px] font-medium text-slate-200">
+        <input type="checkbox" id="includePhotoInGif" checked class="accent-fuchsia-500 disabled:opacity-40">
+        Include selected photo in GIF
+      </label>
+      <div id="photoThumbnails" class="flex min-h-0 flex-1 flex-col items-center gap-2 overflow-y-auto overflow-x-hidden py-1" role="group" aria-label="Select a photo">
+        <div id="photoEmptyState" class="hidden min-h-28 w-full flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-slate-500/70 px-3 text-center text-[10px] text-slate-300">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+          <span>Add product photos to start your gallery</span>
+          <button type="button" id="emptyGalleryUpload" class="rounded bg-sky-700 px-2 py-1 font-semibold text-white hover:bg-sky-600">Choose photos</button>
+        </div>
+      </div>
+      <div class="flex flex-col gap-1 border-t border-slate-700 pt-2">
+        <div class="flex items-center justify-center gap-1">
+          <button type="button" id="zoomOutPhoto" class="rounded bg-slate-800 px-2 py-1 text-xs font-bold text-white hover:bg-slate-700 disabled:opacity-40" aria-label="Zoom out selected photo" title="Zoom out">−</button>
+          <span id="photoZoomValue" class="w-10 text-center text-[10px] text-white" aria-live="polite">100%</span>
+          <button type="button" id="zoomInPhoto" class="rounded bg-slate-800 px-2 py-1 text-xs font-bold text-white hover:bg-slate-700 disabled:opacity-40" aria-label="Zoom in selected photo" title="Zoom in">+</button>
+        </div>
+        <div class="flex gap-1">
+          <button type="button" id="rotatePhoto" class="flex-1 rounded bg-slate-800 px-1 py-1 text-[10px] font-semibold text-white hover:bg-slate-700 disabled:opacity-40">Rotate</button>
+          <button type="button" id="resetPhotoEdits" class="flex-1 rounded bg-slate-800 px-1 py-1 text-[10px] font-semibold text-white hover:bg-slate-700 disabled:opacity-40">Reset</button>
+        </div>
+        <div class="flex gap-1">
+          <button type="button" id="replacePhotoBtn" class="flex-1 rounded bg-sky-700 px-1 py-1 text-[10px] font-semibold text-white hover:bg-sky-600 disabled:opacity-40">Replace</button>
+          <button type="button" id="removePhotoBtn" class="flex-1 rounded bg-rose-700 px-1 py-1 text-[10px] font-semibold text-white hover:bg-rose-600 disabled:opacity-40">Remove</button>
+        </div>
+      </div>
+      <input type="file" id="replacePhotoInput" accept="image/*" class="hidden">
+    </aside>
+  </div>
+
+  <script>
+    const defaultLogo = new URL('5H13 Logo.jpg', document.baseURI).href;
+    const themeLogos = { pili: defaultLogo, aton: defaultLogo, ishabella: defaultLogo };
+    const specList = document.getElementById('specList');
+    const specImage = document.getElementById('imageContainer');
+    let specHeightAdjustment = 0;
+    let cardLayout = 'portrait';
+    const deletedSpecRows = [];
+
+    function applyCardExportStyles(clonedDocument) {
+      const exportStyles = clonedDocument.createElement('style');
+      exportStyles.textContent = `
+        #card, #card * {
+          box-shadow: none !important;
+          filter: none !important;
+          transition: none !important;
+          animation: none !important;
+        }
+        #cardHeader {
+          overflow: visible !important;
+        }
+        #modelName,
+        #portraitSpecsHeading,
+        #landscapeSpecsHeading {
+          height: auto !important;
+          min-height: 1.2em !important;
+          overflow: visible !important;
+          line-height: 1.2 !important;
+        }
+        #modelName {
+          white-space: nowrap !important;
+        }
+        #card[data-layout="landscape"] #cardFooter {
+          display: flex !important;
+          grid-column: 1 / -1 !important;
+          grid-row: 3 !important;
+          overflow: visible !important;
+        }
+        #card[data-layout="landscape"] #cardFooter span {
+          overflow: visible !important;
+          text-overflow: clip !important;
+          white-space: normal !important;
+          line-height: 1.2 !important;
+        }
+        #card[data-layout="portrait"] #cardFooter {
+          display: flex !important;
+          order: 1 !important;
+          flex: 0 0 auto !important;
+          line-height: 1.25 !important;
+          white-space: normal !important;
+        }
+        #card[data-layout="portrait"] #imageContainer {
+          order: 2 !important;
+        }
+        #card[data-layout="portrait"] #portraitSpecsHeading {
+          order: 3 !important;
+        }
+        #card[data-layout="portrait"] #specList {
+          order: 4 !important;
+        }
+        #specList {
+          overflow: hidden !important;
+        }
+        #specList .spec-row {
+          box-sizing: border-box !important;
+          flex-shrink: 0 !important;
+          overflow: visible !important;
+        }
+        #specList .spec-label,
+        #specList .spec-value {
+          display: block !important;
+          height: auto !important;
+          min-height: 1.25em !important;
+          overflow: visible !important;
+          line-height: 1.25 !important;
+          text-overflow: clip !important;
+          white-space: normal !important;
+        }
+        #card[data-layout="portrait"] #specList .spec-row {
+          min-height: 25px !important;
+          padding-top: 3px !important;
+          padding-bottom: 3px !important;
+        }
+        #card[data-layout="portrait"] #specList .spec-label {
+          font-size: 10px !important;
+        }
+        #card[data-layout="portrait"] #specList .spec-value {
+          font-size: 11px !important;
+        }
+        #card[data-layout="landscape"] #specList .spec-row {
+          min-height: 48px !important;
+          padding: 6px !important;
+        }
+        #card[data-layout="landscape"] #specList .spec-label {
+          font-size: 11px !important;
+        }
+        #card[data-layout="landscape"] #specList .spec-value {
+          font-size: 14px !important;
+        }
+      `;
+      clonedDocument.head.append(exportStyles);
+    }
+
+    function updateSpecLayout() {
+      const rows = [...specList.querySelectorAll('.spec-row')];
+      const rowCount = rows.length;
+      const rowCompaction = Math.min(1, Math.max(0, -specHeightAdjustment / 10));
+      const adjustmentLabel = document.getElementById('specAdjustmentLabel');
+      const adjustmentMin = document.getElementById('specAdjustmentMin');
+      const adjustmentMax = document.getElementById('specAdjustmentMax');
+      const adjustmentRange = document.getElementById('specHeightRange');
+      const adjustmentButton = document.getElementById('specHeightToggle');
+      const isLandscape = cardLayout === 'landscape';
+      adjustmentLabel.textContent = isLandscape ? 'Specs Table Width' : 'Specs Table Height';
+      adjustmentMin.textContent = isLandscape ? 'Wider' : 'Compact';
+      adjustmentMax.textContent = isLandscape ? 'Narrower' : 'Expanded';
+      adjustmentRange.setAttribute('aria-label', `Specs table ${isLandscape ? 'width' : 'height'} adjustment`);
+      adjustmentButton.setAttribute('aria-label', `Adjust specs table ${isLandscape ? 'width' : 'height'}`);
+      adjustmentButton.title = `Adjust specs table ${isLandscape ? 'width' : 'height'}`;
+      adjustmentButton.dataset.tooltip = `Specs ${isLandscape ? 'width' : 'height'}`;
+      if (cardLayout === 'landscape') {
+        const widthAdjustment = -specHeightAdjustment;
+        const imageColumnWeight = 1.05 - widthAdjustment * 0.01;
+        const specsColumnWeight = 0.95 + widthAdjustment * 0.01;
+        const specsWidthPercent = specsColumnWeight / (imageColumnWeight + specsColumnWeight) * 100;
+        document.getElementById('card').style.gridTemplateColumns = `minmax(0, ${imageColumnWeight}fr) minmax(0, ${specsColumnWeight}fr)`;
+        specList.style.setProperty('--spec-grid-rows', Math.ceil(rowCount / 2));
+        specImage.style.flexBasis = '';
+        specImage.style.height = '';
+        const cardHeight = document.getElementById('card').clientHeight;
+        const compactViewport = window.matchMedia('(max-width: 767px)').matches;
+        const availableHeight = cardHeight * (compactViewport ? 0.7 : 0.74) - (compactViewport ? 16 : 24);
+        const minHeight = (compactViewport ? 34 : 50) + Math.ceil(rowCount / 2) * (compactViewport ? 24 : 28) + Math.max(0, Math.ceil(rowCount / 2) - 1) * (compactViewport ? 4 : 8);
+        const tableHeight = Math.max(minHeight, availableHeight);
+        specList.style.height = `${tableHeight}px`;
+        rows.forEach(row => {
+          row.style.padding = compactViewport
+            ? '3px 4px'
+            : '7px 9px';
+        });
+        const effectiveAdjustment = Math.round(specsWidthPercent - 47.5);
+        document.getElementById('specHeightVal').textContent = `${effectiveAdjustment > 0 ? '+' : ''}${effectiveAdjustment}%`;
+        adjustmentRange.value = specHeightAdjustment;
+        adjustmentRange.setAttribute('aria-valuetext', `${effectiveAdjustment}% width`);
+        return;
+      }
+      document.getElementById('card').style.gridTemplateColumns = '';
+      rows.forEach(row => {
+        row.style.removeProperty('padding');
+        row.style.paddingTop = `${6.4 * (1 - rowCompaction)}px`;
+        row.style.paddingBottom = `${6.4 * (1 - rowCompaction)}px`;
+        const deleteButton = row.querySelector('.remove-spec-row');
+        deleteButton.style.width = `${20 - 8 * rowCompaction}px`;
+        deleteButton.style.height = `${20 - 8 * rowCompaction}px`;
+        const icon = deleteButton.querySelector('svg');
+        icon.style.width = `${14 - 4 * rowCompaction}px`;
+        icon.style.height = `${14 - 4 * rowCompaction}px`;
+      });
+      let effectiveAdjustment = 0;
+      const card = document.getElementById('card');
+      const cardHeight = card.clientHeight;
+      const desktopViewport = window.matchMedia('(min-width: 768px)').matches;
+      const specsHeading = document.getElementById('portraitSpecsHeading');
+      const cardFooter = document.getElementById('cardFooter');
+      const baseSpecsHeight = Math.max(190, rowCount * 32);
+      const minSpecsHeight = Math.max(rowCount * 25 + 2, 74);
+      const specsHeight = Math.max(minSpecsHeight, baseSpecsHeight + specHeightAdjustment * 24);
+      specList.style.height = desktopViewport ? 'auto' : `${specsHeight}px`;
+      specList.style.flex = desktopViewport ? '' : `0 0 ${specsHeight}px`;
+      const headerHeight = document.getElementById('cardHeader').getBoundingClientRect().height;
+      const footerHeight = cardFooter.getBoundingClientRect().height;
+      const footerMargins = parseFloat(getComputedStyle(cardFooter).marginTop) + parseFloat(getComputedStyle(cardFooter).marginBottom);
+      const headingHeight = specsHeading.getBoundingClientRect().height;
+      const headingMargins = parseFloat(getComputedStyle(specsHeading).marginTop) + parseFloat(getComputedStyle(specsHeading).marginBottom);
+      const specMargins = parseFloat(getComputedStyle(specList).marginTop) + parseFloat(getComputedStyle(specList).marginBottom);
+      const imageMargins = parseFloat(getComputedStyle(specImage).marginTop) + parseFloat(getComputedStyle(specImage).marginBottom);
+      const requiredSpecsHeight = desktopViewport ? Math.max(minSpecsHeight, rowCount * 25) : specsHeight;
+      const availableImageHeight = Math.max(0, cardHeight - headerHeight - footerHeight - footerMargins - headingHeight - headingMargins - specMargins - imageMargins - requiredSpecsHeight);
+      let preferredImageHeight;
+      if (desktopViewport) {
+        const baseArea = window.matchMedia('(max-height: 700px)').matches ? 45 : 55;
+        const preferredImageArea = baseArea + (6 - rowCount) * 4 - specHeightAdjustment * 5;
+        preferredImageHeight = cardHeight * preferredImageArea / 100 - headingMargins - footerHeight - footerMargins;
+        effectiveAdjustment = baseArea + (6 - rowCount) * 4 - Math.min(availableImageHeight, Math.max(0, preferredImageHeight)) / cardHeight * 100;
+      } else {
+        preferredImageHeight = 288 - (specsHeight - 190) - parseFloat(getComputedStyle(specsHeading).marginBottom) - footerHeight;
+        effectiveAdjustment = (specsHeight - baseSpecsHeight) / 24 * 5;
+      }
+      const imageHeight = Math.min(availableImageHeight, Math.max(0, preferredImageHeight));
+      specImage.style.flexBasis = desktopViewport ? `${imageHeight}px` : '';
+      specImage.style.height = `${imageHeight}px`;
+      document.getElementById('specHeightVal').textContent = `${effectiveAdjustment > 0 ? '+' : ''}${Math.round(effectiveAdjustment)}%`;
+      adjustmentRange.value = specHeightAdjustment;
+      adjustmentRange.setAttribute('aria-valuetext', `${Math.round(effectiveAdjustment)}% height`);
+    }
+
+    function addSpecDeleteButton(row) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'remove-spec-row ml-1 flex h-5 w-5 shrink-0 items-center justify-center rounded text-rose-700 hover:bg-rose-100 hover:text-rose-900 focus:outline-none focus:ring-2 focus:ring-rose-400';
+      button.setAttribute('aria-label', 'Delete specification row');
+      button.setAttribute('title', 'Delete specification row');
+      button.setAttribute('data-html2canvas-ignore', 'true');
+      button.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 7h12m-10 0V5h8v2m-9 0l1 14h8l1-14m-7 4v6m4-6v6"/></svg>';
+      row.append(button);
+    }
+
+    function createSpecRow(label = 'New Spec', value = 'Enter value') {
+      const row = document.createElement('div');
+      row.className = 'spec-row flex justify-between items-center px-4';
+
+      const specLabel = document.createElement('span');
+      specLabel.className = 'spec-label min-w-0 flex-1 truncate';
+      specLabel.contentEditable = 'true';
+      specLabel.spellcheck = false;
+      specLabel.textContent = label;
+
+      const specValue = document.createElement('span');
+      specValue.className = 'spec-value min-w-0 max-w-[45%] text-right outline-none px-1 rounded';
+      specValue.contentEditable = 'true';
+      specValue.spellcheck = false;
+      specValue.textContent = value;
+
+      row.append(specLabel, specValue);
+      addSpecDeleteButton(row);
+      return row;
+    }
+
+    specList.querySelectorAll('.spec-row').forEach(addSpecDeleteButton);
+
+    document.getElementById('addSpecRow').addEventListener('click', function() {
+      const row = createSpecRow(`New Spec ${specList.querySelectorAll('.spec-row').length + 1}`);
+      specList.append(row);
+      applyTheme(document.querySelector('.theme-button[aria-pressed="true"]').dataset.theme);
+      updateSpecLayout();
+      row.querySelector('.spec-label').focus();
+    });
+
+    document.getElementById('undoDeleteSpec').addEventListener('click', function() {
+      const deleted = deletedSpecRows.pop();
+      if (!deleted) return;
+      if (deleted.type === 'replace' || deleted.type === 'clear') {
+        if (deleted.type === 'replace') deleted.newRows.forEach(row => row.remove());
+        deleted.oldRows.forEach(({ row, index }) => {
+          const rows = [...specList.querySelectorAll('.spec-row')];
+          specList.insertBefore(row, rows[index] || null);
+        });
+      } else {
+        const rows = [...specList.querySelectorAll('.spec-row')];
+        specList.insertBefore(deleted.row, rows[deleted.index] || null);
+      }
+      this.disabled = deletedSpecRows.length === 0;
+      applyTheme(document.querySelector('.theme-button[aria-pressed="true"]').dataset.theme);
+      updateSpecLayout();
+    });
+
+    specList.addEventListener('click', function(event) {
+      const deleteButton = event.target.closest('.remove-spec-row');
+      if (!deleteButton) return;
+      const row = deleteButton.closest('.spec-row');
+      const index = [...specList.querySelectorAll('.spec-row')].indexOf(row);
+      deletedSpecRows.push({ row, index });
+      row.remove();
+      document.getElementById('undoDeleteSpec').disabled = false;
+      applyTheme(document.querySelector('.theme-button[aria-pressed="true"]').dataset.theme);
+      updateSpecLayout();
+    });
+
+    function parseSpecIntake(text) {
+      const entries = [];
+      const lines = text.split(/\r?\n/);
+
+      for (let index = 0; index < lines.length; index++) {
+        const line = lines[index].trim();
+        if (!line) continue;
+
+        let separatorIndex = line.indexOf('\t');
+        let separatorLength = 1;
+        if (separatorIndex < 0) {
+          const match = line.match(/[:：|]/) || line.match(/\s+(?:-|–|—)\s+/) || line.match(/\s{2,}/);
+          if (match) {
+            separatorIndex = match.index;
+            separatorLength = match[0].length;
+          }
+        }
+
+        if (separatorIndex < 0) {
+          return { entries: [], errorLine: index + 1 };
+        }
+
+        const label = line.slice(0, separatorIndex).trim();
+        const value = line.slice(separatorIndex + separatorLength).trim();
+        if (!label || !value) {
+          return { entries: [], errorLine: index + 1 };
+        }
+
+        if (entries.length === 0 && /^(specification|spec|name|parameter|label)$/i.test(label) && /^(value|details|description)$/i.test(value)) {
+          continue;
+        }
+        entries.push({ label, value });
+      }
+
+      return { entries, errorLine: 0 };
+    }
+
+    function queueSpecRowsForUndo(rows) {
+      deletedSpecRows.push({
+        type: 'clear',
+        oldRows: rows.map((row, index) => ({ row, index }))
+      });
+      document.getElementById('undoDeleteSpec').disabled = deletedSpecRows.length === 0;
+    }
+
+    const specIntake = document.getElementById('specIntake');
+    const specIntakeStatus = document.getElementById('specIntakeStatus');
+    const specIntakePanel = document.getElementById('specIntakeOptions');
+    const specIntakeToggle = document.getElementById('specIntakeToggle');
+    const controlPopovers = [
+      ['themeOptions', 'themeToggle'],
+      ['textOptions', 'textToggle'],
+      ['layoutOptions', 'layoutToggle'],
+      ['specHeightOptions', 'specHeightToggle'],
+      ['specIntakeOptions', 'specIntakeToggle']
+    ];
+
+    function closeControlPopovers() {
+      controlPopovers.forEach(([panelId, toggleId]) => {
+        document.getElementById(panelId).style.display = 'none';
+        document.getElementById(toggleId).setAttribute('aria-expanded', 'false');
+      });
+    }
+
+    document.addEventListener('click', function(event) {
+      if (!(event.target instanceof Element)) return;
+      const clickedInsidePopover = controlPopovers.some(([panelId, toggleId]) =>
+        document.getElementById(panelId).contains(event.target) ||
+        document.getElementById(toggleId).contains(event.target)
+      );
+      if (!clickedInsidePopover) closeControlPopovers();
+    });
+
+    document.addEventListener('keydown', function(event) {
+      if (event.key === 'Escape') closeControlPopovers();
+    });
+
+    specIntakeToggle.addEventListener('click', function() {
+      const willOpen = specIntakePanel.style.display === 'none';
+      specIntakePanel.style.display = willOpen ? 'flex' : 'none';
+      this.setAttribute('aria-expanded', String(willOpen));
+      for (const [panelId, toggleId] of [
+        ['themeOptions', 'themeToggle'],
+        ['textOptions', 'textToggle'],
+        ['layoutOptions', 'layoutToggle'],
+        ['specHeightOptions', 'specHeightToggle']
+      ]) {
+        document.getElementById(panelId).style.display = 'none';
+        document.getElementById(toggleId).setAttribute('aria-expanded', 'false');
+      }
+      if (willOpen) specIntake.focus();
+    });
+
+    specIntake.addEventListener('input', function() {
+      specIntakeStatus.textContent = '';
+      specIntakeStatus.classList.remove('text-rose-300', 'text-emerald-300');
+    });
+
+    document.getElementById('populateSpecTable').addEventListener('click', function() {
+      const { entries, errorLine } = parseSpecIntake(specIntake.value);
+      if (errorLine) {
+        specIntakeStatus.textContent = `Line ${errorLine} needs a label and value. Use “Label: Value” or two tab-separated columns.`;
+        specIntakeStatus.classList.add('text-rose-300');
+        return;
+      }
+      if (!entries.length) {
+        specIntakeStatus.textContent = 'Paste at least one specification before populating the table.';
+        specIntakeStatus.classList.add('text-rose-300');
+        return;
+      }
+
+      const existingRows = [...specList.querySelectorAll('.spec-row')];
+      if (existingRows.length && !window.confirm(`Replace all ${existingRows.length} current specification rows with ${entries.length} pasted rows? You can undo this afterward.`)) {
+        return;
+      }
+
+      const newRows = entries.map(({ label, value }) => createSpecRow(label, value));
+      deletedSpecRows.push({
+        type: 'replace',
+        oldRows: existingRows.map((row, index) => ({ row, index })),
+        newRows
+      });
+      existingRows.forEach(row => row.remove());
+      newRows.forEach(row => specList.append(row));
+      document.getElementById('undoDeleteSpec').disabled = deletedSpecRows.length === 0;
+      applyTheme(document.querySelector('.theme-button[aria-pressed="true"]').dataset.theme);
+      updateSpecLayout();
+      specIntakeStatus.textContent = `Populated ${entries.length} specification${entries.length === 1 ? '' : 's'}.`;
+      specIntakeStatus.classList.add('text-emerald-300');
+    });
+
+    document.getElementById('clearSpecTable').addEventListener('click', function() {
+      const rows = [...specList.querySelectorAll('.spec-row')];
+      if (!rows.length) {
+        specIntakeStatus.textContent = 'The specification table is already empty.';
+        specIntakeStatus.classList.remove('text-rose-300');
+        specIntakeStatus.classList.add('text-slate-300');
+        return;
+      }
+      if (!window.confirm(`Clear all ${rows.length} specification rows? You can undo this afterward.`)) return;
+
+      queueSpecRowsForUndo(rows);
+      rows.forEach(row => row.remove());
+      applyTheme(document.querySelector('.theme-button[aria-pressed="true"]').dataset.theme);
+      updateSpecLayout();
+      specIntakeStatus.textContent = `Cleared ${rows.length} specification${rows.length === 1 ? '' : 's'}.`;
+      specIntakeStatus.classList.remove('text-rose-300');
+      specIntakeStatus.classList.add('text-emerald-300');
+    });
+
+    window.addEventListener('resize', updateSpecLayout);
+    document.getElementById('card').addEventListener('transitionend', function(event) {
+      if (event.target === this && ['width', 'height'].includes(event.propertyName)) {
+        updateSpecLayout();
+      }
+    });
+
+    const themes = {
+      pili: {
+        bodyBg: 'bg-[#0A192F]',
+        cardBg: 'linear-gradient(180deg, #BDEFFF 0%, #D9F8FF 100%)',
+        cardBorder: 'border-[#48B9E9]',
+        headerBg: 'bg-gradient-to-r from-[#0876C8] via-[#138BDD] to-[#0876C8]',
+        headerBorder: 'border-[#0061AE]',
+        titleColor: 'text-white',
+        logoPlaceholder: 'text-sky-100',
+        imageContainerBg: 'bg-[#DDF8FF] shadow-inner',
+        imageContainerBorder: 'border-[#A5E5F5]',
+        imagePlaceholder: 'text-blue-600/60',
+        specListBg: 'bg-transparent',
+        specListBorder: 'border-[#9ADFF2]',
+        rowEven: 'bg-[#BDEFFF]',
+        rowOdd: 'bg-[#DDF8FF]',
+        labelColor: 'text-[#0B2545]',
+        valueColor: 'text-[#0B2545]',
+        specTextSize: 'text-[10px]',
+        specRowPadding: 'py-[0.2rem]',
+        btnBg: 'bg-[#0066CC] hover:bg-[#0052A3]',
+        badgeBg: 'bg-[#004C99] text-white shadow-inner'
+      },
+      aton: {
+        bodyBg: 'bg-amber-950',
+        cardBg: 'linear-gradient(135deg, #fdfbf7 0%, #f4ede1 100%)',
+        cardBorder: 'border-amber-600/60',
+        headerBg: 'bg-gradient-to-r from-amber-800 via-amber-700 to-amber-900',
+        headerBorder: 'border-amber-900',
+        titleColor: 'text-amber-100',
+        logoPlaceholder: 'text-amber-200',
+        imageContainerBg: 'bg-white shadow-inner',
+        imageContainerBorder: 'border-amber-200',
+        imagePlaceholder: 'text-amber-800/50',
+        specListBg: 'bg-white/95',
+        specListBorder: 'border-amber-200',
+        rowEven: 'bg-white',
+        rowOdd: 'bg-amber-50/50',
+        labelColor: 'text-amber-900',
+        valueColor: 'text-stone-900',
+        specTextSize: 'text-[9px]',
+        specRowPadding: 'py-[0.2rem]',
+        btnBg: 'bg-amber-800 hover:bg-amber-700',
+        badgeBg: 'bg-amber-700 text-amber-100'
+      },
+      ishabella: {
+        bodyBg: 'bg-slate-950',
+        cardBg: 'linear-gradient(135deg, #f0f4f8 0%, #d9e2ec 100%)',
+        cardBorder: 'border-cyan-600/50',
+        headerBg: 'bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900',
+        headerBorder: 'border-cyan-500/40',
+        titleColor: 'text-white',
+        logoPlaceholder: 'text-cyan-300',
+        imageContainerBg: 'bg-white shadow-inner',
+        imageContainerBorder: 'border-slate-300',
+        imagePlaceholder: 'text-slate-400',
+        specListBg: 'bg-white/95',
+        specListBorder: 'border-slate-200',
+        rowEven: 'bg-white',
+        rowOdd: 'bg-slate-50',
+        labelColor: 'text-slate-700',
+        valueColor: 'text-slate-900',
+        specTextSize: 'text-[9px]',
+        specRowPadding: 'py-[0.2rem]',
+        btnBg: 'bg-cyan-700 hover:bg-cyan-600',
+        badgeBg: 'bg-cyan-600 text-white'
+      }
+    };
+
+    function applyTheme(themeName) {
+      const t = themes[themeName];
+      
+      document.getElementById('pageBody').className = `${t.bodyBg} p-6 font-sans flex flex-row flex-nowrap items-center justify-center min-h-screen gap-6 transition-colors duration-500`;
+
+      const card = document.getElementById('card');
+      card.style.background = t.cardBg;
+      card.dataset.layout = cardLayout;
+      card.className = `relative rounded-2xl shadow-2xl overflow-hidden border-2 ${t.cardBorder} flex flex-col justify-between transition-all duration-300 shrink-0`;
+
+      const header = document.getElementById('cardHeader');
+      header.className = `w-full px-5 py-3 flex items-center justify-between shadow-inner border-b ${t.headerBorder} ${t.headerBg}`;
+
+      document.getElementById('modelName').className = `min-w-0 flex-1 font-black tracking-wider uppercase outline-none rounded px-1 truncate ${t.titleColor}`;
+      document.getElementById('logoPlaceholderText').className = `w-12 h-12 rounded-full bg-cyan-100/90 flex items-center justify-center pointer-events-none ${t.logoPlaceholder}`;
+
+      const imgContainer = document.getElementById('imageContainer');
+      imgContainer.className = `mx-3 mt-3 rounded-xl w-[calc(100%-24px)] flex items-center justify-center border ${t.imageContainerBorder} relative overflow-hidden p-4 shadow-inner ${t.imageContainerBg}`;
+      document.getElementById('imagePlaceholderText').className = `absolute text-xs font-semibold uppercase tracking-wider pointer-events-none ${t.imagePlaceholder}`;
+
+      const specList = document.getElementById('specList');
+      specList.className = `mx-3 mb-3 rounded-xl border ${t.specListBorder} divide-y ${t.specListBorder} flex-1 flex flex-col overflow-hidden justify-end ${t.specListBg}`;
+
+      const rows = specList.getElementsByClassName('spec-row');
+      for (let i = 0; i < rows.length; i++) {
+        rows[i].className = `spec-row flex justify-between items-center px-4 ${t.specRowPadding} ${i % 2 === 0 ? t.rowEven : t.rowOdd}`;
+      }
+
+      for (let l of document.getElementsByClassName('spec-label')) {
+        l.className = `spec-label min-w-0 flex-1 truncate ${t.specTextSize} font-semibold uppercase tracking-wide ${t.labelColor}`;
+      }
+
+      for (let v of document.getElementsByClassName('spec-value')) {
+        v.className = `spec-value min-w-0 max-w-[45%] text-right ${t.specTextSize} font-bold outline-none px-1 rounded ${t.valueColor}`;
+      }
+
+      updateSpecLayout();
+
+      const currentLogo = themeLogos[themeName];
+      const logoImg = document.getElementById('headerLogo');
+      const logoPlaceholder = document.getElementById('logoPlaceholderText');
+
+      if (currentLogo) {
+        logoImg.src = currentLogo;
+        logoImg.style.display = 'block';
+        logoPlaceholder.style.display = 'none';
+      } else {
+        logoImg.src = '';
+        logoImg.style.display = 'none';
+        logoPlaceholder.style.display = 'block';
+      }
+    }
+
+    let headerFontSize = 22;
+    function updateHeaderFontSize() {
+      const modelName = document.getElementById('modelName');
+      const range = document.createRange();
+      range.selectNodeContents(modelName);
+      let fittedSize = headerFontSize;
+      const styles = getComputedStyle(modelName);
+      const horizontalPadding = parseFloat(styles.paddingLeft) + parseFloat(styles.paddingRight);
+      const availableWidth = modelName.clientWidth - horizontalPadding - 2;
+
+      modelName.style.fontSize = `${fittedSize}px`;
+      while (fittedSize > 10 && range.getBoundingClientRect().width > availableWidth) {
+        fittedSize = Math.max(10, fittedSize - 0.5);
+        modelName.style.fontSize = `${fittedSize}px`;
+      }
+
+      document.getElementById('fontSizeVal').textContent = `${headerFontSize}px`;
+    }
+
+    window.addEventListener('resize', updateHeaderFontSize);
+    document.getElementById('modelName').addEventListener('input', updateHeaderFontSize);
+    document.fonts.ready.then(updateHeaderFontSize);
+
+    document.getElementById('fontSizeDecrease').addEventListener('click', function() {
+      headerFontSize = Math.max(12, headerFontSize - 1);
+      updateHeaderFontSize();
+    });
+
+    document.getElementById('fontSizeIncrease').addEventListener('click', function() {
+      headerFontSize = Math.min(24, headerFontSize + 1);
+      updateHeaderFontSize();
+    });
+
+    document.querySelectorAll('.theme-button').forEach(button => {
+      button.addEventListener('click', function() {
+        const selectedTheme = button.dataset.theme;
+        applyTheme(selectedTheme);
+        document.querySelectorAll('.theme-button').forEach(themeButton => {
+          const isSelected = themeButton === button;
+          themeButton.classList.toggle('bg-blue-600', isSelected);
+          themeButton.classList.toggle('text-white', isSelected);
+          themeButton.classList.toggle('bg-slate-800', !isSelected);
+          themeButton.classList.toggle('text-slate-300', !isSelected);
+          themeButton.setAttribute('aria-pressed', String(isSelected));
+        });
+        document.getElementById('themeOptions').style.display = 'none';
+        document.getElementById('themeToggle').setAttribute('aria-expanded', 'false');
+      });
+    });
+
+    document.getElementById('themeToggle').addEventListener('click', function() {
+      const themeOptions = document.getElementById('themeOptions');
+      const willOpen = themeOptions.style.display === 'none';
+      themeOptions.style.display = willOpen ? 'flex' : 'none';
+      this.setAttribute('aria-expanded', String(willOpen));
+      document.getElementById('textOptions').style.display = 'none';
+      document.getElementById('textToggle').setAttribute('aria-expanded', 'false');
+      document.getElementById('specIntakeOptions').style.display = 'none';
+      document.getElementById('specIntakeToggle').setAttribute('aria-expanded', 'false');
+    });
+
+    document.getElementById('textToggle').addEventListener('click', function() {
+      const textOptions = document.getElementById('textOptions');
+      const willOpen = textOptions.style.display === 'none';
+      textOptions.style.display = willOpen ? 'flex' : 'none';
+      this.setAttribute('aria-expanded', String(willOpen));
+      document.getElementById('themeOptions').style.display = 'none';
+      document.getElementById('themeToggle').setAttribute('aria-expanded', 'false');
+      document.getElementById('specHeightOptions').style.display = 'none';
+      document.getElementById('specHeightToggle').setAttribute('aria-expanded', 'false');
+      document.getElementById('layoutOptions').style.display = 'none';
+      document.getElementById('layoutToggle').setAttribute('aria-expanded', 'false');
+      document.getElementById('specIntakeOptions').style.display = 'none';
+      document.getElementById('specIntakeToggle').setAttribute('aria-expanded', 'false');
+    });
+
+    document.getElementById('themeToggle').addEventListener('click', function() {
+      document.getElementById('specHeightOptions').style.display = 'none';
+      document.getElementById('specHeightToggle').setAttribute('aria-expanded', 'false');
+      document.getElementById('layoutOptions').style.display = 'none';
+      document.getElementById('layoutToggle').setAttribute('aria-expanded', 'false');
+      document.getElementById('specIntakeOptions').style.display = 'none';
+      document.getElementById('specIntakeToggle').setAttribute('aria-expanded', 'false');
+    });
+
+    document.getElementById('specHeightToggle').addEventListener('click', function() {
+      const options = document.getElementById('specHeightOptions');
+      const willOpen = options.style.display === 'none';
+      options.style.display = willOpen ? 'flex' : 'none';
+      this.setAttribute('aria-expanded', String(willOpen));
+      document.getElementById('themeOptions').style.display = 'none';
+      document.getElementById('themeToggle').setAttribute('aria-expanded', 'false');
+      document.getElementById('textOptions').style.display = 'none';
+      document.getElementById('textToggle').setAttribute('aria-expanded', 'false');
+      document.getElementById('layoutOptions').style.display = 'none';
+      document.getElementById('layoutToggle').setAttribute('aria-expanded', 'false');
+      document.getElementById('specIntakeOptions').style.display = 'none';
+      document.getElementById('specIntakeToggle').setAttribute('aria-expanded', 'false');
+    });
+
+    document.getElementById('specHeightRange').addEventListener('input', function() {
+      specHeightAdjustment = Number(this.value);
+      updateSpecLayout();
+    });
+
+    document.getElementById('layoutToggle').addEventListener('click', function() {
+      const options = document.getElementById('layoutOptions');
+      const willOpen = options.style.display === 'none';
+      options.style.display = willOpen ? 'flex' : 'none';
+      this.setAttribute('aria-expanded', String(willOpen));
+      document.getElementById('themeOptions').style.display = 'none';
+      document.getElementById('themeToggle').setAttribute('aria-expanded', 'false');
+      document.getElementById('textOptions').style.display = 'none';
+      document.getElementById('textToggle').setAttribute('aria-expanded', 'false');
+      document.getElementById('specIntakeOptions').style.display = 'none';
+      document.getElementById('specIntakeToggle').setAttribute('aria-expanded', 'false');
+      document.getElementById('specHeightOptions').style.display = 'none';
+      document.getElementById('specHeightToggle').setAttribute('aria-expanded', 'false');
+    });
+
+    document.querySelectorAll('.layout-button').forEach(button => {
+      button.addEventListener('click', function() {
+        cardLayout = button.dataset.layout;
+        document.getElementById('card').dataset.layout = cardLayout;
+        document.querySelectorAll('.layout-button').forEach(layoutButton => {
+          const selected = layoutButton === button;
+          layoutButton.classList.toggle('bg-blue-600', selected);
+          layoutButton.classList.toggle('text-white', selected);
+          layoutButton.classList.toggle('bg-slate-800', !selected);
+          layoutButton.classList.toggle('text-slate-300', !selected);
+          layoutButton.setAttribute('aria-pressed', String(selected));
+        });
+        document.getElementById('layoutOptions').style.display = 'none';
+        document.getElementById('layoutToggle').setAttribute('aria-expanded', 'false');
+        document.getElementById('specIntakeOptions').style.display = 'none';
+        document.getElementById('specIntakeToggle').setAttribute('aria-expanded', 'false');
+        updateSpecLayout();
+        updateHeaderFontSize();
+      });
+    });
+
+    applyTheme('pili');
+    updateHeaderFontSize();
+
+    document.getElementById('uploadPhotoBtn').addEventListener('click', function() {
+      document.getElementById('photoInput').click();
+    });
+
+    document.getElementById('uploadLogoBtn').addEventListener('click', function() {
+      document.getElementById('logoInput').click();
+    });
+
+    const productPhotos = [];
+    let selectedPhotoIndex = -1;
+
+    function showPhotoStatus(message) {
+      const status = document.getElementById('photoStatus');
+      status.textContent = message;
+      status.classList.toggle('hidden', !message);
+    }
+
+    function renderPhotoGallery() {
+      const image = document.getElementById('productImage');
+      const placeholder = document.getElementById('imagePlaceholderText');
+      const controls = document.getElementById('photoGalleryControls');
+      const thumbnails = document.getElementById('photoThumbnails');
+      const hasPhotos = productPhotos.length > 0;
+
+      controls.style.display = 'flex';
+      thumbnails.replaceChildren();
+      image.style.display = hasPhotos ? 'block' : 'none';
+      placeholder.style.display = hasPhotos ? 'none' : 'block';
+      for (const controlId of ['previousPhoto', 'nextPhoto', 'movePhotoEarlier', 'movePhotoLater', 'zoomOutPhoto', 'zoomInPhoto', 'rotatePhoto', 'resetPhotoEdits', 'replacePhotoBtn', 'removePhotoBtn']) {
+        document.getElementById(controlId).disabled = !hasPhotos;
+      }
+      document.getElementById('includePhotoInGif').disabled = !hasPhotos;
+
+      if (!hasPhotos) {
+        const emptyState = document.createElement('div');
+        emptyState.id = 'photoEmptyState';
+        emptyState.className = 'flex min-h-28 w-full flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-slate-500/70 px-3 text-center text-[10px] text-slate-300';
+        const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        icon.setAttribute('viewBox', '0 0 24 24');
+        icon.setAttribute('fill', 'none');
+        icon.setAttribute('stroke', 'currentColor');
+        icon.setAttribute('aria-hidden', 'true');
+        icon.classList.add('h-6', 'w-6', 'text-slate-400');
+        icon.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>';
+        const message = document.createElement('span');
+        message.textContent = 'Add product photos to start your gallery';
+        const uploadButton = document.createElement('button');
+        uploadButton.type = 'button';
+        uploadButton.className = 'rounded bg-sky-700 px-2 py-1 font-semibold text-white hover:bg-sky-600';
+        uploadButton.textContent = 'Choose photos';
+        uploadButton.addEventListener('click', () => document.getElementById('photoInput').click());
+        emptyState.append(icon, message, uploadButton);
+        thumbnails.append(emptyState);
+        image.removeAttribute('src');
+        image.style.transform = '';
+        document.getElementById('photoCounter').textContent = 'No photos';
+        document.getElementById('photoZoomValue').textContent = '100%';
+        document.getElementById('exportGif').disabled = true;
+        return;
+      }
+
+      selectedPhotoIndex = Math.max(0, Math.min(selectedPhotoIndex, productPhotos.length - 1));
+      const selectedPhoto = productPhotos[selectedPhotoIndex];
+      image.src = selectedPhoto.src;
+      image.alt = selectedPhoto.name || `Product photo ${selectedPhotoIndex + 1}`;
+      document.getElementById('photoCounter').textContent = `${selectedPhotoIndex + 1} / ${productPhotos.length} · ${selectedPhoto.name}`;
+      image.style.transform = `rotate(${selectedPhoto.rotation}deg) scale(${selectedPhoto.zoom})`;
+      document.getElementById('photoZoomValue').textContent = `${Math.round(selectedPhoto.zoom * 100)}%`;
+      document.getElementById('includePhotoInGif').checked = selectedPhoto.includeInGif;
+      document.getElementById('movePhotoEarlier').disabled = selectedPhotoIndex === 0;
+      document.getElementById('movePhotoLater').disabled = selectedPhotoIndex === productPhotos.length - 1;
+
+      productPhotos.forEach((photo, index) => {
+        const thumbnail = document.createElement('button');
+        thumbnail.type = 'button';
+        thumbnail.className = `h-14 w-14 shrink-0 overflow-hidden rounded-lg border-2 ${index === selectedPhotoIndex ? 'border-cyan-300' : 'border-transparent opacity-70 hover:opacity-100'}`;
+        thumbnail.setAttribute('aria-label', `Select photo ${index + 1}: ${photo.name}`);
+        thumbnail.setAttribute('aria-pressed', String(index === selectedPhotoIndex));
+        thumbnail.title = photo.name;
+
+        const thumbnailImage = document.createElement('img');
+        thumbnailImage.src = photo.src;
+        thumbnailImage.alt = '';
+        thumbnailImage.className = 'h-full w-full object-cover';
+        thumbnail.append(thumbnailImage);
+        thumbnail.addEventListener('click', function() {
+          selectedPhotoIndex = index;
+          showPhotoStatus('');
+          renderPhotoGallery();
+        });
+        thumbnails.append(thumbnail);
+        if (index === selectedPhotoIndex) thumbnail.scrollIntoView({ block: 'nearest' });
+      });
+
+      const singlePhoto = productPhotos.length < 2;
+      document.getElementById('previousPhoto').disabled = singlePhoto;
+      document.getElementById('nextPhoto').disabled = singlePhoto;
+      document.getElementById('exportGif').disabled = !productPhotos.some(photo => photo.includeInGif);
+    }
+
+    renderPhotoGallery();
+
+    function readPhotoFile(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = function() {
+          if (typeof reader.result !== 'string') {
+            reject(new Error(`Could not read ${file.name}.`));
+            return;
+          }
+          resolve({ name: file.name, src: reader.result, zoom: 1, rotation: 0, includeInGif: true });
+        };
+        reader.onerror = function() {
+          reject(reader.error || new Error(`Could not read ${file.name}.`));
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+
+    document.getElementById('photoInput').addEventListener('change', async function(event) {
+      const files = Array.from(event.target.files || []);
+      if (!files.length) return;
+
+      try {
+        const uploadedPhotos = await Promise.all(files.map(readPhotoFile));
+        productPhotos.push(...uploadedPhotos);
+        selectedPhotoIndex = productPhotos.length - 1;
+        showPhotoStatus('');
+        renderPhotoGallery();
+      } catch (error) {
+        console.error('Unable to load product photos.', error);
+        showPhotoStatus(error.message || 'Unable to load the selected photos.');
+      } finally {
+        event.target.value = '';
+      }
+    });
+
+    document.getElementById('previousPhoto').addEventListener('click', function() {
+      if (productPhotos.length < 2) return;
+      selectedPhotoIndex = (selectedPhotoIndex - 1 + productPhotos.length) % productPhotos.length;
+      renderPhotoGallery();
+    });
+
+    document.getElementById('nextPhoto').addEventListener('click', function() {
+      if (productPhotos.length < 2) return;
+      selectedPhotoIndex = (selectedPhotoIndex + 1) % productPhotos.length;
+      renderPhotoGallery();
+    });
+
+    function moveSelectedPhoto(offset) {
+      const targetIndex = selectedPhotoIndex + offset;
+      if (selectedPhotoIndex < 0 || targetIndex < 0 || targetIndex >= productPhotos.length) return;
+      const [photo] = productPhotos.splice(selectedPhotoIndex, 1);
+      productPhotos.splice(targetIndex, 0, photo);
+      selectedPhotoIndex = targetIndex;
+      showPhotoStatus('');
+      renderPhotoGallery();
+    }
+
+    document.getElementById('movePhotoEarlier').addEventListener('click', function() {
+      moveSelectedPhoto(-1);
+    });
+
+    document.getElementById('movePhotoLater').addEventListener('click', function() {
+      moveSelectedPhoto(1);
+    });
+
+    document.getElementById('includePhotoInGif').addEventListener('change', function(event) {
+      const photo = productPhotos[selectedPhotoIndex];
+      if (!photo) return;
+      photo.includeInGif = event.target.checked;
+      showPhotoStatus('');
+      renderPhotoGallery();
+    });
+
+    document.getElementById('zoomOutPhoto').addEventListener('click', function() {
+      const photo = productPhotos[selectedPhotoIndex];
+      if (!photo) return;
+      photo.zoom = Math.max(1, Math.round((photo.zoom - 0.1) * 10) / 10);
+      renderPhotoGallery();
+    });
+
+    document.getElementById('zoomInPhoto').addEventListener('click', function() {
+      const photo = productPhotos[selectedPhotoIndex];
+      if (!photo) return;
+      photo.zoom = Math.min(2.5, Math.round((photo.zoom + 0.1) * 10) / 10);
+      renderPhotoGallery();
+    });
+
+    document.getElementById('rotatePhoto').addEventListener('click', function() {
+      const photo = productPhotos[selectedPhotoIndex];
+      if (!photo) return;
+      photo.rotation = (photo.rotation + 90) % 360;
+      renderPhotoGallery();
+    });
+
+    document.getElementById('resetPhotoEdits').addEventListener('click', function() {
+      const photo = productPhotos[selectedPhotoIndex];
+      if (!photo) return;
+      photo.zoom = 1;
+      photo.rotation = 0;
+      renderPhotoGallery();
+    });
+
+    document.getElementById('replacePhotoBtn').addEventListener('click', function() {
+      if (selectedPhotoIndex >= 0) document.getElementById('replacePhotoInput').click();
+    });
+
+    document.getElementById('replacePhotoInput').addEventListener('change', async function(event) {
+      const file = event.target.files[0];
+      if (!file || selectedPhotoIndex < 0) return;
+
+      try {
+        productPhotos[selectedPhotoIndex] = await readPhotoFile(file);
+        showPhotoStatus('');
+        renderPhotoGallery();
+      } catch (error) {
+        console.error('Unable to replace product photo.', error);
+        showPhotoStatus(error.message || 'Unable to replace the selected photo.');
+      } finally {
+        event.target.value = '';
+      }
+    });
+
+    document.getElementById('removePhotoBtn').addEventListener('click', function() {
+      if (selectedPhotoIndex < 0) return;
+      productPhotos.splice(selectedPhotoIndex, 1);
+      selectedPhotoIndex = Math.min(selectedPhotoIndex, productPhotos.length - 1);
+      showPhotoStatus('');
+      renderPhotoGallery();
+    });
+
+    document.getElementById('exportGif').addEventListener('click', async function() {
+      const gifPhotos = productPhotos.filter(photo => photo.includeInGif);
+      if (!gifPhotos.length || this.disabled) return;
+      if (typeof GIF !== 'function') {
+        showPhotoStatus('GIF exporter could not load. Check your internet connection and reload the page.');
+        return;
+      }
+
+      const exportButton = this;
+      exportButton.disabled = true;
+      showPhotoStatus(`Preparing ${gifPhotos.length} GIF frame${gifPhotos.length === 1 ? '' : 's'}...`);
+      let workerScriptUrl;
+      const card = document.getElementById('card');
+      const image = document.getElementById('productImage');
+      const originalImage = {
+        src: image.getAttribute('src'),
+        alt: image.alt,
+        display: image.style.display,
+        transform: image.style.transform
+      };
+
+      try {
+        if (typeof html2canvas !== 'function') throw new Error('Card capture could not load. Check your internet connection and reload the page.');
+        const bounds = card.getBoundingClientRect();
+        const outputScale = Math.min(2, 1200 / Math.max(bounds.width, bounds.height));
+
+        const frames = [];
+        for (const [index, photo] of gifPhotos.entries()) {
+          showPhotoStatus(`Preparing card frame ${index + 1} of ${gifPhotos.length}...`);
+          image.src = photo.src;
+          image.alt = photo.name || `Product photo ${index + 1}`;
+          image.style.display = 'block';
+          image.style.transform = `rotate(${photo.rotation}deg) scale(${photo.zoom})`;
+          await image.decode();
+          const frame = await html2canvas(card, {
+            scale: outputScale,
+            useCORS: true,
+            backgroundColor: null,
+            onclone(clonedDocument) {
+              applyCardExportStyles(clonedDocument);
+            }
+          });
+          frames.push(frame);
+        }
+
+        const workerResponse = await fetch('https://cdn.jsdelivr.net/npm/gif.js@0.2.0/dist/gif.worker.js');
+        if (!workerResponse.ok) throw new Error('Unable to load the GIF encoder worker.');
+        workerScriptUrl = URL.createObjectURL(new Blob([await workerResponse.text()], { type: 'application/javascript' }));
+        const frameWidth = frames[0].width;
+        const frameHeight = frames[0].height;
+        const gif = new GIF({
+          workers: 2,
+          quality: 5,
+          width: frameWidth,
+          height: frameHeight,
+          workerScript: workerScriptUrl,
+          background: '#ffffff'
+        });
+
+        frames.forEach(frame => {
+          gif.addFrame(frame, { delay: 900, copy: true, dispose: 2 });
+        });
+
+        gif.on('progress', progress => {
+          showPhotoStatus(`Encoding GIF... ${Math.round(progress * 100)}%`);
+        });
+        gif.on('finished', blob => {
+          URL.revokeObjectURL(workerScriptUrl);
+          workerScriptUrl = null;
+          const link = document.createElement('a');
+          const modelName = document.getElementById('modelName').textContent.trim();
+          const fileName = modelName.replace(/[^a-z0-9-_]+/gi, '-').replace(/^-+|-+$/g, '') || 'product';
+          const objectUrl = URL.createObjectURL(blob);
+          link.download = `${fileName}-specs-card.gif`;
+          link.href = objectUrl;
+          link.click();
+          window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+          showPhotoStatus('Animated GIF exported.');
+          window.setTimeout(() => showPhotoStatus(''), 2500);
+          exportButton.disabled = !productPhotos.some(photo => photo.includeInGif);
+        });
+        gif.render();
+        gif.activeWorkers.forEach(worker => {
+          worker.addEventListener('error', function(event) {
+            gif.abort();
+            URL.revokeObjectURL(workerScriptUrl);
+            workerScriptUrl = null;
+            const error = event.error || new Error('A GIF encoding worker failed.');
+            console.error('Unable to encode photo gallery as GIF.', error);
+            showPhotoStatus('Unable to encode the GIF. Please try again.');
+            exportButton.disabled = !productPhotos.some(photo => photo.includeInGif);
+          }, { once: true });
+        });
+      } catch (error) {
+        if (workerScriptUrl) URL.revokeObjectURL(workerScriptUrl);
+        console.error('Unable to export photo gallery as GIF.', error);
+        showPhotoStatus(error.message || 'Unable to export the GIF. Please try again.');
+        exportButton.disabled = !productPhotos.some(photo => photo.includeInGif);
+      } finally {
+        if (originalImage.src === null) image.removeAttribute('src');
+        else image.setAttribute('src', originalImage.src);
+        image.alt = originalImage.alt;
+        image.style.display = originalImage.display;
+        image.style.transform = originalImage.transform;
+      }
+    });
+
+    document.getElementById('logoInput').addEventListener('change', function (event) {
+      const file = event.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = function (e) {
+          const activeTheme = document.querySelector('.theme-button[aria-pressed="true"]').dataset.theme;
+          themeLogos[activeTheme] = e.target.result;
+
+          const img = document.getElementById('headerLogo');
+          img.src = e.target.result;
+          img.style.display = 'block';
+          document.getElementById('logoPlaceholderText').style.display = 'none';
+        };
+        reader.readAsDataURL(file);
+      }
+    });
+
+    document.getElementById('downloadPng').addEventListener('click', async function () {
+      const card = document.getElementById('card');
+
+      try {
+        const canvas = await html2canvas(card, {
+          scale: 2,
+          useCORS: true,
+          onclone: applyCardExportStyles
+        });
+        const selectedTheme = document.querySelector('.theme-button[aria-pressed="true"]').dataset.theme;
+        const selectedPhoto = productPhotos[selectedPhotoIndex];
+        const photoName = selectedPhoto ? selectedPhoto.name.replace(/\.[^.]+$/, '').replace(/-card$/i, '').replace(/[^a-z0-9-_]+/gi, '-').replace(/^-+|-+$/g, '') : 'product';
+        const link = document.createElement('a');
+        link.download = `${selectedTheme}-${photoName || 'product'}-card.png`;
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+        showPhotoStatus('PNG card exported.');
+        window.setTimeout(() => showPhotoStatus(''), 2500);
+      } catch (error) {
+        console.error('Unable to export product card.', error);
+        showPhotoStatus('Unable to export the card. Please try again.');
+      }
+    });
+  </script>
+
+</body>
+</html>

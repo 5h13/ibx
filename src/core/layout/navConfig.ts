@@ -86,6 +86,9 @@ export const NAV_GROUPS: NavGroup[] = [
     label: 'Marketing',
     items: [
       { label: 'Campaigns & Leads', href: '/marketing' },
+      // Build 122: the owner's design tools, inside the app
+      { label: 'Specs Card', href: '/marketing/specs-card' },
+      { label: 'Banner Studio', href: '/marketing/banner-studio' },
       { label: 'Expenses', href: '/marketing/expenses' },
     ],
   },

@@ -2,3 +2,6 @@ node_modules
 .next
 .env.local
 supabase/.env
+
+# Build 122: marketing tools build scratch
+tools/marketing/.tmp/
