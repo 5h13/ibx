@@ -9,6 +9,7 @@ import { useCallback, useEffect, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { errorText } from '@/core/errors/appError';
 import { catalogAction, productDetailAction, saveOrderAction, saveQuoteAction, type CatalogRow, type ProductDetail } from './agentActions';
+import { PasteListPanel, type PastedPick } from '@/shared/catalog/PasteListPanel';
 import { peso, qty } from './AgentHeader';
 import type { AgentClient } from './AgentClients';
 import { Sheet } from './Sheet';
@@ -187,6 +188,32 @@ export function AgentCatalog({ businessId, clients, categories, initialClient, o
     setTimeout(() => setToast(''), 1600);
   };
   const set = (k: number, patch: Partial<Line>) => setLines(lines.map((l) => (l.key === k ? { ...l, ...patch } : l)));
+  // Build 119: Paste list — the client's Messenger list (text, screenshot or PDF) into the basket at this client's prices
+  const [pasting, setPasting] = useState(false);
+  async function addPasted(picks: PastedPick[]) {
+    setError('');
+    const found: { row: CatalogRow; quantity: number }[] = []; const noPrice: string[] = [];
+    for (const p of picks) {
+      const row = (await catalogAction({ business_id: businessId, customer_id: clientId || null, q: p.item_code })).find((r) => r.item_id === p.item_id);
+      if (!row || row.list_price == null) { noPrice.push(p.item_name); continue; }
+      found.push({ row, quantity: p.quantity });
+    }
+    const m: Mode = clientId ? 'client' : '1';
+    setLines((ls) => {
+      let out = [...ls];
+      for (const f of found) {
+        const i = out.findIndex((l) => l.row.item_id === f.row.item_id);
+        if (i >= 0) out = out.map((l, j) => (j === i ? { ...l, quantity: String((Number(l.quantity) || 0) + f.quantity) } : l));
+        else out.push({ key: ++lineKey, row: f.row, quantity: String(f.quantity), mode: m, price: '' });
+      }
+      return out;
+    });
+    setPasting(false);
+    if (noPrice.length) setError(`Not added (no store price yet): ${noPrice.join(', ')}.`);
+    setToast(`Added ${found.length} item${found.length === 1 ? '' : 's'} from the list`);
+    setTimeout(() => setToast(''), 1800);
+    if (found.length) setBasketOpen(true);
+  }
 
   function save(send: boolean) {
     setError('');
@@ -226,7 +253,11 @@ export function AgentCatalog({ businessId, clients, categories, initialClient, o
             {clients.map((c) => <option key={c.customer_id} value={c.customer_id}>{c.legal_name} · Tier {c.price_tier}</option>)}
           </select>
         </label>
-        <input className="input" type="search" value={q} placeholder="Search item, code, brand" onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') search(false); }} />
+        <div className="flex gap-2">
+          <input className="input flex-1" type="search" value={q} placeholder="Search item, code, brand" onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') search(false); }} />
+          <button type="button" className="button-secondary flex-none px-3 text-xs" onClick={() => setPasting(!pasting)} title="Paste the client's list from Messenger / Viber, or a screenshot / PDF">{pasting ? 'Close list' : 'Paste list'}</button>
+        </div>
+        {pasting && <PasteListPanel businessId={businessId} onAdd={(picks) => { addPasted(picks); }} onClose={() => setPasting(false)} />}
         <div className="flex items-center gap-2">
           <select className="input flex-1" value={category} onChange={(e) => setCategory(e.target.value)} aria-label="Category">
             <option value="">All categories</option>{categories.map((c) => <option key={c} value={c}>{c}</option>)}

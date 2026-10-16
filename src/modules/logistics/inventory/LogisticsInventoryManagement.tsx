@@ -1,5 +1,6 @@
 'use client';
 import { Form } from '@/core/ui/Form';
+import { PasteListPanel, type PastedPick } from '@/shared/catalog/PasteListPanel';
 import { errorText } from '@/core/errors/appError';
 import { CatalogItemPicker } from '@/shared/catalog/CatalogItemPicker';
 import Link from 'next/link';
@@ -108,6 +109,16 @@ function Receipts({receipts,receiptItems,locations,items,orders,suppliers,pendin
  const canApproveOver=hasSectionWorkflowRole(profile,'logistics','approver');
  const[poId,setPoId]=useState('');const[poStatus,setPoStatus]=useState<any[]>([]);const[locationId,setLocationId]=useState('');
  const[lines,setLines]=useState<Line[]>([blankLine()]);
+ // Build 119: read the supplier's DR (photo, scan, PDF or pasted text) and fill the delivered quantities of this PO
+ const[readingDr,setReadingDr]=useState(false);const[drNote,setDrNote]=useState('');
+ const fillFromDr=(picks:PastedPick[])=>{
+  const qtyByInv=new Map<string,number>();
+  for(const p of picks){const row=poStatus.find((r:any)=>r.procurement_item_id===p.item_id&&r.inventory_item_id);if(row)qtyByInv.set(row.inventory_item_id,(qtyByInv.get(row.inventory_item_id)??0)+p.quantity);}
+  const notOnDr=lines.filter(l=>l.inventory_item_id&&!qtyByInv.has(l.inventory_item_id));
+  setLines(lines.filter(l=>l.inventory_item_id&&qtyByInv.has(l.inventory_item_id)).map(l=>({...l,quantity:qtyByInv.get(l.inventory_item_id)!})).concat([...qtyByInv.keys()].filter(id=>!lines.some(l=>l.inventory_item_id===id)).map(id=>({...blankLine(),inventory_item_id:id,quantity:qtyByInv.get(id)!,description:poStatus.find((r:any)=>r.inventory_item_id===id)?.description||''}))));
+  setDrNote(`${qtyByInv.size} line(s) filled from the supplier's DR.${notOnDr.length?` Not on the DR, so taken off this receipt: ${notOnDr.map(l=>l.description||itemLabel(l.inventory_item_id)).join(', ')} (use Add line if they did arrive).`:''}`);
+  setReadingDr(false);
+ };
  const[open,setOpen]=useState<string|null>(view.receipt||null);
  const selectedPo=orders.find((o:any)=>o.id===poId);
  const set=(i:number,patch:Partial<Line>)=>setLines(lines.map((x,j)=>j===i?{...x,...patch}:x));
@@ -132,6 +143,12 @@ function Receipts({receipts,receiptItems,locations,items,orders,suppliers,pendin
   <F l="Delivery reference"><input className="input" name="delivery_reference" placeholder="Supplier DR / waybill no."/></F>
   {selectedPo&&<div className="md:col-span-4 rounded-lg bg-slate-50 p-3 text-sm grid md:grid-cols-4 gap-2"><div><div className="text-xs text-slate-500">Purchase order</div><b>{selectedPo.po_number}</b></div><div><div className="text-xs text-slate-500">Order date</div>{selectedPo.order_date||'—'}</div><div><div className="text-xs text-slate-500">Expected delivery</div>{selectedPo.expected_delivery_date||'—'}</div><div><div className="text-xs text-slate-500">Deliver to</div>{selectedPo.delivery_address||'—'}</div><div className="md:col-span-4 text-xs text-slate-500">Lines are pre-filled with each item's outstanding quantity (ordered minus what other receipts of this PO already accepted, in any status). Damaged and rejected units stay outstanding.</div></div>}
   {!selectedPo&&<div className="md:col-span-4 rounded-lg bg-amber-50 p-3 text-xs text-amber-800">Ad-hoc receipt: not linked to a purchase order. It is flagged as ad-hoc in the receiving register and reports.</div>}
+  {selectedPo&&<div className="md:col-span-4 space-y-2">
+   <button type="button" className="button-secondary" disabled={!poStatus.length} onClick={()=>{setReadingDr(!readingDr);setDrNote('')}}>{readingDr?'Close':'Read supplier DR (photo / PDF / text)'}</button>
+   {readingDr&&<PasteListPanel title="Read the supplier's DR" onlyItems={poStatus.map((r:any)=>r.procurement_item_id).filter(Boolean)} onAdd={(picks)=>fillFromDr(picks)} onClose={()=>setReadingDr(false)}
+     hint="Upload a photo, scan or PDF of the supplier's DR (or paste its lines). Each line is matched only to the items on this PO; the quantities become the delivered quantities. Lines that are not on the PO are left out."/>}
+   {drNote&&<p className="text-xs text-slate-600">{drNote}</p>}
+  </div>}
   <div className="md:col-span-4 border rounded-lg p-3 space-y-2"><div className="flex justify-between"><b>Received lines</b><button type="button" className="button-secondary" onClick={()=>setLines([...lines,blankLine()])}>Add line</button></div>
    <div className="hidden md:grid md:grid-cols-12 gap-2 text-xs text-slate-500"><span className="md:col-span-3">Item</span><span>Delivered</span><span>Damaged</span><span>Rejected</span><span>Accepted</span><span className="md:col-span-2">Lot</span><span className="md:col-span-2">Expiry</span>{showCost&&!poId?<span>Unit cost</span>:<span/>}</div>
    {lines.map((l,i)=>{const o=poId?outstanding(l.inventory_item_id):null;const accepted=Number(l.quantity||0)-Number(l.damaged_qty||0)-Number(l.rejected_qty||0);const over=o?accepted-Number(o.outstanding):0;

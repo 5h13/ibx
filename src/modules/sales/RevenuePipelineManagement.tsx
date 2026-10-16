@@ -26,6 +26,7 @@ import {
   type QuotePrice,
 } from "./revenueActions";
 import { PriceHistoryPanel } from "./PriceHistoryPanel";
+import { PasteListPanel, type PastedPick, type PastedMissing } from "@/shared/catalog/PasteListPanel";
 import { GoSignalForm, ORDERABLE, OrderView, QuoteView } from "./QuoteChain";
 import { CustomerBox } from "./storefront/CustomerBox";
 import { addCustomerAction } from "./storefront/actions";
@@ -573,6 +574,7 @@ function QuotationForm({
   // Build 115: engine prices per item for the chosen customer (same as the save)
   const [prices, setPrices] = useState<Record<string, QuotePrice>>({});
   const [historyFor, setHistoryFor] = useState<number | null>(null);
+  const [pasting, setPasting] = useState(false);   // Build 119: Paste list
   const [lines, setLines] = useState([blankLine()]);
   const [picked, setPicked] = useState<Record<string, any>>({});
   // DOC-01: stock on hand per catalog item (quantities only, this business)
@@ -607,6 +609,22 @@ function QuotationForm({
         setLines((ls) => ls.map((l) => (l.catalog_item_id && by[l.catalog_item_id] && !l.price_edited ? { ...l, unit_price: by[l.catalog_item_id].price } : l)));
       })
       .catch(() => undefined);
+  };
+  // Build 119: lines confirmed in Paste list go in after the lines already on the form (an empty first line is replaced)
+  const addPasted = (picks: PastedPick[], missing: PastedMissing[]) => {
+    setPicked((p) => ({ ...p, ...Object.fromEntries(picks.map((x) => [x.item_id, { id: x.item_id, item_code: x.item_code, item_name: x.item_name, unit: x.unit }])) }));
+    const fresh = [
+      ...picks.map((x) => ({ ...blankLine(), catalog_item_id: x.item_id, description: x.item_name, unit: x.unit || "unit", quantity: x.quantity })),
+      ...missing.map((x) => ({ ...blankLine(), not_in_catalog: true, description: x.text, quantity: x.quantity })),
+    ];
+    setLines((ls) => [...ls.filter((l) => l.catalog_item_id || (l.not_in_catalog && l.description)), ...fresh]);
+    loadPrices(customerId, picks.map((x) => x.item_id));
+    const ids = picks.map((x) => x.item_id).filter((id) => !stock[id]);
+    if (ids.length)
+      quoteStockAction(ids)
+        .then((rows) => setStock((st) => ({ ...st, ...Object.fromEntries(rows.map((r) => [r.item_id, { store: r.on_hand_store, all: r.on_hand_business, type: r.item_type }])) })))
+        .catch(() => undefined);
+    setPasting(false);
   };
   const choose = (i: number, item: any) => {
     if (item) setPicked((p) => ({ ...p, [item.id]: item }));
@@ -872,13 +890,21 @@ function QuotationForm({
             )}
           </div>
         ))}
-        <button
-          type="button"
-          className="button-sm"
-          onClick={() => setLines([...lines, blankLine()])}
-        >
-          Add line
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            className="button-sm"
+            onClick={() => setLines([...lines, blankLine()])}
+          >
+            Add line
+          </button>
+          <button type="button" className="button-sm" onClick={() => setPasting(!pasting)} title="Paste a client's list from Messenger / Viber">
+            {pasting ? "Close paste list" : "Paste list"}
+          </button>
+        </div>
+        {pasting && (
+          <PasteListPanel onAdd={addPasted} onClose={() => setPasting(false)} allowMissing missingLabel='Add as "not in catalog" (reason needed)' />
+        )}
       </div>
       <div className="rounded-lg border">
         <div className="flex items-center justify-between border-b bg-slate-50 px-3 py-2">

@@ -45,5 +45,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|brand/|icons/|fonts/|manifest.webmanifest|sw.js|offline.html).*)'], // /brand: public logo files (login page); Build 95: app install files
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|brand/|icons/|fonts/|manifest.webmanifest|sw.js|offline.html|ocr/).*)'], // Build 119: /ocr = the on-device text reader files // /brand: public logo files (login page); Build 95: app install files
 };
