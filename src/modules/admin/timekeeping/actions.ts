@@ -6,6 +6,7 @@ import { createClient } from '@/core/auth/supabaseServer';
 import { getSessionProfile } from '@/core/auth/getSessionProfile';
 import { isAdminTier } from '@/core/auth/types';
 import { calculateAttendance, localDateFor } from './calculator';
+import { myClockAction } from '@/modules/profile/myTime';
 import { notifyWorkflowRole, notifyUsers } from '@/shared/notifications/service';
 
 function biz(p:{user:{business_id:string|null}}):{business_id?:string}{return p.user.business_id?{business_id:p.user.business_id}:{};}
@@ -62,7 +63,7 @@ export async function saveAttendanceAction(fd: FormData) {
   const existing = await db.from('attendance_records').select('id,period_id').eq('employee_id', employeeId).eq('attendance_date', date).maybeSingle();
   if (existing.error) throw appError(existing.error.message);
   if (existing.data?.period_id) { const { data: period } = await db.from('attendance_periods').select('status').eq('id', existing.data.period_id).maybeSingle(); if (period?.status === 'locked') throw appError('This attendance record belongs to a locked period.'); }
-  const values:any = { employee_id: employeeId, attendance_date: date, schedule_id: optional(fd,'schedule_id'), time_in: optional(fd,'time_in'), break_out: optional(fd,'break_out'), break_in: optional(fd,'break_in'), time_out: optional(fd,'time_out'), status: requestedStatus, notes: optional(fd,'notes'), prepared_by: actor.user.id };
+  const values:any = { ...biz(actor), employee_id: employeeId, attendance_date: date, schedule_id: optional(fd,'schedule_id'), time_in: optional(fd,'time_in'), break_out: optional(fd,'break_out'), break_in: optional(fd,'break_in'), time_out: optional(fd,'time_out'), status: requestedStatus, notes: optional(fd,'notes'), prepared_by: actor.user.id };
   const calculated = await calculateForRecord(db, values); Object.assign(values, calculated);
   const {data,error}=await db.from('attendance_records').upsert(values,{onConflict:'employee_id,attendance_date'}).select('id').single();
   if(error||!data) throw appError(error?.message||'Unable to save attendance.');
@@ -79,23 +80,16 @@ export async function recalculateAttendanceAction(fd: FormData) {
 }
 
 export async function clockInAction(){
-  const profile=await getSessionProfile(); if(!profile||!profile.user.is_active) throw appError('Authentication required.'); const db=createClient();
-  const {data:employee}=await db.from('employees').select('id').eq('user_id',profile.user.id).maybeSingle(); if(!employee) throw appError('Your account is not linked to an employee record.');
-  const now=new Date(); const baseDate=localDateFor(now,'Asia/Manila'); const baseAssigned=await findAssignedSchedule(db,employee.id,baseDate); const timeZone=baseAssigned?.schedule?.timezone||'Asia/Manila'; const date=localDateFor(now,timeZone); const assigned=await findAssignedSchedule(db,employee.id,date);
-  const {data:existing}=await db.from('attendance_records').select('id,time_in,time_out').eq('employee_id',employee.id).eq('attendance_date',date).maybeSingle(); if(existing?.time_in) throw appError('You are already clocked in today.');
-  const values:any={employee_id:employee.id,attendance_date:date,time_in:now.toISOString(),status:'present',schedule_id:assigned?.schedule.id||null,prepared_by:profile.user.id};
-  const calculated=assigned?calculateAttendance({attendanceDate:date,schedule:assigned.schedule,timeIn:values.time_in,breakOut:null,breakIn:null,timeOut:null}):{regular_hours:0,overtime_hours:0,late_minutes:0,undertime_minutes:0,status:'present' as const}; Object.assign(values,calculated);
-  const {data,error}=await db.from('attendance_records').upsert(values,{onConflict:'employee_id,attendance_date'}).select('id').single(); if(error||!data) throw appError(error?.message||'Unable to clock in.');
-  await audit(profile.user.id,'attendance_records',data.id,'created',{action:'clock_in',schedule_id:values.schedule_id,late_minutes:calculated.late_minutes}); revalidatePath('/admin/timekeeping'); revalidatePath('/dashboard'); return {ok:true};
+  // Build 120: one clock path for everyone (My Profile and this screen); it stamps the employee's own store,
+  // which the old insert left to the ISHABELLA default and so was refused for PILI / ATON staff.
+  await myClockAction('in'); revalidatePath('/admin/timekeeping'); revalidatePath('/dashboard'); return {ok:true};
 }
 
+
 export async function clockOutAction(){
-  const profile=await getSessionProfile(); if(!profile||!profile.user.is_active) throw appError('Authentication required.'); const db=createClient(); const {data:employee}=await db.from('employees').select('id').eq('user_id',profile.user.id).maybeSingle(); if(!employee) throw appError('Your account is not linked to an employee record.');
-  const now=new Date(); const baseDate=localDateFor(now,'Asia/Manila'); const baseAssigned=await findAssignedSchedule(db,employee.id,baseDate); const timeZone=baseAssigned?.schedule?.timezone||'Asia/Manila'; const date=localDateFor(now,timeZone);
-  const {data:existing}=await db.from('attendance_records').select('*').eq('employee_id',employee.id).eq('attendance_date',date).maybeSingle(); if(!existing?.time_in) throw appError('You have not clocked in today.'); if(existing.time_out) throw appError('You are already clocked out today.');
-  existing.time_out=now.toISOString(); const calculated=await calculateForRecord(db,existing); const {error}=await db.from('attendance_records').update({time_out:now.toISOString(),...calculated,updated_at:new Date().toISOString()}).eq('id',existing.id); if(error) throw appError(error.message);
-  await audit(profile.user.id,'attendance_records',existing.id,'edited',{action:'clock_out',...calculated}); revalidatePath('/admin/timekeeping'); revalidatePath('/dashboard'); return {ok:true};
+  await myClockAction('out'); revalidatePath('/admin/timekeeping'); revalidatePath('/dashboard'); return {ok:true};
 }
+
 
 export async function requestCorrectionAction(fd:FormData){const profile=await getSessionProfile(); if(!profile||!profile.user.is_active) throw appError('Authentication required.'); const db=createClient(); const attendanceId=required(fd,'attendance_id'); const reason=required(fd,'reason'); const {data:record}=await db.from('attendance_records').select('id,employee_id').eq('id',attendanceId).maybeSingle(); if(!record) throw appError('Attendance record not found.'); const {data:employee}=await db.from('employees').select('id,user_id').eq('id',record.employee_id).maybeSingle(); if(!employee || (employee.user_id!==profile.user.id && !isAdminTier(profile))) throw appError('You can only request corrections for your own attendance.'); const status=optional(fd,'requested_status'); if(status) validateStatus(status); const {data,error}=await db.from('attendance_corrections').insert({...biz(profile),attendance_id:attendanceId,requested_by:profile.user.id,reason,requested_time_in:optional(fd,'requested_time_in'),requested_break_out:optional(fd,'requested_break_out'),requested_break_in:optional(fd,'requested_break_in'),requested_time_out:optional(fd,'requested_time_out'),requested_status:status}).select('id,business_id').single(); if(error||!data) throw appError(error?.message||'Unable to request correction.'); await audit(profile.user.id,'attendance_corrections',data.id,'submitted',{attendance_id:attendanceId}); await notifyWorkflowRole(data.business_id,'admin','reviewer',{title:'Attendance correction needs review',message:reason,entity_table:'attendance_corrections',entity_id:data.id,action_url:'/admin/timekeeping'}); revalidatePath('/admin/timekeeping'); return {ok:true};}
 

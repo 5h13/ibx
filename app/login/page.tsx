@@ -25,7 +25,7 @@ export default function LoginPage() {
       setError(result.error);
       return;
     }
-    router.push('/dashboard');
+    router.push('/start');   // Build 120: My Profile until clocked in today
     router.refresh();
   }
 

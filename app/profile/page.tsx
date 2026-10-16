@@ -6,6 +6,8 @@ import EmployeeProfile from '@/modules/admin/employees/EmployeeProfile';
 import SuperAdminAccountProfile from '@/modules/profile/SuperAdminAccountProfile';
 import { AccountLogin } from '@/modules/profile/AccountLogin';
 import { shownEmail } from '@/core/auth/loginEmail';
+import { MyTimePanel } from '@/modules/profile/MyTimePanel';
+import { loadMyTime } from '@/modules/profile/myTime';
 
 const PROFILE_COLUMNS = [
   'id', 'employee_no', 'user_id', 'first_name', 'middle_name', 'last_name', 'suffix', 'preferred_name',
@@ -23,7 +25,8 @@ const ROLE_LABEL: Record<string, string> = {
   super_admin: 'Global Super Admin', business_admin: 'Business Admin', admin: 'Admin', finance: 'Finance', logistics: 'Logistics', marketing: 'Marketing', sales: 'Sales',
 };
 
-export default async function MyProfilePage() {
+export default async function MyProfilePage(props: { searchParams?: Promise<{ tab?: string; tk?: string }> }) {
+  const sp = (await props.searchParams) ?? {};
   const profile = await getSessionProfile();
   if (!profile) redirect('/login');
 
@@ -68,6 +71,7 @@ export default async function MyProfilePage() {
     }
     return (
       <AuthedShell profile={profile}>
+        <div className="mb-3 flex justify-end"><a href="/account/change-password" className="rounded border bg-white px-3 py-2 text-sm">Change password</a></div>
         <AccountLogin username={profile.user.username ?? ''} nickname={profile.user.nickname ?? null} fullName={profile.user.full_name} email={shownEmail(profile.user.email)} />
         <SuperAdminAccountProfile
           fullName={profile.user.full_name}
@@ -101,9 +105,31 @@ export default async function MyProfilePage() {
   if (documentsError) throw new Error(documentsError.message);
   const documents = (documentsRaw ?? []).filter((d: any) => !d.type?.confidential);
 
+  // Build 120: My Profile opens on "Time and leave" (clock in / out, leave, timekeeping); details on the second tab.
+  const tab = sp.tab === 'details' ? 'details' : 'time';
+  const time = tab === 'time' ? await loadMyTime(profile.user.id, sp.tk ?? null) : null;
+  const hour = Number(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila', hour: 'numeric', hourCycle: 'h23' }));
+  const name = profile.user.nickname || (employee as any).preferred_name || (employee as any).first_name || profile.user.full_name || '';
+  const greeting = `Good ${hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : 'evening'}${name ? `, ${name}` : ''}!`;
+  const tabCls = (on: boolean) => `rounded-t-lg border-b-2 px-4 py-2 text-sm ${on ? 'border-slate-900 font-semibold' : 'border-transparent text-slate-500'}`;
+  const tabs = (
+    <div className="mb-4 flex items-end justify-between gap-2 border-b">
+      <div className="flex"><a href="/profile" className={tabCls(tab === 'time')}>Time and leave</a><a href="/profile?tab=details" className={tabCls(tab === 'details')}>My details</a></div>
+      <a href="/account/change-password" className="mb-1 rounded border bg-white px-3 py-1.5 text-sm">Change password</a>
+    </div>
+  );
+  if (tab === 'time' && time) {
+    return (
+      <AuthedShell profile={profile}>
+        {tabs}
+        <MyTimePanel data={time} greeting={greeting} />
+      </AuthedShell>
+    );
+  }
+
   return (
     <AuthedShell profile={profile}>
-      <div className="mb-3 flex justify-end"><a href="/account/change-password" className="rounded border bg-white px-3 py-2 text-sm">Change password</a></div>
+      {tabs}
       <AccountLogin username={profile.user.username ?? ''} nickname={profile.user.nickname ?? null} fullName={profile.user.full_name} email={shownEmail(profile.user.email)} />
       <EmployeeProfile
         employee={{ ...(employee as any), notes: null }}
