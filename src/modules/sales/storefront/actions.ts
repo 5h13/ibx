@@ -258,12 +258,13 @@ export async function checkAction(checkId: string, action: 'deposit' | 'clear' |
 
 export type OrderLine = { id: string; description: string; unit: string | null; ordered: number; unit_price: number; fulfilment: string; catalog_item_id: string | null;
   delivered: number; released: number; received: number | null; on_hand: number | null;
-  reserved_here?: number; reserved_total?: number | null; default_lot_id?: string | null; lots?: LotOption[] };
+  reserved_here?: number; reserved_total?: number | null; default_lot_id?: string | null; lots?: LotOption[];
+  pr_line?: boolean; po?: { po_number: string; status: string; issuance_status: string | null } | null };
 export type OrderDr = { sale_id: string; sale_number: string; dr_number: string; si_number: string | null; sale_date: string; total: number; release_status: string | null;
   released_at: string | null; hardcopy_dr_no?: string | null; invoice_number: string | null; invoice_status: string | null; balance_due: number | null; due_date: string | null };
 export type StoreOrder = { id: string; order_number: string; order_date: string; status: string; quotation_number: string | null; customer_id: string; customer: string;
   client_po: string | null; payment_terms: string | null; vat_applied: boolean; total: number; delivery_address: string | null; requested_delivery_date: string | null;
-  pr_number: string | null; po_numbers: string[]; lines: OrderLine[]; drs: OrderDr[] };
+  pr_number: string | null; pr_status?: string | null; pr_fulfilment?: string | null; po_numbers: string[]; lines: OrderLine[]; drs: OrderDr[] };
 
 export async function orderDrAction(input: { order_id: string; lines: { sales_order_item_id: string; quantity: number; lot_id?: string | null }[]; payments: PaymentInput[]; si_number?: string; notes?: string; hardcopy_dr_no?: string }) {
   await needFn('sales.counter', 'counter sales');
@@ -299,6 +300,15 @@ export async function combinedSiAction(input: { sale_ids: string[]; si_number: s
 // ---------------------------------------------------------------------------
 // Build 78 (migration 20261209): cancelling a sales order releases its stock
 // reservation (Sales approver / Business Admin; only while no DR is out).
+// Build 114: a supplier line whose goods are on hand → from stock (Sales approver / Business Admin; no PO yet, nothing delivered)
+export async function orderLineToStockAction(lineId: string, reason: string) {
+  await signedIn();
+  const r = await rpc<{ order_number: string; pr_number: string | null; pr_cancelled: boolean }>('storefront_order_line_to_stock', { p_line: lineId, p_reason: reason });
+  refresh();
+  revalidatePath('/finance/procurement');
+  return r;
+}
+
 export async function cancelOrderAction(orderId: string, reason: string) {
   await signedIn();
   const r = await rpc<{ order_number: string; pr_number: string | null }>('sales_order_cancel', { p_order: orderId, p_reason: reason });

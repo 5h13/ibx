@@ -126,6 +126,7 @@ export function Sidebar({ profile, shortcuts = [] }: { profile: SessionProfile; 
               {isSuperAdmin && <Link href="/integration" className={`block px-3 py-2 rounded hover:bg-slate-700 text-sm ${pathname.startsWith('/integration') ? 'bg-slate-700 text-white font-medium' : 'text-slate-300'}`}>Integration Control Center</Link>}
               {/* U033 — Business Branding. `businesses` write RLS is Global Super Admin only, same reasoning as Integration Control Center. */}
               {isSuperAdmin && <Link href="/admin/businesses" className={`block px-3 py-2 rounded hover:bg-slate-700 text-sm ${pathname.startsWith('/admin/businesses') ? 'bg-slate-700 text-white font-medium' : 'text-slate-300'}`}>Business Branding</Link>}
+              {isSuperAdmin && <Link href="/admin/operating-modes" className={`block px-3 py-2 rounded hover:bg-slate-700 text-sm ${pathname.startsWith('/admin/operating-modes') ? 'bg-slate-700 text-white font-medium' : 'text-slate-300'}`}>Operating Modes</Link>}
             </div>
           )}
         </div>

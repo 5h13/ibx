@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation';
 import { createClient } from '@/core/auth/supabaseServer';
 import { AuthedShell } from '@/core/layout/AuthedShell';
 import { DashboardView, sumPeriod, type Period, type Today } from '@/modules/dashboard/DashboardView';
+import { AutoApprovalsCard } from '@/modules/dashboard/AutoApprovalsCard';
 
 // Build 73 (SF-28): the Dashboard has three layers (today at the counter, a month, quarters and the year); see
 // DashboardView. The database decides which stores the caller sees and what money figures they may see.
@@ -30,6 +31,8 @@ export default async function DashboardPage(props: { searchParams?: Promise<{ mo
     const { data, error } = await supabase.rpc('dashboard_period', { p_from: from, p_to: to });
     return { rows: (data ?? []) as Period[], error: error?.message };
   };
+  const isAdmin = profile.user.role === 'super_admin' || profile.user.role === 'business_admin';
+  const autoRes = isAdmin ? await supabase.rpc('workflow_recent_auto_approvals', { p_days: 7 }) : { data: [] };
   const [todayRes, monthRes, ...qy] = await Promise.all([
     supabase.rpc('dashboard_today'),
     period(iso(mYear, mMonth, 1), iso(mYear, mMonth, lastDay(mYear, mMonth))),
@@ -52,6 +55,7 @@ export default async function DashboardPage(props: { searchParams?: Promise<{ mo
     <AuthedShell profile={profile}>
       <DashboardView today={today} month={month} quarters={quarters} yearTotal={yearTotal} yearByStore={yearByStore}
         mYear={mYear} mMonth={mMonth} year={year} nowYear={now.getFullYear()} thisMonth={thisMonth} shownMonth={shownMonth} asOf={asOf} err={err} />
+      <AutoApprovalsCard rows={(autoRes.data ?? []) as any[]} />
     </AuthedShell>
   );
 }

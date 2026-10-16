@@ -15,7 +15,7 @@
 import { useState, useTransition } from 'react';
 import { errorText } from '@/core/errors/appError';
 import { PopupAction } from '@/core/ui/PopupAction';
-import { cancelOrderAction, combinedSiAction, orderDrAction, releaseDrAction, type StoreOrder } from './actions';
+import { cancelOrderAction, combinedSiAction, orderDrAction, orderLineToStockAction, releaseDrAction, type StoreOrder } from './actions';
 import { PaymentBlock } from './StorefrontManagement';
 import { lotLabel, num, paysToInput, peso, r2, type Pay } from './storefrontShared';
 
@@ -35,7 +35,43 @@ function payStatus(o: StoreOrder) {
 type DrRow = { key: number; lineId: string; qty: string; lot: string };
 let drRowKey = 0;
 
-function IssueDrForm({ order, vatBooklet, onDone }: { order: StoreOrder; vatBooklet: boolean; onDone: (m: string) => void }) {
+// Build 114: what an "order from supplier" line is waiting for
+function waitingFor(order: StoreOrder, l: StoreOrder['lines'][number]) {
+  if (l.fulfilment !== 'source') return '';
+  if (Number(l.delivered) >= Number(l.ordered)) return '';
+  const received = Number(l.received ?? 0);
+  if (received > Number(l.delivered)) return '';
+  if (!l.po) {
+    if (!l.pr_line) return 'Waiting for the PR (released when the order is approved)';
+    return `Waiting for a PO — ${order.pr_number ?? 'the PR'} has no PO for this line yet (Finance → Procurement → Create PO, Source PR)`;
+  }
+  const st = l.po.status;
+  if (st !== 'approved' && st !== 'posted') return `Waiting for PO ${l.po.po_number} to be approved (now ${st})`;
+  if (l.po.issuance_status !== 'issued') return `Waiting for PO ${l.po.po_number} to be issued to the supplier`;
+  return `Waiting for the goods — PO ${l.po.po_number} is issued; Logistics posts the goods receipt when they arrive`;
+}
+
+function ToStockForm({ line, onDone }: { line: StoreOrder['lines'][number]; onDone: (m: string) => void }) {
+  const [reason, setReason] = useState('');
+  const [error, setError] = useState('');
+  const [pending, start] = useTransition();
+  return (
+    <div className="space-y-2 text-sm">
+      <p className="text-slate-600">Switch <b>{line.description}</b> from &quot;order from supplier&quot; to <b>from stock</b> when the goods are already on hand. The line leaves the PR (a PR left with no lines is cancelled) and is delivered from the store&apos;s stock.</p>
+      <input className="input" placeholder="Why (e.g. 1 found on the shelf)" value={reason} onChange={(e) => setReason(e.target.value)} />
+      {error && <p className="text-red-700">{error}</p>}
+      <button type="button" className="button" disabled={pending || !reason.trim()} onClick={() => start(async () => {
+        setError('');
+        try {
+          const r = await orderLineToStockAction(line.id, reason.trim());
+          onDone(`${line.description} on ${r.order_number} is now from stock.${r.pr_number ? r.pr_cancelled ? ` ${r.pr_number} had no lines left and was cancelled.` : ` It was taken off ${r.pr_number}.` : ''} Open Issue DR again to deliver it.`);
+        } catch (e) { setError(errorText(e)); }
+      })}>{pending ? 'Saving…' : 'Switch to stock'}</button>
+    </div>
+  );
+}
+
+function IssueDrForm({ order, vatBooklet, canSwitch = false, onDone }: { order: StoreOrder; vatBooklet: boolean; canSwitch?: boolean; onDone: (m: string) => void }) {
   const canDeliver = (l: StoreOrder['lines'][number]) => {
     const left = Number(l.ordered) - Number(l.delivered);
     return l.fulfilment === 'source' ? Math.max(0, Math.min(left, Number(l.received ?? 0) - Number(l.delivered))) : Math.max(0, left);
@@ -52,6 +88,7 @@ function IssueDrForm({ order, vatBooklet, onDone }: { order: StoreOrder; vatBook
     return out;
   }));
   const [pays, setPays] = useState<Pay[]>([]);
+  const [switching, setSwitching] = useState('');
   const [si, setSi] = useState('');
   const [dr, setDr] = useState(true);
   const [notes, setNotes] = useState('');
@@ -75,6 +112,12 @@ function IssueDrForm({ order, vatBooklet, onDone }: { order: StoreOrder; vatBook
   return (
     <div className="space-y-4 text-sm">
       <p className="text-slate-600">{order.order_number} · {order.customer}{order.client_po ? ` · client PO ${order.client_po}` : ''} · terms {order.payment_terms ?? '—'} · {order.vat_applied ? 'with VAT' : 'without VAT'}</p>
+      <div className="flex flex-wrap gap-x-6 gap-y-1 rounded bg-slate-50 p-2">
+        <span>Order total <b>{peso(order.total)}</b></span>
+        <span>Delivered so far <b>{peso(r2(order.lines.reduce((s, l) => s + Number(l.delivered) * Number(l.unit_price), 0)))}</b></span>
+        <span>Still to deliver <b>{peso(r2(order.lines.reduce((s, l) => s + Math.max(0, Number(l.ordered) - Number(l.delivered)) * Number(l.unit_price), 0)))}</b></span>
+        {order.pr_number && <span className="text-slate-500">PR {order.pr_number}{order.pr_fulfilment === 'cancelled' ? ' (cancelled)' : ''}{order.po_numbers.length ? ` · PO ${order.po_numbers.join(', ')}` : ' · no PO yet'}</span>}
+      </div>
       <table className="m-cards w-full">
         <thead><tr className="border-b text-left text-xs uppercase text-slate-500"><th className="p-2">Line</th><th className="p-2 text-right">Ordered</th><th className="p-2 text-right">Delivered</th><th className="p-2 text-right">Can deliver now</th><th className="p-2 text-right">Price</th><th className="p-2">Lot</th><th className="p-2 w-28">This DR</th></tr></thead>
         <tbody>{rows.map((r) => {
@@ -86,6 +129,11 @@ function IssueDrForm({ order, vatBooklet, onDone }: { order: StoreOrder; vatBook
           return (
             <tr key={r.key} className={`align-top ${first ? 'border-t' : ''}`}>
               <td className="p-2">{first ? <>{l.description}
+                {waitingFor(order, l) && <div className="text-xs font-medium text-amber-700">{waitingFor(order, l)}</div>}
+                {canSwitch && l.fulfilment === 'source' && !l.po && Number(l.delivered) === 0 && (
+                  switching === l.id
+                    ? <div className="mt-1 rounded border p-2"><ToStockForm line={l} onDone={onDone} /><button type="button" className="mt-1 text-xs underline" onClick={() => setSwitching('')}>Cancel</button></div>
+                    : <button type="button" className="mt-1 text-xs text-blue-700 underline" onClick={() => setSwitching(l.id)}>Goods on hand? Switch to stock</button>)}
                 <div className="text-xs text-slate-500">{l.fulfilment === 'source' ? `from supplier · received ${q(l.received)}` : l.fulfilment === 'service' ? 'service' : `from stock${l.on_hand !== null ? ` · ${q(l.on_hand)} on hand at the store` : ''}${Number(l.reserved_here ?? 0) > 0 ? ` · ${q(l.reserved_here)} reserved for this order` : ''}`}</div>
                 {l.fulfilment === 'stock' && l.on_hand !== null && lineQty(l.id) > Number(l.on_hand) && <div className="text-xs text-red-700">More than on hand — stock will go negative at release</div>}</> : <span className="text-xs text-slate-500">↳ same line, another lot</span>}</td>
               <td className="p-2 text-right">{first ? `${q(l.ordered)} ${l.unit ?? ''}` : ''}</td><td className="p-2 text-right">{first ? q(l.delivered) : ''}</td><td className="p-2 text-right">{first ? q(max) : ''}</td>
@@ -116,6 +164,9 @@ function IssueDrForm({ order, vatBooklet, onDone }: { order: StoreOrder; vatBook
         <input className="input" placeholder="Hardcopy DR no. (optional)" maxLength={40} value={hardcopy} onChange={(e) => setHardcopy(e.target.value)} />
       </div>
       {error && <div className="rounded border border-red-200 bg-red-50 p-3 text-red-700">{error}</div>}
+      {!(total > 0) && <p className="text-right text-xs text-amber-700">{order.lines.every((l) => canDeliver(l) <= 0)
+        ? 'Nothing can be delivered yet: every open line waits for the supplier\'s goods (see each line above).'
+        : 'Enter the quantity to deliver on at least one line.'}</p>}
       <div className="flex justify-end"><button type="button" className="button" disabled={pending || !(total > 0)} onClick={() => start(async () => {
         setError('');
         const missing = rows.find((r) => num(r.qty) > 0 && !r.lot && (lineOf(r.lineId).lots ?? []).length > 0);
@@ -206,7 +257,7 @@ export function OrdersTab({ orders, readOnly, canRelease, canCancel = false, vat
                 <span className="rounded bg-slate-100 px-2 py-0.5">Released {q(released)}/{q(ordered)}</span>
                 <span className={`rounded px-2 py-0.5 ${payStatus(o).startsWith('Paid') ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>{payStatus(o)}</span>
                 <span className="rounded bg-slate-100 px-2 py-0.5 capitalize">{o.status}</span>
-                {!readOnly && open && <PopupAction label="Issue DR" title={`DR from ${o.order_number}`} wide>{(close) => <IssueDrForm order={o} vatBooklet={vatBooklet} onDone={(m) => { onMessage(m); close(); }} />}</PopupAction>}
+                {!readOnly && open && <PopupAction label="Issue DR" title={`DR from ${o.order_number}`} wide>{(close) => <IssueDrForm order={o} vatBooklet={vatBooklet} canSwitch={canCancel} onDone={(m) => { onMessage(m); close(); }} />}</PopupAction>}
                 {!readOnly && o.drs.some((d) => !d.si_number) && <PopupAction label="Enter SI" title={`SI for ${o.order_number}`} variant="secondary" wide>{(close) => <EnterSiForm order={o} onDone={(m) => { onMessage(m); close(); }} />}</PopupAction>}
                 {canCancel && o.drs.length === 0 && <PopupAction label="Cancel order…" title={`Cancel ${o.order_number}`} variant="secondary">{(close) => <CancelOrderForm order={o} onDone={(m) => { onMessage(m); close(); }} />}</PopupAction>}
               </div>
