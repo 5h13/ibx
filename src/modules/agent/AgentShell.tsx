@@ -13,6 +13,7 @@ import type { AgentContext } from './agentContext';
 import { AgentNav, AgentStoreSwitch, InstallButton, AgentMenu, AgentNotices, ResumeLastScreen } from './AgentShellClient';
 import { Suspense } from 'react';
 import { AgentNotLinked } from './AgentHeader';
+import { CalculatorButton } from '@/core/ui/Calculator';
 
 export async function AgentShell({ ctx, title, hint, children }: { ctx: AgentContext; title: string; hint?: string; children?: ReactNode }) {
   if (ctx.profile.user.must_change_password) redirect('/account/change-password');
@@ -45,6 +46,7 @@ export async function AgentShell({ ctx, title, hint, children }: { ctx: AgentCon
             <AgentStoreSwitch stores={ctx.stores} store={ctx.store} />
           </div>
           <InstallButton />
+          <CalculatorButton compact />
           <AgentNotices data={(notices as any) ?? { unread: 0, items: [] }} />
           <AgentMenu name={displayName(ctx.profile.user)} office={ctx.profile.user.role !== 'agent'} />
         </div>

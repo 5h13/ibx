@@ -8,6 +8,8 @@ import { AccountLogin } from '@/modules/profile/AccountLogin';
 import { shownEmail } from '@/core/auth/loginEmail';
 import { MyTimePanel } from '@/modules/profile/MyTimePanel';
 import { loadMyTime } from '@/modules/profile/myTime';
+import { CashAdvanceCard } from '@/modules/cashAdvance/CashAdvanceCard';
+import { loadMyCashAdvance } from '@/modules/cashAdvance/actions';
 
 const PROFILE_COLUMNS = [
   'id', 'employee_no', 'user_id', 'first_name', 'middle_name', 'last_name', 'suffix', 'preferred_name',
@@ -108,6 +110,7 @@ export default async function MyProfilePage(props: { searchParams?: Promise<{ ta
   // Build 120: My Profile opens on "Time and leave" (clock in / out, leave, timekeeping); details on the second tab.
   const tab = sp.tab === 'details' ? 'details' : 'time';
   const time = tab === 'time' ? await loadMyTime(profile.user.id, sp.tk ?? null) : null;
+  const cashAdvance = tab === 'time' ? await loadMyCashAdvance() : null;  // Build 126 (UIA-44)
   const hour = Number(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila', hour: 'numeric', hourCycle: 'h23' }));
   const name = profile.user.nickname || (employee as any).preferred_name || (employee as any).first_name || profile.user.full_name || '';
   const greeting = `Good ${hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : 'evening'}${name ? `, ${name}` : ''}!`;
@@ -123,6 +126,7 @@ export default async function MyProfilePage(props: { searchParams?: Promise<{ ta
       <AuthedShell profile={profile}>
         {tabs}
         <MyTimePanel data={time} greeting={greeting} />
+        <div className="mt-4"><CashAdvanceCard data={cashAdvance} /></div>
       </AuthedShell>
     );
   }

@@ -43,6 +43,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { label: 'Internal Requests', href: '/admin/requests' },
       { label: 'Fleet Management', href: '/admin/fleet' },
       { label: 'Expense Allowances', href: '/admin/allowances', show: isAdminTier },
+      { label: 'Cash Advances', href: '/admin/cash-advances', show: isAdminTier },
     ],
   },
   {
@@ -63,6 +64,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { label: 'Storefront (view)', href: '/sales/storefront', fn: 'finance.ar' },
       { label: 'Opening Stock', href: '/finance/opening-stock', fn: 'finance.accounting' },
       { label: 'Payroll', href: '/finance/payroll', fn: 'finance.payroll' },
+      { label: 'Cash Advances', href: '/finance/cash-advances', fn: 'finance.payroll' },
       { label: 'Bank / Cash & Reconciliation', href: '/finance/bank-cash', fn: 'finance.cash' },
       { label: 'Agent Commissions', href: '/sales/agent-commissions', fn: 'finance.expenses' },
       { label: 'Back Office Commission', href: '/sales/back-office-commission', fn: 'finance.expenses' },
