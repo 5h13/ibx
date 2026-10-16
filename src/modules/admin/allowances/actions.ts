@@ -1,6 +1,6 @@
 'use server';
-// Build 91 — expense allowances: a monthly limit per person (employee login or
-// agent) and expense category. Going over is flagged for the approver, not blocked.
+// Build 91 — expense allowances: a monthly limit per employee and expense category
+// (Build 125, UIA-45: employees only — agents are not given allowances). Going over is flagged for the approver, not blocked.
 import { revalidatePath } from 'next/cache';
 import { appError } from '@/core/errors/appError';
 import { createClient } from '@/core/auth/supabaseServer';
@@ -24,9 +24,10 @@ export async function saveAllowanceAction(input: { id?: string | null; person: s
     if (error) throw appError(error.message);
   } else {
     const [kind, id] = String(input.person).split(':');
-    if (!id || !['user', 'agent'].includes(kind)) throw appError('Choose the person.');
+    if (kind === 'agent') throw appError('Allowances are for employees only; agents are not given allowances.');
+    if (!id || kind !== 'user') throw appError('Choose the employee.');
     if (!input.category_id) throw appError('Choose the expense category.');
-    const { error } = await db.from('expense_allowances').insert({ business_id: p.user.business_id, user_id: kind === 'user' ? id : null, agent_id: kind === 'agent' ? id : null,
+    const { error } = await db.from('expense_allowances').insert({ business_id: p.user.business_id, user_id: kind === 'user' ? id : null, agent_id: null,
       category_id: input.category_id, monthly_limit: limit, notes: input.notes || null, created_by: p.user.id });
     if (error) throw appError(error.code === '23505' ? 'This person already has an allowance for that category — edit it instead.' : error.message);
   }

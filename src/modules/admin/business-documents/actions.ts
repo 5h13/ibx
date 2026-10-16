@@ -134,6 +134,11 @@ export async function updateBusinessDocumentStatusAction(fd: FormData) {
   if (!['pending', 'verified', 'rejected', 'expired', 'archived'].includes(status)) throw appError('Invalid document status.');
   const db = createClient();
   const patch: Record<string, unknown> = { status };
+  if (status === 'verified') {
+    // Build 125 (UIA-39): a document is verified against its file.
+    const { data: cur } = await db.from('business_documents').select('storage_path').eq('id', id).maybeSingle();
+    if (!cur?.storage_path) throw appError('Attach the document\'s file first (Edit), then verify it.');
+  }
   if (status === 'verified') { patch.verified_by = actor.user.id; patch.verified_at = new Date().toISOString(); patch.rejection_reason = null; }
   if (status === 'rejected') patch.rejection_reason = optional(fd, 'rejection_reason') || 'Document rejected.';
   const { error } = await db.from('business_documents').update(patch).eq('id', id);
@@ -168,4 +173,52 @@ export async function getBusinessDocumentDownloadUrlAction(documentId: string) {
   if (error || !data?.signedUrl) throw appError(error?.message || 'Unable to create download link.');
   await audit(actor.user.id, documentId, 'downloaded', { file_name: doc.original_file_name });
   return { url: data.signedUrl, fileName: doc.original_file_name };
+}
+
+// Build 125 (UIA-39): edit a business document — its details and, optionally, attach or replace the
+// file. Editing a verified document sends it back to "pending" for verification again.
+export async function updateBusinessDocumentAction(fd: FormData) {
+  const actor = await requireAdmin();
+  const id = required(fd, 'document_id');
+  const dbc = createClient();
+  const db = createAdminClient(); // storage bucket has no RLS policies configured; keep on service role
+  const { data: doc } = await dbc.from('business_documents')
+    .select('id,business_id,document_type_id,document_name,document_number,issued_date,expiry_date,notes,status,storage_path,original_file_name')
+    .eq('id', id).maybeSingle();
+  if (!doc) throw appError('Document not found.');
+  const { data: type } = await dbc.from('business_document_types').select('requires_expiry').eq('id', doc.document_type_id).maybeSingle();
+  const issued = optional(fd, 'issued_date');
+  const expiry = optional(fd, 'expiry_date');
+  if (issued && expiry && expiry < issued) throw appError('Expiry date cannot be before issued date.');
+  if (type?.requires_expiry && !expiry) throw appError('Expiry date is required for this document type.');
+  const fileValue = fd.get('file');
+  const file = fileValue instanceof File && fileValue.size > 0 ? fileValue : null;
+  if (file) {
+    if (file.size > MAX_FILE_SIZE) throw appError('File exceeds the 10 MB limit.');
+    if (!ALLOWED.has(file.type)) throw appError('Only PDF, JPG, PNG, and WEBP files are allowed.');
+  }
+  const patch: Record<string, unknown> = {
+    document_name: required(fd, 'document_name'), document_number: optional(fd, 'document_number'),
+    issued_date: issued, expiry_date: expiry, notes: optional(fd, 'notes'), updated_at: new Date().toISOString(),
+  };
+  let newPath: string | null = null;
+  if (file) {
+    const ext = (file.name.split('.').pop() || 'bin').toLowerCase().replace(/[^a-z0-9]/g, '');
+    newPath = `${doc.business_id}/${id}-${Date.now()}.${ext}`;
+    const { error: uploadError } = await db.storage.from(BUCKET).upload(newPath, new Uint8Array(await file.arrayBuffer()), { contentType: file.type, upsert: false });
+    if (uploadError) throw appError(`Unable to store document: ${uploadError.message}`);
+    Object.assign(patch, { storage_path: newPath, original_file_name: file.name, mime_type: file.type, file_size: file.size });
+  }
+  const changed = ['document_name', 'document_number', 'issued_date', 'expiry_date'].some((k) => ((doc as any)[k] ?? null) !== (patch[k] ?? null)) || Boolean(file);
+  if (doc.status === 'verified' && changed) Object.assign(patch, { status: 'pending', verified_by: null, verified_at: null });
+  const { error } = await dbc.from('business_documents').update(patch).eq('id', id);
+  if (error) { if (newPath) await db.storage.from(BUCKET).remove([newPath]); throw appError(error.message); }
+  if (newPath && doc.storage_path) await db.storage.from(BUCKET).remove([doc.storage_path]);
+  await audit(actor.user.id, id, 'edited', {
+    before: { document_name: doc.document_name, document_number: doc.document_number, issued_date: doc.issued_date, expiry_date: doc.expiry_date, file: doc.original_file_name },
+    after: { document_name: patch.document_name, document_number: patch.document_number, issued_date: issued, expiry_date: expiry, file: file?.name ?? doc.original_file_name },
+    back_to_review: doc.status === 'verified' && changed,
+  });
+  revalidatePath('/admin/business-documents');
+  return { ok: true };
 }

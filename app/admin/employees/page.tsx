@@ -31,6 +31,15 @@ export default async function EmployeesPage() {
     db.from('hr_positions').select('id,name,active').order('name'),
     db.from('work_locations').select('id,name,active').order('name'),
   ]);
+  // Build 125 (UIA-40): schedules for the Add / Edit employee picker, and each employee's schedule today
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+  const [{ data: schedules }, { data: assignments }, { data: settings }] = await Promise.all([
+    db.from('work_schedules').select('id,name').order('name'),
+    db.from('employee_schedule_assignments').select('employee_id,schedule_id,effective_from,effective_to').lte('effective_from', today).or(`effective_to.is.null,effective_to.gte.${today}`).order('effective_from', { ascending: false }),
+    db.from('hr_store_settings').select('default_schedule_id').eq('business_id', profile.user.business_id ?? '00000000-0000-0000-0000-000000000000').maybeSingle(),
+  ]);
+  const scheduleNow: Record<string, string> = {};
+  for (const a of (assignments ?? []) as any[]) if (!scheduleNow[a.employee_id]) scheduleNow[a.employee_id] = a.schedule_id;
   if (employeeError) throw new Error(employeeError.message);
   if (usersError) throw new Error(usersError.message);
   if (deptError) throw new Error(deptError.message);
@@ -41,5 +50,5 @@ export default async function EmployeesPage() {
   // the value was still shipped in the page payload. Strip it server-side.
   const visibleEmployees = canViewConfidential ? (employees ?? []) : (employees ?? []).map((e: any) => ({ ...e, notes: null }));
 
-  return <AuthedShell profile={profile}><EmployeeManagement employees={visibleEmployees as any} users={((users ?? []) as any[]).map((u: any) => ({ ...u, email: isLoginOnlyEmail(u.email) ? u.username : u.email })) as any} departments={(departments ?? []) as any} positions={(positions ?? []) as any} workLocations={(workLocations ?? []) as any} canDelete={isAdminTier(profile)} canViewConfidential={canViewConfidential} /></AuthedShell>;
+  return <AuthedShell profile={profile}><EmployeeManagement employees={visibleEmployees as any} users={((users ?? []) as any[]).map((u: any) => ({ ...u, email: isLoginOnlyEmail(u.email) ? u.username : u.email })) as any} departments={(departments ?? []) as any} positions={(positions ?? []) as any} workLocations={(workLocations ?? []) as any} canDelete={isAdminTier(profile)} canViewConfidential={canViewConfidential} schedules={(schedules ?? []) as any} scheduleNow={scheduleNow} defaultScheduleId={(settings as any)?.default_schedule_id ?? null} /></AuthedShell>;
 }

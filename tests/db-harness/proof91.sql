@@ -103,7 +103,8 @@ reset role; select proof.as_owner();
 select proof.set('meals', (select id::text from admin_expense_categories where code = 'meals'));
 select proof.set('transpo', (select id::text from admin_expense_categories where code = 'transportation'));
 select proof.as_user('00000000-0000-0000-0000-000000000011');
-insert into expense_allowances(business_id, agent_id, category_id, monthly_limit) values (proof.get('pili')::uuid, proof.get('ag')::uuid, proof.get('meals')::uuid, 500);
+-- Build 125 (UIA-45): allowances are for employees only; agents get none
+select proof.fails($$insert into expense_allowances(business_id, agent_id, category_id, monthly_limit) values (proof.get('pili')::uuid, proof.get('ag')::uuid, proof.get('meals')::uuid, 500)$$, 'employees only', 'agents are not given allowances (Build 125)');
 select proof.as_user('00000000-0000-0000-0000-000000000031');
 select proof.fails(format($$select public.agent_expense_submit('{"business_id":"%s","category_id":"%s","amount":300,"expense_date":"%s","description":"Taxi"}')$$, proof.get('pili'), proof.get('transpo'), current_date),
                    'photo', 'a receipt photo is required');
@@ -111,14 +112,14 @@ select proof.set('e1', public.agent_expense_submit(format('{"business_id":"%s","
 select proof.set('e2', public.agent_expense_submit(format('{"business_id":"%s","category_id":"%s","amount":300,"expense_date":"%s","description":"Dinner"}', proof.get('pili'), proof.get('meals'), current_date)::jsonb)::text);
 select proof.set('e3', public.agent_expense_submit(format('{"business_id":"%s","category_id":"%s","amount":250,"expense_date":"%s","description":"Taxi","photo_path":"x/taxi.jpg"}', proof.get('pili'), proof.get('transpo'), current_date)::jsonb)::text);
 select proof.ok((select x->>'no_receipt' = 'true' and (x->>'over_allowance')::numeric = 0 from jsonb_array_elements(public.agent_expenses_list()) x where x->>'id' = proof.get('e1')), 'meals can be filed without a photo (marked no receipt)');
-select proof.ok((select (x->>'over_allowance')::numeric from jsonb_array_elements(public.agent_expenses_list()) x where x->>'id' = proof.get('e2')) = 200, 'the second meal is flagged ₱200 over the ₱500 allowance');
+select proof.ok((select (x->>'over_allowance')::numeric from jsonb_array_elements(public.agent_expenses_list()) x where x->>'id' = proof.get('e2')) = 0, 'with no agent allowance nothing is flagged over allowance');
 select proof.as_user('00000000-0000-0000-0000-000000000013');
 select proof.fails($$select public.agent_expense_decide(proof.get('e1')::uuid, true)$$, 'Business Admin', 'a cashier cannot approve agent expenses');
 select proof.as_user('00000000-0000-0000-0000-000000000011');
 select proof.set('x', public.agent_expense_decide(proof.get('e2')::uuid, true)::text);
 select proof.fails($$select public.agent_expense_decide(proof.get('e3')::uuid, false, '')$$, 'why', 'a rejection needs a reason');
 reset role; select proof.as_owner();
-select proof.ok((select status::text = 'approved' and amount = 300 and notes like '%Over allowance by ₱200%' from expenses where id = proof.get('x')::uuid), 'approved: an approved Sales expense for Finance to pay, noting the overage');
+select proof.ok((select status::text = 'approved' and amount = 300 and coalesce(notes, '') not like '%Over allowance%' from expenses where id = proof.get('x')::uuid), 'approved: an approved Sales expense for Finance to pay');
 
 \echo == G. employee allowances
 insert into expense_allowances(business_id, user_id, category_id, monthly_limit) values (proof.get('pili')::uuid, '00000000-0000-0000-0000-000000000013', proof.get('transpo')::uuid, 100);

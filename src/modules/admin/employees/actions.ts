@@ -112,8 +112,10 @@ function employeePayload(formData: FormData, includeNotes: boolean) {
     last_name: lastName,
     suffix: optional(formData, 'suffix'),
     preferred_name: optional(formData, 'preferred_name'),
-    department: optional(formData, 'department'),
-    position_title: optional(formData, 'position_title'),
+    // Build 125: the typed department / position follow the chosen master entry (database trigger);
+    // the old typed fields are only sent for records not yet linked to the masters.
+    ...(formData.has('department') ? { department: optional(formData, 'department') } : {}),
+    ...(formData.has('position_title') ? { position_title: optional(formData, 'position_title') } : {}),
     employment_type: employmentType,
     employment_status: employmentStatus,
     hire_date: hireDate,
@@ -154,6 +156,7 @@ export async function createEmployeeAction(formData: FormData) {
   const { data, error } = await admin.from('employees').insert({ ...biz(actor), ...payload, user_id: userId }).select('id,employee_no').single();
   if (error || !data) throw appError(error?.message ?? 'Unable to create employee.');
   await audit(actor.user.id, data.id, 'created', { employee_no: data.employee_no, user_id: userId });
+  await applySchedule(actor, data.id, formData);
   revalidatePath('/admin/employees');
   return { ok: true };
 }
@@ -178,6 +181,7 @@ export async function updateEmployeeAction(formData: FormData) {
   const { error } = await admin.from('employees').update({ ...payload, user_id: userId }).eq('id', employeeId);
   if (error) throw appError(error.message);
   await audit(actor.user.id, employeeId, 'edited', { user_id: userId, status: payload.employment_status });
+  await applySchedule(actor, employeeId, formData);
   revalidatePath('/admin/employees');
   return { ok: true };
 }
@@ -221,4 +225,36 @@ export async function setEmployeeStatusAction(formData: FormData) {
   await audit(actor.user.id, employeeId, 'edited', { employment_status: status });
   revalidatePath('/admin/employees');
   return { ok: true };
+}
+
+// Build 125 (UIA-40): the work schedule is chosen on Add / Edit employee. "schedule_id" empty means
+// the store's default schedule. A change starts on "schedule_from" (default today); the assignment
+// in force before it ends the day before, so past days keep the schedule they had.
+async function applySchedule(actor: SessionProfile, employeeId: string, fd: FormData) {
+  if (!fd.has('schedule_id')) return;
+  const want = optional(fd, 'schedule_id');
+  const from = optional(fd, 'schedule_from') || new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+  const db = createClient();
+  const { data: cur, error } = await db.from('employee_schedule_assignments').select('id,schedule_id,effective_from,effective_to')
+    .eq('employee_id', employeeId).lte('effective_from', from).or(`effective_to.is.null,effective_to.gte.${from}`)
+    .order('effective_from', { ascending: false }).limit(1).maybeSingle();
+  if (error) throw appError(error.message);
+  if ((cur?.schedule_id ?? null) === want) return;
+  if (cur && cur.effective_from === from) {
+    const q = want ? db.from('employee_schedule_assignments').update({ schedule_id: want }).eq('id', cur.id)
+                   : db.from('employee_schedule_assignments').delete().eq('id', cur.id);
+    const { error: e } = await q; if (e) throw appError(e.message);
+  } else {
+    if (cur) {
+      const d = new Date(`${from}T00:00:00Z`); d.setUTCDate(d.getUTCDate() - 1);
+      const { error: e } = await db.from('employee_schedule_assignments').update({ effective_to: d.toISOString().slice(0, 10) }).eq('id', cur.id);
+      if (e) throw appError(e.message);
+    }
+    if (want) {
+      const { error: e } = await db.from('employee_schedule_assignments').insert({ ...biz(actor), employee_id: employeeId, schedule_id: want, effective_from: from });
+      if (e) throw appError(e.message);
+    }
+  }
+  await audit(actor.user.id, employeeId, 'edited', { work_schedule: want ?? 'store default', from });
+  revalidatePath('/admin/timekeeping');
 }

@@ -6,6 +6,7 @@ import { createClient } from '@/core/auth/supabaseServer';
 import { getSessionProfile } from '@/core/auth/getSessionProfile';
 import { isAdminTier } from '@/core/auth/types';
 import { calculateAttendance, localDateFor } from './calculator';
+import { scheduleOn } from './schedule';
 import { myClockAction } from '@/modules/profile/myTime';
 import { notifyWorkflowRole, notifyUsers } from '@/shared/notifications/service';
 
@@ -28,32 +29,20 @@ export async function createScheduleAction(fd:FormData){const actor=await requir
 
 export async function assignScheduleAction(fd:FormData){const actor=await requireAdmin(); const db=createClient(); const employeeId=required(fd,'employee_id'); const scheduleId=required(fd,'schedule_id'); const from=required(fd,'effective_from'); const to=optional(fd,'effective_to'); if(to&&to<from) throw appError('Effective-to date cannot be before effective-from.'); const {data,error}=await db.from('employee_schedule_assignments').insert({...biz(actor),employee_id:employeeId,schedule_id:scheduleId,effective_from:from,effective_to:to}).select('id').single(); if(error||!data) throw appError(error?.message||'Unable to assign schedule.'); await audit(actor.user.id,'employee_schedule_assignments',data.id,'created',{employee_id:employeeId,schedule_id:scheduleId,effective_from:from,effective_to:to}); revalidatePath('/admin/timekeeping'); return {ok:true};}
 
-async function findAssignedSchedule(db: ReturnType<typeof createClient>, employeeId: string, date: string) {
-  const { data: assignment, error } = await db.from('employee_schedule_assignments').select('id,schedule_id,effective_from,effective_to').eq('employee_id', employeeId).lte('effective_from', date).or(`effective_to.is.null,effective_to.gte.${date}`).order('effective_from', { ascending: false }).limit(1).maybeSingle();
-  if (error) throw appError(error.message);
-  if (!assignment) return null;
-  const { data: schedule, error: scheduleError } = await db.from('work_schedules').select('*').eq('id', assignment.schedule_id).single();
-  if (scheduleError) throw appError(scheduleError.message);
-  return { assignment, schedule };
-}
-
 async function calculateForRecord(db: ReturnType<typeof createClient>, record: any) {
-  let schedule = null;
+  let schedule: any = null;
   if (record.schedule_id) {
     const { data, error } = await db.from('work_schedules').select('*').eq('id', record.schedule_id).maybeSingle();
     if (error) throw appError(error.message);
     schedule = data;
   }
-  if (!schedule) {
-    const assigned = await findAssignedSchedule(db, record.employee_id, record.attendance_date);
-    if (!assigned) return { schedule_id: null, regular_hours: 0, overtime_hours: 0, late_minutes: 0, undertime_minutes: 0, status: record.status || 'present' };
-    schedule = assigned.schedule;
-    record.schedule_id = schedule.id;
-  }
+  // Build 125: the employee's assignment, else the store's default schedule; with neither, the
+  // hours actually worked are counted (UIA-38) instead of a silent 0h.
+  if (!schedule) schedule = await scheduleOn(db as any, record.employee_id, record.attendance_date);
   const calc = calculateAttendance({ attendanceDate: record.attendance_date, schedule, timeIn: record.time_in, breakOut: record.break_out, breakIn: record.break_in, timeOut: record.time_out });
   const specialStatuses = ['absent','half_day','leave','holiday','rest_day','official_business','work_from_home'];
   const status = specialStatuses.includes(record.status) ? record.status : calc.status;
-  return { schedule_id: schedule.id, ...calc, status };
+  return { schedule_id: schedule?.id ?? null, ...calc, status };
 }
 
 export async function saveAttendanceAction(fd: FormData) {
@@ -109,7 +98,32 @@ export async function approveCorrectionAction(fd:FormData){
   revalidatePath('/admin/timekeeping'); return {ok:true};
 }
 
-export async function closePeriodAction(fd:FormData){const actor=await requireAdmin(); const id=required(fd,'period_id'); const db=createClient(); const {data,error}=await db.from('attendance_periods').update({status:'locked',locked_at:new Date().toISOString(),locked_by:actor.user.id}).eq('id',id).neq('status','locked').select('id').single(); if(error||!data) throw appError(error?.message||'Unable to lock period.'); await audit(actor.user.id,'attendance_periods',id,'approved',{action:'locked'}); revalidatePath('/admin/timekeeping'); return {ok:true};}
+// Build 125 (UIA-43): periods are created automatically per the store's pay cycle; HR locks a
+// period after it ends (no pending corrections), the Business Admin may reopen it with a reason
+// while no payroll run beyond draft uses it. The rules live in the database functions.
+export async function closePeriodAction(fd:FormData){const actor=await requireAdmin(); const id=required(fd,'period_id'); const {error}=await createClient().rpc('attendance_period_lock',{p_period:id}); if(error) throw appError(error.message); void actor; revalidatePath('/admin/timekeeping'); return {ok:true};}
+export async function reopenPeriodAction(fd:FormData){await requireAdmin(); const {error}=await createClient().rpc('attendance_period_reopen',{p_period:required(fd,'period_id'),p_reason:required(fd,'reason')}); if(error) throw appError(error.message); revalidatePath('/admin/timekeeping'); return {ok:true};}
+
+/** Store HR settings: pay cycle and the default work schedule (UIA-40 / UIA-43). */
+export async function saveHrSettingsAction(fd:FormData){
+  const actor=await requireAdmin(); const b=actor.user.business_id; if(!b) throw appError('Select a store in "Acting as" first.');
+  const cycle=required(fd,'pay_cycle'); if(!['semi_monthly','monthly'].includes(cycle)) throw appError('Choose the pay cycle.');
+  const db=createClient();
+  const {data:prev}=await db.from('hr_store_settings').select('pay_cycle,default_schedule_id').eq('business_id',b).maybeSingle();
+  const {error}=await db.from('hr_store_settings').upsert({business_id:b,pay_cycle:cycle,default_schedule_id:optional(fd,'default_schedule_id'),updated_by:actor.user.id},{onConflict:'business_id'});
+  if(error) throw appError(error.message);
+  await audit(actor.user.id,'hr_store_settings',b,'edited',{before:prev??null,pay_cycle:cycle,default_schedule_id:optional(fd,'default_schedule_id')});
+  revalidatePath('/admin/timekeeping'); revalidatePath('/admin/employees'); return {ok:true};
+}
+
+/** Edit a schedule. Days already calculated keep their hours until recalculated. */
+export async function updateScheduleAction(fd:FormData){
+  const actor=await requireAdmin(); const db=createClient(); const id=required(fd,'schedule_id'); const name=required(fd,'name');
+  const days=['monday','tuesday','wednesday','thursday','friday','saturday','sunday']; const payload:any={name,timezone:optional(fd,'timezone')||'Asia/Manila',grace_minutes:Number(fd.get('grace_minutes')||0),updated_at:new Date().toISOString()};
+  for(const d of days){payload[`${d}_in`]=optional(fd,`${d}_in`);payload[`${d}_out`]=optional(fd,`${d}_out`);payload[`${d}_break_start`]=optional(fd,`${d}_break_start`);payload[`${d}_break_end`]=optional(fd,`${d}_break_end`);}
+  const {data,error}=await db.from('work_schedules').update(payload).eq('id',id).select('id'); if(error) throw appError(error.message); if(!data?.length) throw appError('Schedule not found.');
+  await audit(actor.user.id,'work_schedules',id,'edited',{name}); revalidatePath('/admin/timekeeping'); return {ok:true};
+}
 
 // U007 — Timekeeping Reminders. No cron/scheduler exists anywhere in this
 // codebase, so this is a manually-triggered "check & notify" server action

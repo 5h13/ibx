@@ -19,10 +19,23 @@ export function zonedTimeToDate(date:string,time:string,timeZone:string,dayOffse
 function minutesBetween(a:Date,b:Date){return Math.max(0,(b.getTime()-a.getTime())/60000);}
 function roundHours(minutes:number){return Math.round((minutes/60)*100)/100;}
 
+// Build 125 (UIA-38): hours actually worked (time in to time out, less the break), used when there
+// is no schedule to measure against.
+function workedOf(args:{timeIn:string|null;breakOut:string|null;breakIn:string|null;timeOut:string|null}){
+  if(!args.timeIn||!args.timeOut)return null;
+  let w=minutesBetween(new Date(args.timeIn),new Date(args.timeOut));
+  if(args.breakOut&&args.breakIn)w=Math.max(0,w-minutesBetween(new Date(args.breakOut),new Date(args.breakIn)));
+  return w;
+}
+
 export function calculateAttendance(args:{attendanceDate:string;schedule:any;timeIn:string|null;breakOut:string|null;breakIn:string|null;timeOut:string|null}):AttendanceCalculation{
-  const [y,m,d]=args.attendanceDate.split('-').map(Number);const weekday=new Date(Date.UTC(y,m-1,d)).getUTCDay();const key=DAY_KEYS[weekday];const s=args.schedule;
+  const s=args.schedule;
+  // No schedule: the hours worked count as regular hours; nothing is late or short.
+  if(!s){const w=workedOf(args);return {regular_hours:w==null?0:roundHours(w),overtime_hours:0,late_minutes:0,undertime_minutes:0,status:w==null?'incomplete':'present'};}
+  const [y,m,d]=args.attendanceDate.split('-').map(Number);const weekday=new Date(Date.UTC(y,m-1,d)).getUTCDay();const key=DAY_KEYS[weekday];
   const inTime=s[`${key}_in`];const outTime=s[`${key}_out`];const breakStart=s[`${key}_break_start`];const breakEnd=s[`${key}_break_end`];
-  if(!inTime||!outTime)return {regular_hours:0,overtime_hours:0,late_minutes:0,undertime_minutes:0,status:'present'};
+  // A day off on the schedule: any hours worked are counted as overtime (rest-day work).
+  if(!inTime||!outTime){const w=workedOf(args);return {regular_hours:0,overtime_hours:w==null?0:roundHours(w),late_minutes:0,undertime_minutes:0,status:w==null&&args.timeIn?'incomplete':'present'};}
   const scheduledIn=zonedTimeToDate(args.attendanceDate,inTime,s.timezone);const crossesMidnight=outTime<=inTime;const scheduledOut=zonedTimeToDate(args.attendanceDate,outTime,s.timezone,crossesMidnight?1:0);
   const scheduledBreakStart=breakStart?zonedTimeToDate(args.attendanceDate,breakStart,s.timezone,breakStart<inTime?1:0):null;const scheduledBreakEnd=breakEnd?zonedTimeToDate(args.attendanceDate,breakEnd,s.timezone,breakEnd<inTime?1:0):null;
   const inDate=args.timeIn?new Date(args.timeIn):null;const outDate=args.timeOut?new Date(args.timeOut):null;const breakOutDate=args.breakOut?new Date(args.breakOut):null;const breakInDate=args.breakIn?new Date(args.breakIn):null;

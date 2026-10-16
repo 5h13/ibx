@@ -15,6 +15,8 @@ export async function loadDepartmentExpenses(profile: SessionProfile, section: S
   const monthKey = `${year}-${String(month).padStart(2, '0')}`;
   const monthLabel = new Date(year, month - 1, 1).toLocaleString('en-US', { month: 'long', year: 'numeric' });
 
+  // Build 125 (UIA-25): create the recurring monthly expenses whose month has arrived
+  if (profile.user.business_id) await db.rpc('expense_recurring_run', { p_business: profile.user.business_id });
   const [{ data: sec }, monthId] = await Promise.all([
     db.from('sections').select('id').eq('code', section).single(),
     profile.user.business_id ? getMonthId(profile.user.business_id, year, month, false) : Promise.resolve(null),
@@ -44,6 +46,12 @@ export async function loadDepartmentExpenses(profile: SessionProfile, section: S
     const { data: flags } = await db.rpc('expense_allowance_flags', { p_ids: baseRows.map((r) => r.id) });
     const byId = new Map(((flags ?? []) as any[]).map((f) => [f.expense_id, f]));
     for (const r of baseRows) { const f = byId.get(r.id); if (f && Number(f.over_by) > 0) { r.allowance_limit = Number(f.monthly_limit); r.allowance_over = Number(f.over_by); } }
+  }
+  const seriesIds = Array.from(new Set(baseRows.map((r) => r.recurring_series_id).filter(Boolean)));
+  if (seriesIds.length) {
+    const { data: series } = await db.from('expense_recurring_series').select('id,months,created_count,status,stop_reason,source_expense_id').in('id', seriesIds);
+    const byId = new Map(((series ?? []) as any[]).map((x) => [x.id, x]));
+    for (const r of baseRows) if (r.recurring_series_id) r.series = byId.get(r.recurring_series_id) ?? null;
   }
   const suggestions = Array.from(new Set(((recent ?? []) as any[]).map((r) => String(r.description || '').trim()).filter(Boolean))).slice(0, 50);
   return {

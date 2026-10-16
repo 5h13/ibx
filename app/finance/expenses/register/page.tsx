@@ -15,6 +15,8 @@ export default async function ExpenseRegisterPage(props: { searchParams?: Promis
   const isDate = (s?: string) => !!s && /^\d{4}-\d{2}-\d{2}$/.test(s);
   const from = isDate(searchParams?.from) ? searchParams!.from! : iso(new Date(today.getFullYear(), today.getMonth(), 1));
   const to = isDate(searchParams?.to) ? searchParams!.to! : iso(new Date(today.getFullYear(), today.getMonth() + 1, 0));
+  // Build 125 (UIA-25): recurring monthly expenses whose month has arrived appear for posting
+  if (profile.user.business_id) await db.rpc('expense_recurring_run', { p_business: profile.user.business_id });
   const [reg, { data: categories }, { data: banks }, sched, { data: accounts }, { data: canFinance }] = await Promise.all([
     db.rpc('expense_register', { p_from: from, p_to: to }),
     db.from('admin_expense_categories').select('id,code,name,description,gl_account_code,active').order('name'),

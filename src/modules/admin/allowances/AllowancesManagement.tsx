@@ -1,5 +1,5 @@
 'use client';
-// Build 91 — monthly expense allowances per person (employee or agent) and category.
+// Build 91 — monthly expense allowances per person and category (Build 125: employees only).
 import { useState, useTransition } from 'react';
 import { errorText } from '@/core/errors/appError';
 import { ActionBar, PopupAction } from '@/core/ui/PopupAction';
@@ -15,7 +15,7 @@ function AddForm({ people, categories, onDone }: { people: { value: string; labe
   return (
     <div className="space-y-3 text-sm">
       <div className="grid gap-3 sm:grid-cols-2">
-        <label className="block">Person<select className="input mt-1" value={f.person} onChange={(e) => setF({ ...f, person: e.target.value })}><option value="">Choose…</option>{people.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}</select></label>
+        <label className="block">Employee<select className="input mt-1" value={f.person} onChange={(e) => setF({ ...f, person: e.target.value })}><option value="">Choose…</option>{people.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}</select></label>
         <label className="block">Category<select className="input mt-1" value={f.category_id} onChange={(e) => setF({ ...f, category_id: e.target.value })}><option value="">Choose…</option>{categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
         <label className="block">Monthly limit (₱)<input className="input mt-1" type="number" min="0" step="0.01" value={f.monthly_limit} onChange={(e) => setF({ ...f, monthly_limit: e.target.value })} /></label>
         <label className="block">Notes<input className="input mt-1" value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} /></label>
@@ -42,13 +42,13 @@ export function AllowancesManagement({ rows, categories, users, agents }: { rows
     <div className="space-y-4">
       <div>
         <h2 className="text-xl font-semibold">Expense Allowances</h2>
-        <p className="mt-1 text-sm text-slate-500">A monthly limit per person and expense category, for employees and agents of this store. Expenses over the limit are still saved but flagged “over allowance” for the approver.</p>
+        <p className="mt-1 text-sm text-slate-500">A monthly limit per person and expense category, for the employees of this store (agents are not given allowances). Expenses over the limit are still saved but flagged “over allowance” for the approver.</p>
       </div>
       <ActionBar><PopupAction label="+ Add allowance" title="Add allowance" wide notice={message}>{(close) => <AddForm people={people} categories={categories} onDone={(m) => { setMessage(m); close(); }} />}</PopupAction></ActionBar>
       {message && <div className="rounded border bg-white p-2 text-sm">{message}</div>}
       <div className="overflow-x-auto rounded-xl border bg-white">
         <table className="w-full text-sm">
-          <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500"><tr><th className="p-2">Person</th><th className="p-2">Category</th><th className="p-2 text-right">Monthly limit</th><th className="p-2">Notes</th><th className="p-2"></th></tr></thead>
+          <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500"><tr><th className="p-2">Employee</th><th className="p-2">Category</th><th className="p-2 text-right">Monthly limit</th><th className="p-2">Notes</th><th className="p-2"></th></tr></thead>
           <tbody>
             {rows.map((r) => (
               <tr key={r.id} className="border-t">

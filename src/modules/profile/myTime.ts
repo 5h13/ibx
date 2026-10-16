@@ -13,6 +13,7 @@ import { createAdminClient } from '@/core/auth/supabaseAdmin';
 import { getSessionProfile } from '@/core/auth/getSessionProfile';
 import { notifyUsers } from '@/shared/notifications/service';
 import { calculateAttendance, localDateFor } from '@/modules/admin/timekeeping/calculator';
+import { scheduleOn } from '@/modules/admin/timekeeping/schedule';
 
 const TZ = 'Asia/Manila';
 const SPECIAL = ['absent', 'half_day', 'leave', 'holiday', 'rest_day', 'official_business', 'work_from_home'];
@@ -34,12 +35,7 @@ async function me() {
 }
 
 async function scheduleFor(db: Db, employeeId: string, date: string) {
-  const { data: a } = await db.from('employee_schedule_assignments').select('schedule_id')
-    .eq('employee_id', employeeId).lte('effective_from', date).or(`effective_to.is.null,effective_to.gte.${date}`)
-    .order('effective_from', { ascending: false }).limit(1).maybeSingle();
-  if (!a) return null;
-  const { data: s } = await db.from('work_schedules').select('*').eq('id', (a as any).schedule_id).maybeSingle();
-  return (s as any) ?? null;
+  return scheduleOn(db as any, employeeId, date);  // Build 125: own assignment, else the store default
 }
 
 function scheduleText(s: any, date: string) {
@@ -99,8 +95,7 @@ export async function myClockAction(step: ClockStep) {
       throw appError(`Today is marked "${String(r.status).replace('_', ' ')}" on your attendance. Ask your admin if you are working today.`);
     }
     const values: any = { employee_id: employee.id, business_id: employee.business_id, attendance_date: date, time_in: stamp, schedule_id: schedule?.id ?? null, prepared_by: profile.user.id };
-    const calc = schedule ? calculateAttendance({ attendanceDate: date, schedule, timeIn: stamp, breakOut: null, breakIn: null, timeOut: null })
-                          : { regular_hours: 0, overtime_hours: 0, late_minutes: 0, undertime_minutes: 0, status: 'present' as const };
+    const calc = calculateAttendance({ attendanceDate: date, schedule, timeIn: stamp, breakOut: null, breakIn: null, timeOut: null });
     Object.assign(values, calc, { status: calc.status === 'incomplete' ? 'present' : calc.status });
     const q = r ? db.from('attendance_records').update({ ...values, updated_at: stamp }).eq('id', r.id).select('id').single()
                 : db.from('attendance_records').insert(values).select('id').single();
@@ -124,9 +119,10 @@ export async function myClockAction(step: ClockStep) {
     }
     const merged = { ...r, ...patch };
     const sched = r.schedule_id ? ((await db.from('work_schedules').select('*').eq('id', r.schedule_id).maybeSingle()).data as any) : schedule;
-    if (sched) {
+    {
+      // Build 125: with no schedule the hours worked are counted (UIA-38)
       const calc = calculateAttendance({ attendanceDate: r.attendance_date, schedule: sched, timeIn: merged.time_in, breakOut: merged.break_out, breakIn: merged.break_in, timeOut: merged.time_out });
-      Object.assign(patch, calc, { schedule_id: sched.id, status: SPECIAL.includes(r.status) ? r.status : step === 'out' ? calc.status : r.status });
+      Object.assign(patch, calc, { schedule_id: sched?.id ?? null, status: SPECIAL.includes(r.status) ? r.status : step === 'out' ? calc.status : r.status });
     }
     patch.updated_at = stamp;
     const { error: e } = await db.from('attendance_records').update(patch).eq('id', r.id).eq('employee_id', employee.id);
@@ -247,7 +243,7 @@ export async function loadMyTime(userId: string, range?: string | null) {
     scheduleFor(db, e.id, today),
     db.from('attendance_periods').select('id,name,start_date,end_date,status').eq('business_id', e.business_id).order('start_date', { ascending: false }).limit(8),
     db.from('leave_types').select('id,code,name,paid,default_days_per_year').eq('active', true).order('name'),
-    db.from('employee_leave_balances').select('leave_type_id,entitlement,used,adjustment').eq('employee_id', e.id).eq('leave_year', year),
+    db.from('employee_leave_balances').select('leave_type_id,entitlement,carried_over,used,adjustment').eq('employee_id', e.id).eq('leave_year', year),
     db.from('leave_requests').select('id,leave_type_id,start_date,end_date,day_type,days,reason,status,rejection_reason,created_at').eq('employee_id', e.id).order('start_date', { ascending: false }).limit(20),
   ]);
 
@@ -287,7 +283,7 @@ export async function loadMyTime(userId: string, range?: string | null) {
   const leave = ((types ?? []) as any[]).map((t) => {
     const b = ((balances ?? []) as any[]).find((x) => x.leave_type_id === t.id);
     const pending = reqs.filter((r) => r.leave_type_id === t.id && ['prepared', 'reviewed'].includes(r.status) && r.start_date.startsWith(String(year))).reduce((a, r) => a + Number(r.days), 0);
-    const entitlement = b ? Number(b.entitlement) + Number(b.adjustment) : null;
+    const entitlement = b ? Number(b.entitlement) + Number(b.carried_over || 0) + Number(b.adjustment) : null;
     return { id: t.id, name: t.name, paid: t.paid, set_up: !!b, entitlement, default_days: t.default_days_per_year == null ? null : Number(t.default_days_per_year),
              used: b ? Number(b.used) : 0, pending, left: entitlement == null ? null : Math.round((entitlement - Number(b.used)) * 100) / 100 };
   });

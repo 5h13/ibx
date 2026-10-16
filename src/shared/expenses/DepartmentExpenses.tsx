@@ -14,7 +14,7 @@ import { ActionBar, PopupAction } from '@/core/ui/PopupAction';
 import { StatusBadge } from '@/core/utils/statusBadge';
 import { hasWorkflowRole, type SessionProfile } from '@/core/auth/types';
 import { submitForReviewAction, markReviewedAction, markApprovedAction, deleteExpenseDraftAction } from './actions';
-import { createDepartmentExpenseAction, updateDepartmentExpenseAction, returnDepartmentExpenseAction } from './departmentActions';
+import { createDepartmentExpenseAction, updateDepartmentExpenseAction, returnDepartmentExpenseAction, stopRecurringExpenseAction } from './departmentActions';
 import { uploadExpenseDocumentAction, getExpenseDocumentUrlAction, deleteExpenseDocumentAction } from './documentActions';
 import type { DeptExpenseData } from './loadDepartmentExpenses';
 
@@ -102,7 +102,7 @@ export function DepartmentExpenses({ profile, data }: { profile: SessionProfile;
                     <button type="button" className="font-medium text-left hover:underline" onClick={() => setSelected(r)}>{r.description}</button>
                     <div className="text-xs text-slate-500">
                       {r.category?.name || (r.suggested_category ? <span className="text-amber-700">Suggested: {r.suggested_category}</span> : 'Uncategorised')}
-                      {r.is_yearly ? ` · yearly cost, ${r.spread_months || 12} months` : ''}
+                      {r.is_yearly ? ` · yearly cost, ${r.spread_months || 12} months` : ''}{r.recurring_monthly ? ` · monthly${r.recurring_months ? `, ${r.recurring_months} months` : ', until stopped'}${r.series?.status === 'stopped' ? ' (stopped)' : ''}` : ''}
                       {r.vehicle ? ` · ${r.vehicle.vehicle_no}` : ''}{r.asset ? ` · ${r.asset.asset_no}` : ''}
                     </div>
                   </td>
@@ -146,10 +146,11 @@ export function DepartmentExpenses({ profile, data }: { profile: SessionProfile;
               <Detail label="Category" value={selected.category?.name || (selected.suggested_category ? `Suggested: ${selected.suggested_category}` : '—')} />
               <Detail label="Vendor" value={suppliers.find((s: any) => s.id === selected.supplier_id)?.legal_name || selected.vendor || '—'} />
               <Detail label="Payment method / reference" value={[selected.payment_method, selected.reference_no].filter(Boolean).join(' · ') || '—'} />
-              <Detail label="Yearly cost" value={selected.is_yearly ? `Yes — spread over ${selected.spread_months || 12} months` : 'No'} />
+              <Detail label="Repeats" value={selected.is_yearly ? `Yearly cost — spread over ${selected.spread_months || 12} months` : selected.recurring_monthly ? `Every month${selected.recurring_months ? ` for ${selected.recurring_months} months` : ' until stopped'}${selected.series ? ` · ${selected.series.created_count} created${selected.series.status === 'stopped' ? ` · stopped: ${selected.series.stop_reason}` : selected.series.status === 'finished' ? ' · finished' : ''}` : ' · starts when approved'}` : 'No — one-time'} />
               <Detail label="Asset / vehicle" value={[selected.asset?.asset_no, selected.vehicle?.vehicle_no].filter(Boolean).join(' · ') || '—'} />
             </div>
             {selected.notes && <div className="rounded-lg bg-slate-50 p-3 text-sm">{selected.notes}</div>}
+            {selected.series?.status === 'active' && <div className="flex items-center justify-between gap-3 rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm"><span>This expense repeats every month; each month's expense is created on its date, already approved, for Finance to post and pay.</span><button type="button" className="button-secondary whitespace-nowrap" disabled={pending} onClick={async () => { const reason = await dialog.prompt('Stop this monthly expense? Months already created stay. Reason:', { required: true }); if (!reason) return; const fd = new FormData(); fd.set('section', section); fd.set('series_id', selected.series.id); fd.set('reason', reason); run(() => stopRecurringExpenseAction(fd), () => setSelected(null)); }}>Stop repeating</button></div>}
             <div className="space-y-2">
               <div className="font-medium text-sm">Receipts / documents</div>
               {(selected.documents || []).length === 0 && <div className="text-sm text-slate-400">No documents attached.</div>}
@@ -177,7 +178,7 @@ export function DepartmentExpenses({ profile, data }: { profile: SessionProfile;
 
 function ExpenseFields({ row, categories, costCenters, suppliers, assets, vehicles, suggestions }: { row?: any; categories: any[]; costCenters: any[]; suppliers: any[]; assets: any[]; vehicles: any[]; suggestions: string[] }) {
   const [cat, setCat] = useState<string>(row ? (row.category_id || (row.suggested_category ? 'suggest' : '')) : '');
-  const [yearly, setYearly] = useState<boolean>(!!row?.is_yearly);
+  const [repeat, setRepeat] = useState<string>(row?.is_yearly ? 'yearly' : row?.recurring_monthly ? 'monthly' : 'none');
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
       <Field label="Expense date"><input className="input" name="expense_date" type="date" defaultValue={row?.expense_date || new Date().toISOString().slice(0, 10)} required /></Field>
@@ -200,8 +201,12 @@ function ExpenseFields({ row, categories, costCenters, suppliers, assets, vehicl
       <Field label="Asset (optional)"><select className="input" name="asset_id" defaultValue={row?.asset_id || ''}><option value="">None</option>{assets.map((a: any) => <option key={a.id} value={a.id}>{a.asset_no} — {a.name}</option>)}</select></Field>
       <Field label="Vehicle (optional)"><select className="input" name="fleet_vehicle_id" defaultValue={row?.fleet_vehicle_id || ''}><option value="">None</option>{vehicles.map((v: any) => <option key={v.id} value={v.id}>{v.vehicle_no}{v.plate_no ? ` — ${v.plate_no}` : ''}</option>)}</select></Field>
       <div className="md:col-span-3 rounded-lg border bg-slate-50 p-3 text-sm">
-        <label className="flex items-center gap-2"><input type="checkbox" name="is_yearly" checked={yearly} onChange={(e) => setYearly(e.target.checked)} /> Yearly cost paid upfront (business permit, insurance, subscription…)</label>
-        {yearly && <div className="mt-2 flex items-center gap-2 text-xs text-slate-600">Spread over <input className="input w-20" type="number" name="spread_months" min={2} max={60} defaultValue={row?.spread_months || 12} /> months — Finance confirms when posting.</div>}
+        <div className="mb-1 font-medium">Repeats</div>
+        <label className="flex items-center gap-2"><input type="radio" name="repeat" value="none" checked={repeat === 'none'} onChange={() => setRepeat('none')} /> One-time expense</label>
+        <label className="flex items-center gap-2"><input type="radio" name="repeat" value="monthly" checked={repeat === 'monthly'} onChange={() => setRepeat('monthly')} /> Every month at this amount (rent, internet, retainer…)</label>
+        {repeat === 'monthly' && <div className="ml-6 mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-600">For <input className="input w-20" type="number" name="recurring_months" min={2} max={60} defaultValue={row?.recurring_months ?? ''} placeholder="—" /> months (empty: until stopped). Approved once; from the next month on, each month's expense is created on this day of the month, already approved, for Finance to post and pay.</div>}
+        <label className="flex items-center gap-2"><input type="radio" name="repeat" value="yearly" checked={repeat === 'yearly'} onChange={() => setRepeat('yearly')} /> Yearly cost paid upfront (business permit, insurance, subscription…)</label>
+        {repeat === 'yearly' && <div className="ml-6 mt-1 flex items-center gap-2 text-xs text-slate-600">Spread over <input className="input w-20" type="number" name="spread_months" min={2} max={60} defaultValue={row?.spread_months || 12} /> months — Finance confirms when posting.</div>}
       </div>
       <div className="md:col-span-3"><Field label="Notes"><input className="input" name="notes" defaultValue={row?.notes || ''} /></Field></div>
     </div>

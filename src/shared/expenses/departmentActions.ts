@@ -31,12 +31,21 @@ function readCategory(fd: FormData) {
   return { category_id: raw, suggested_category: null };
 }
 
+// How the expense repeats: once, a yearly cost paid upfront (spread by Finance), or — Build 125
+// (UIA-25) — a recurring monthly expense: this amount every month, approved once, for a number of
+// months or until stopped.
 function readYearly(fd: FormData) {
-  const yearly = String(fd.get('is_yearly') ?? '') === 'on' || String(fd.get('is_yearly') ?? '') === 'true';
-  if (!yearly) return { is_yearly: false, spread_months: null };
+  const repeat = String(fd.get('repeat') ?? '') || (String(fd.get('is_yearly') ?? '') === 'on' || String(fd.get('is_yearly') ?? '') === 'true' ? 'yearly' : 'none');
+  if (repeat === 'monthly') {
+    const raw = String(fd.get('recurring_months') ?? '').trim();
+    const months = raw ? Number(raw) : null;
+    if (months !== null && (!Number.isInteger(months) || months < 2 || months > 60)) throw appError('A monthly expense repeats for 2 to 60 months (or leave it empty: until stopped).');
+    return { is_yearly: false, spread_months: null, recurring_monthly: true, recurring_months: months };
+  }
+  if (repeat !== 'yearly') return { is_yearly: false, spread_months: null, recurring_monthly: false, recurring_months: null };
   const months = Number(fd.get('spread_months') || 12);
   if (!Number.isInteger(months) || months < 2 || months > 60) throw appError('Spread a yearly cost over 2 to 60 months.');
-  return { is_yearly: true, spread_months: months };
+  return { is_yearly: true, spread_months: months, recurring_monthly: false, recurring_months: null };
 }
 
 function readAmount(fd: FormData) {
@@ -114,5 +123,17 @@ export async function returnDepartmentExpenseAction(fd: FormData) {
   await audit(p.user.id, id, 'expense_returned', { reason });
   revalidatePath(PATHS[sec]);
   revalidatePath('/approvals');
+  return { ok: true };
+}
+
+/** Build 125 (UIA-25): stop a recurring monthly expense; the months already created stay. */
+export async function stopRecurringExpenseAction(fd: FormData) {
+  const p = await getSessionProfile();
+  if (!p?.user.is_active) throw appError('Authentication required.');
+  const sec = section(fd);
+  const { error } = await createClient().rpc('expense_recurring_stop', { p_series: req(fd, 'series_id', 'Recurring expense'), p_reason: req(fd, 'reason', 'Reason') });
+  if (error) throw appError(error.message);
+  revalidatePath(PATHS[sec]);
+  revalidatePath('/finance/expenses');
   return { ok: true };
 }
