@@ -8,7 +8,7 @@ export default async function SpecsCardPage() {
   return (
     <AuthedShell profile={profile}>
       <MarketingToolFrame title="Specs Card" src="/marketing-tools/specs-card.html"
-        note="Product specs card per store — PNG or animated GIF. Store logos come from Admin → Businesses → Branding. Work is kept in this browser only." />
+        note="Product specs card for the store you are acting as — PNG or animated GIF." minWidth={1000} minHeight={760} />
     </AuthedShell>
   );
 }

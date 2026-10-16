@@ -8,14 +8,16 @@ import { createAdminClient } from '@/core/auth/supabaseAdmin';
 
 export const dynamic = 'force-dynamic';
 const MAX_LOGO = 2_000_000;
-let cache: { at: number; body: unknown } | null = null;
+let cache: { at: number; brands: any[]; ids: Record<string, string> } | null = null;
 
 export async function GET() {
   const profile = await getSessionProfile();
   if (!profile) return NextResponse.json({ error: 'Sign in first.' }, { status: 401 });
   if (!hasSectionAccess(profile, 'marketing')) return NextResponse.json({ error: 'Marketing access is required.' }, { status: 403 });
-  if (cache && Date.now() - cache.at < 10 * 60_000) return NextResponse.json(cache.body);
-  const { data, error } = await createAdminClient().from('businesses').select('code,legal_name,trade_name,branding,is_active').eq('is_active', true).order('code');
+  // Build 123: `current` = the store the user is acting as (the tools use it instead of their own store pickers)
+  const current = (b: typeof cache) => (profile.user.business_id && b ? b.ids[profile.user.business_id] ?? null : null);
+  if (cache && Date.now() - cache.at < 10 * 60_000) return NextResponse.json({ brands: cache.brands, current: current(cache) });
+  const { data, error } = await createAdminClient().from('businesses').select('id,code,legal_name,trade_name,branding,is_active').eq('is_active', true).order('code');
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   const brands = await Promise.all(((data ?? []) as any[]).map(async (b) => {
     let logo: string | null = null;
@@ -32,7 +34,6 @@ export async function GET() {
     }
     return { code: b.code, name: b.trade_name || b.legal_name, logo };
   }));
-  const body = { brands };
-  cache = { at: Date.now(), body };
-  return NextResponse.json(body);
+  cache = { at: Date.now(), brands, ids: Object.fromEntries(((data ?? []) as any[]).map((b) => [b.id, b.code])) };
+  return NextResponse.json({ brands, current: current(cache) });
 }

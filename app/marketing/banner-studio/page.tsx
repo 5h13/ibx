@@ -8,7 +8,7 @@ export default async function BannerStudioPage() {
   return (
     <AuthedShell profile={profile}>
       <MarketingToolFrame title="Banner Studio" src="/marketing-tools/banner-studio.html"
-        note="Square and info banners, announcements — PNG or GIF. Store logos come from Admin → Businesses → Branding. Work is kept in this browser only." />
+        note="Banners and announcements for the store you are acting as — PNG or GIF." minWidth={1180} minHeight={680} />
     </AuthedShell>
   );
 }

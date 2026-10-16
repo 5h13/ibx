@@ -57,6 +57,18 @@ function mustReplace(s, from, to, what) {
   }
   h = h.replace(block[0], `// Build 122: logos from the app's store settings (ibx-bridge.js); the original pasted logos are the fallback\nconst STORE_LOGOS = Object.assign(${JSON.stringify(fallback)}, window.__IBX_LOGOS || {});`);
   h = h.replaceAll('https://cdnjs.cloudflare.com/ajax/libs/gif.js/0.2.0/gif.worker.js', "${new URL('lib/gif.worker.js', document.baseURI).href}");
+  // Build 123: the store is the one the user is acting as in the app (ibx-bridge.js sets window.__IBX_STORE);
+  // the studio's own store switching (rail card, Brand Settings switch / add / delete brand, phone "Store:" button,
+  // remembered store) is removed while a store is set. A store the studio does not know keeps the old behaviour.
+  h = mustReplace(h, 'const [selectedStoreKey, setSelectedStoreKey] = useState("PILI");',
+    'const IBX_LOCK = (window.__IBX_STORE && STORE_CONFIGS[window.__IBX_STORE]) ? window.__IBX_STORE : null;\n  const [selectedStoreKey, setSelectedStoreKey] = useState(IBX_LOCK || "PILI");', 'store state');
+  h = mustReplace(h, 'if (parsed.selectedStoreKey && storeConfigs[parsed.selectedStoreKey]) setSelectedStoreKey(parsed.selectedStoreKey);',
+    'if (!IBX_LOCK && parsed.selectedStoreKey && storeConfigs[parsed.selectedStoreKey]) setSelectedStoreKey(parsed.selectedStoreKey);', 'remembered store');
+  h = mustReplace(h, 'const cycleStore = () => {', 'const cycleStore = () => { if (IBX_LOCK) return;', 'store switch');
+  const hide = (re, what) => { h = mustReplace(h, re, (m) => `{!IBX_LOCK && (<React.Fragment>${m}</React.Fragment>)}`, what); };
+  hide(/<div className="rail-divider" \/>\s*<div className="rail-section-title">STORE<\/div>\s*<button className="store-card"[\s\S]*?<\/button>/, 'rail store card');
+  hide(/<div style=\{\{display:'flex',gap:'8px',marginBottom:'10px'\}\}>\s*<button className="btn btn-primary" type="button" onClick=\{\(\) => setBrandManagerMode\("new"\)\}>[\s\S]*?<\/div>\s*<button className="store-card panel-store-card"[\s\S]*?<\/button>/, 'Brand Settings store switch');
+  hide(/<button type="button" onClick=\{cycleStore\}>\s*Store: \{currentStore\.name\}\s*<\/button>/, 'phone store button');
   // compile the JSX once
   const app = h.match(/<script type="text\/babel">([\s\S]*?)<\/script>/);
   if (!app) throw new Error('build: the text/babel script was not found');
@@ -68,6 +80,9 @@ function mustReplace(s, from, to, what) {
   h = mustReplace(h, /\s*<script src="https:\/\/unpkg\.com\/@babel\/standalone\/babel\.min\.js"><\/script>/, '', 'Babel');
   h = mustReplace(h, /<script src="https:\/\/cdnjs\.cloudflare\.com\/ajax\/libs\/gif\.js\/0\.2\.0\/gif\.js"><\/script>/, '<script src="lib/gif.js"></script>', 'gif.js');
   h = mustReplace(h, /<link rel="stylesheet" href="https:\/\/fonts\.googleapis\.com\/css2\?family=Inter[^"]*">/, '<link rel="stylesheet" href="lib/inter.css">', 'Inter font');
+  // Build 123: a compact layout on top of the studio's own styles (smaller header, layout tiles and menu) so the
+  // preview fits the screen inside the app
+  h = mustReplace(h, /<\/head>/, '<link rel="stylesheet" href="lib/banner-ibx.css">\n</head>', '</head>');
   h = h.replace(/\s*<link rel="preconnect" href="https:\/\/fonts\.(googleapis|gstatic)\.com"[^>]*>/g, '');
   writeFileSync(join(OUT, 'banner-studio.html'), h);
 }
