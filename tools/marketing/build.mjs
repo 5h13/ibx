@@ -69,6 +69,19 @@ function mustReplace(s, from, to, what) {
   hide(/<div className="rail-divider" \/>\s*<div className="rail-section-title">STORE<\/div>\s*<button className="store-card"[\s\S]*?<\/button>/, 'rail store card');
   hide(/<div style=\{\{display:'flex',gap:'8px',marginBottom:'10px'\}\}>\s*<button className="btn btn-primary" type="button" onClick=\{\(\) => setBrandManagerMode\("new"\)\}>[\s\S]*?<\/div>\s*<button className="store-card panel-store-card"[\s\S]*?<\/button>/, 'Brand Settings store switch');
   hide(/<button type="button" onClick=\{cycleStore\}>\s*Store: \{currentStore\.name\}\s*<\/button>/, 'phone store button');
+  // Build 124: "From catalog" (ibx-bridge.js) fills the product texts through this hook; each stays editable
+  h = mustReplace(h, /(  const \[announcementClosingMessage, setAnnouncementClosingMessage\] = useState\([^\n]*\);\n)/, `$1  useEffect(() => {
+    window.__ibxFill = (d) => {
+      if (d.rightLine1 != null) setRightLine1Text(d.rightLine1);
+      if (d.rightLine2 != null) setRightLine2Text(d.rightLine2);
+      if (d.rightLine3 != null) setRightLine3Text(d.rightLine3);
+      if (d.info1Category != null) setInfo1CategoryText(d.info1Category);
+      if (d.info1Feature != null) setInfo1FeatureText(d.info1Feature);
+      if (d.info2Feature != null) setInfo2FeatureText(d.info2Feature);
+    };
+    return () => { delete window.__ibxFill; };
+  }, []);
+`, 'text fill hook');
   // compile the JSX once
   const app = h.match(/<script type="text\/babel">([\s\S]*?)<\/script>/);
   if (!app) throw new Error('build: the text/babel script was not found');
