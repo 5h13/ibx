@@ -7,6 +7,7 @@ import { appError } from '@/core/errors/appError';
 import { revalidatePath } from 'next/cache';
 import { headers } from 'next/headers';
 import { createAdminClient } from '@/core/auth/supabaseAdmin';
+import { createClient as createPlainClient } from '@supabase/supabase-js';
 import { createClient } from '@/core/auth/supabaseServer';
 import { getSessionProfile } from '@/core/auth/getSessionProfile';
 import { isAdminTier, type AppRole, type WorkflowRole, type SessionProfile } from '@/core/auth/types';
@@ -393,6 +394,16 @@ export async function resetUserPasswordAction(formData: FormData) {
 
 // Build 72 (U065): email the user a link to set a new password themselves
 // (nothing is shown to the admin). Uses the project's SMTP.
+// Build 121: the reset email is requested WITHOUT the admin's own session. Through the session client (secure
+// "PKCE" links) the one-time secret the link needs was stored in the admin's browser, so the link failed in the
+// user's own browser ("PKCE code verifier not found in storage"). This plain client keeps nothing; the emailed link
+// carries its own one-time sign-in, which /auth/accept opens (the same way invitations already work).
+function resetLinkClient() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL; const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !key) throw appError('Missing Supabase configuration.');
+  return createPlainClient(url, key, { auth: { flowType: 'implicit', persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
+}
+
 export async function sendPasswordLinkAction(formData: FormData) {
   const actor = await requireAdminTier();
   const userId = requiredString(formData.get('user_id'), 'User');
@@ -405,7 +416,7 @@ export async function sendPasswordLinkAction(formData: FormData) {
   const redirectTo = `${await siteUrl()}/auth/accept`;
   // never signed in yet → send the invitation again; otherwise a password-reset email
   const { error } = target.user.last_sign_in_at
-    ? await createClient().auth.resetPasswordForEmail(target.user.email, { redirectTo })
+    ? await resetLinkClient().auth.resetPasswordForEmail(target.user.email, { redirectTo })
     : await admin.auth.admin.inviteUserByEmail(target.user.email, { redirectTo });
   if (error) throw appError(friendlyAuthError(error.message));
   await writeAudit(actor.user.id, userId, 'edited', { action: target.user.last_sign_in_at ? 'password_link_emailed' : 'invitation_resent' });

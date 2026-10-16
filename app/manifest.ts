@@ -12,6 +12,9 @@ export default function manifest(): MetadataRoute.Manifest {
     start_url: '/',
     scope: '/',
     display: 'standalone',
+    // Build 121: links to the app (e.g. a password-reset email) open in the installed app where the browser allows it
+    // (Chrome / Edge "Open supported links"); otherwise in a tab, which shares the same sign-in.
+    ...({ launch_handler: { client_mode: ['navigate-existing', 'auto'] }, handle_links: 'preferred' } as Record<string, unknown>),
     orientation: 'any',   // Build 117: a computer window or a tablet in landscape too
     // Build 102c: the phone's own start screen is the blue of the 5H13 launch screen (a phone draws it in one colour);
     // the app then shows the full blue → red launch screen for a moment (LaunchScreen in app/layout.tsx)
