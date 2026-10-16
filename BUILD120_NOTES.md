@@ -49,3 +49,17 @@ Deploy: `supabase db push` (`20270120_paste_match_sizes.sql`, matching only), `g
 
 ## Tests
 - typecheck, production build; tests/db-harness/runall120.sh: proofs 78–120, 650 checks, 0 failed.
+
+## Faint prints (owner's JYQL DR photo, 2026-10-16) — no migration
+- When the plain read is mostly noise, the picture is cleaned up and read again automatically: the colour channel
+  where the print is darkest, lighting evened out, contrast stretched, enlarged and softened (dot-matrix dots
+  join), read word by word with the rows rebuilt from where each word sits (bent / slanted pages).
+- From such a print only the **item names** are taken: row numbers and prices are dropped and quantities are not
+  guessed — every line starts at 1, marked to check against the paper (a note says so in the Paste list box).
+- JYQL photo: 14 of 17 item names readable (before: nothing). The clear Winterpine DR still reads 13 of 13 with
+  quantities. Very faint prints may still need some lines typed by hand.
+
+## Paste list on the counter New Sale — no migration
+- Storefront → New sale: **Paste list** button next to the item search. Same box as on quotations (text, screenshot,
+  photo or PDF). Each picked line is priced by the counter's own pricing (store price, current stock / lot), exactly as
+  if picked one by one; the same item already on the sale gets its quantity added.

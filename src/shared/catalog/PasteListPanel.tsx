@@ -32,7 +32,7 @@ export function PasteListPanel({ businessId = null, onAdd, onClose, allowMissing
   const [reading, setReading] = useState('');
   // Build 119: text from a picture (JPG / PNG) or PDF, read on this device, lands in the box to be checked.
   // Build 120: the picture is turned upright automatically; "Turn and read again" if it still reads wrong.
-  const [last, setLast] = useState<{ file: File; turn: 0 | 90 | 180 | 270; before: string; got: string } | null>(null);
+  const [last, setLast] = useState<{ file: File; turn: 0 | 90 | 180 | 270; before: string; got: string; faint: boolean } | null>(null);
   const readFile = async (file: File | null | undefined, turn: 0 | 90 | 180 | 270 | 'auto' = 'auto', before?: string) => {
     if (!file) return;
     setError(''); setReading('Starting…');
@@ -43,7 +43,7 @@ export function PasteListPanel({ businessId = null, onAdd, onClose, allowMissing
       if (!t) setError('No text found in that file.');
       const merged = t ? (base.trim() ? `${base.trim()}\n${t}` : t) : base;
       setText(merged);
-      setLast(r.turn === null ? null : { file, turn: r.turn, before: base, got: merged });
+      setLast(r.turn === null ? null : { file, turn: r.turn, before: base, got: merged, faint: !!r.faint });
     } catch (e) { setError(errorText(e)); }
     setReading('');
   };
@@ -55,7 +55,8 @@ export function PasteListPanel({ businessId = null, onAdd, onClose, allowMissing
 
   const read = () => start(async () => {
     setError('');
-    const lines = parsePastedList(text);
+    // a faint print read word by word: names only, the quantities are checked by hand
+    const lines = parsePastedList(text, { noQuantities: !!last?.faint });   // stays on when a misread word is corrected
     if (!lines.length) { setError('Nothing to read: paste one item per line.'); return; }
     try {
       const got = await pasteMatchAction(lines.map((l) => l.text), businessId, onlyItems);
@@ -104,7 +105,7 @@ export function PasteListPanel({ businessId = null, onAdd, onClose, allowMissing
       {!rows ? (
         <>
           <p className="text-xs text-slate-500">{hint ?? <>Paste the client&apos;s message — one item per line, with the quantity before or after it (e.g. &quot;cabin innova - 1&quot;, &quot;2pcs blower motor innova&quot;, &quot;fan motor vios x2&quot;) — or upload a screenshot, photo or PDF of the list.</>}</p>
-          <textarea className="input min-h-[9rem] w-full font-mono text-xs" placeholder={SAMPLE} value={text} onChange={(e) => setText(e.target.value)} onPaste={onPaste} autoFocus />
+          <textarea className="input min-h-[9rem] w-full font-mono text-xs" placeholder={SAMPLE} value={text} onChange={(e) => { setText(e.target.value); if (!e.target.value.trim()) setLast(null); }} onPaste={onPaste} autoFocus />
           <div className="flex flex-wrap items-center gap-2">
             <button type="button" className="button" disabled={pending || !!reading || !text.trim()} onClick={read}>{pending ? 'Matching…' : 'Read list'}</button>
             <label className={`button-secondary cursor-pointer ${reading ? 'pointer-events-none opacity-60' : ''}`}>
@@ -112,6 +113,7 @@ export function PasteListPanel({ businessId = null, onAdd, onClose, allowMissing
               <input type="file" className="hidden" accept="image/png,image/jpeg,image/webp,application/pdf" onChange={(e) => { readFile(e.target.files?.[0]); e.target.value = ''; }} />
             </label>
             {reading && <span className="text-xs text-slate-500">{reading}</span>}
+            {!reading && last?.faint && <span className="w-full text-xs text-amber-700">The print is faint: the item names were read, but not the quantities — each line starts at 1; check them against the paper.</span>}
             {!reading && last && last.got === text && <button type="button" className="text-xs underline" onClick={turnAgain} title="Use this when the text above is gibberish">Picture read wrong? Turn ↻ and read again</button>}
           </div>
           <p className="text-[11px] text-slate-500">Pictures and PDFs are read on this device (nothing is uploaded). Check the text above — fix any misread word — then Read list. A screenshot can also be pasted straight into the box (Ctrl+V).</p>

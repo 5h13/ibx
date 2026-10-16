@@ -15,6 +15,7 @@ import { useEffect, useMemo, useState, useTransition } from 'react';
 import { errorText } from '@/core/errors/appError';
 import { ActionBar, PopupAction } from '@/core/ui/PopupAction';
 import { CatalogItemPicker } from '@/shared/catalog/CatalogItemPicker';
+import { PasteListPanel, type PastedPick } from '@/shared/catalog/PasteListPanel';
 import {
   addCustomerAction, approveSaleAction, cancelSaleAction, completeSaleAction, decideCancelAction, priceLinesAction, requestCancelAction,
   setStoreLocationAction, submitSaleAction, agentOrderDoneAction, type LotOption, type PriceLine, type StoreOrder,
@@ -152,6 +153,29 @@ function SaleForm({ ctx, customers: initialCustomers, agents, onDone, fromOrder 
       } catch (e) { setError(errorText(e)); }
     });
   }
+  // Build 120: Paste list on the counter sale — a client's list (Messenger text, screenshot, photo or PDF), each line
+  // priced by the counter's own pricing (current stock / lots), the same as picking the items one by one.
+  const [pasting, setPasting] = useState(false);
+  function addPasted(picks: PastedPick[]) {
+    setError('');
+    start(async () => {
+      try {
+        const info = await priceLinesAction(Array.from(new Set(picks.map((p) => p.item_id))));
+        let next = [...lines];
+        const missing: string[] = [];
+        for (const pk of picks) {
+          const p = info.find((x) => x.item_id === pk.item_id);
+          if (!p) { missing.push(pk.item_name); continue; }
+          const at = next.findIndex((l) => l.item_id === pk.item_id && l.lot_id === (p.default_lot_id ?? ''));
+          if (at >= 0) next = next.map((l, j) => (j === at ? { ...l, qty: l.qty + pk.quantity } : l));
+          else next = [...next, { ...toLine(p, p.default_lot_id), qty: pk.quantity }];
+        }
+        setLines(next);
+        setPasting(false);
+        if (missing.length) setError(`Not priced for this store, so not added: ${missing.join(', ')}.`);
+      } catch (e) { setError(errorText(e)); }
+    });
+  }
   /** Build 78: the same item from another lot, on its own line (the next lot not used yet). */
   function addLotLine(i: number) {
     const l = lines[i];
@@ -226,7 +250,11 @@ function SaleForm({ ctx, customers: initialCustomers, agents, onDone, fromOrder 
 
       <section className="space-y-2">
         <h4 className="font-semibold">Items</h4>
-        <CatalogItemPicker key={pickerKey} onSelect={(it) => it && addItem(it.id)} placeholder="Search item by name or code to add…" />
+        <div className="flex flex-wrap items-start gap-2">
+          <div className="min-w-0 flex-1"><CatalogItemPicker key={pickerKey} onSelect={(it) => it && addItem(it.id)} placeholder="Search item by name or code to add…" /></div>
+          <button type="button" className="button-secondary" onClick={() => setPasting(!pasting)} title="Paste a client's list, or upload a screenshot / photo / PDF of it">{pasting ? 'Close list' : 'Paste list'}</button>
+        </div>
+        {pasting && <PasteListPanel businessId={ctx.business_id} onAdd={(picks) => addPasted(picks)} onClose={() => setPasting(false)} />}
         {lines.length > 0 && (
           <div className="overflow-x-auto rounded border">
             <table className="m-cards w-full text-sm">

@@ -30,7 +30,12 @@ function tableRow(s: string): { text: string; quantity: number } | null {
   return /[a-z]{3,}/i.test(text) ? { text: text.trim(), quantity } : null;
 }
 
-export function parsePastedList(input: string): PastedLine[] {
+/** `opts.noQuantities`: text read from a faint print, where numbers are not reliable — every line gets 1, to be checked. */
+export function parsePastedList(input: string, opts: { noQuantities?: boolean } = {}): PastedLine[] {
+  if (opts.noQuantities) {
+    return input.replace(/\r/g, '').split('\n').map((l) => l.replace(/\s+/g, ' ').trim()).filter((l) => /[a-z]{3,}/i.test(l))
+      .map((l) => ({ raw: l, text: l, quantity: 1, qtyFound: false }));
+  }
   // A supplier document (several item rows carrying amounts or stock codes): keep only its item rows and drop the
   // letterhead, address and totals. A plain client list ("fan motor 2 pcs") never switches to this.
   // amounts: 1,699.00 / 85.00 / a smudged 14,54400 — not sizes like 0.028" or 0.71mm

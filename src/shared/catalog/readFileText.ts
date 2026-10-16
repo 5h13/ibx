@@ -41,13 +41,91 @@ async function getWorker(): Promise<any> {
   }).catch((e: any) => { workerP = null; throw new Error(`The text reader could not start (${e?.message ?? e}).`); });
   return workerP;
 }
-async function ocr(image: Blob | HTMLCanvasElement, onProgress?: (msg: string) => void, label = ''): Promise<string> {
+type Read = { text: string; clear: number };
+const clearCount = (words: any[]) => (words ?? []).filter((x) => Number(x.confidence) >= 60 && String(x.text ?? '').replace(/[^a-z0-9]/gi, '').length > 2).length;
+async function ocrRead(image: HTMLCanvasElement, psm: '6' | '11', onProgress?: (msg: string) => void, label = ''): Promise<{ data: any; clear: number }> {
   const w = await getWorker();
   progressFn = onProgress; progressLabel = label;
-  // Build 120: read as one block of rows (PSM 6) — supplier DRs and lists are tables; the automatic
-  // layout mode split their columns apart and lost the quantities.
-  try { await w.setParameters({ tessedit_pageseg_mode: '6' }); const r = await w.recognize(image); return String(r?.data?.text ?? ''); }
+  try { await w.setParameters({ tessedit_pageseg_mode: psm }); const r = await w.recognize(image); return { data: r?.data ?? {}, clear: clearCount(r?.data?.words) }; }
   finally { progressFn = undefined; }
+}
+// Build 120: read as one block of rows (PSM 6) — supplier DRs and lists are tables; the automatic
+// layout mode split their columns apart and lost the quantities.
+async function ocr(image: HTMLCanvasElement, onProgress?: (msg: string) => void, label = ''): Promise<Read> {
+  const r = await ocrRead(image, '6', onProgress, label);
+  return { text: String(r.data.text ?? ''), clear: r.clear };
+}
+
+// -------------------------------------------- Build 120: faint prints (worn ribbon, carbon copies) --
+// When the plain read is mostly noise, the picture is cleaned up and read again: the colour channel where the
+// print is darkest, the lighting evened out (divided by a blurred copy of the page), the contrast stretched,
+// enlarged 2× and softened so dot-matrix dots join up. That copy is read word by word (sparse mode) and the
+// rows are rebuilt from where each word sits, following a slanted / bent page from left to right.
+function cleaned(src: HTMLCanvasElement): HTMLCanvasElement {
+  const W = src.width, H = src.height;
+  const big = document.createElement('canvas');
+  const k = Math.min(2, 3600 / Math.max(W, H));
+  big.width = Math.round(W * k); big.height = Math.round(H * k);
+  const g = big.getContext('2d', { willReadFrequently: true })!;
+  g.imageSmoothingQuality = 'high'; g.drawImage(src, 0, 0, big.width, big.height);
+  const img = g.getImageData(0, 0, big.width, big.height); const d = img.data;
+  // the channel with the most contrast between print and paper (sampled)
+  const spread = [0, 1, 2].map((c) => { const v: number[] = []; for (let i = c; i < d.length; i += 4 * 97) v.push(d[i]); v.sort((a, b) => a - b); return v[Math.floor(v.length * 0.8)] - v[Math.floor(v.length * 0.03)]; });
+  const ch = spread.indexOf(Math.max(...spread));
+  // background: the page shrunk to 1/40 and stretched back (a cheap wide blur)
+  const sw = Math.max(1, Math.round(big.width / 40)), sh = Math.max(1, Math.round(big.height / 40));
+  const small = document.createElement('canvas'); small.width = sw; small.height = sh;
+  const sg = small.getContext('2d')!; sg.imageSmoothingQuality = 'high'; sg.drawImage(big, 0, 0, sw, sh);
+  const bgc = document.createElement('canvas'); bgc.width = big.width; bgc.height = big.height;
+  const bg2 = bgc.getContext('2d', { willReadFrequently: true })!; bg2.imageSmoothingQuality = 'high'; bg2.drawImage(small, 0, 0, big.width, big.height);
+  const bd = bg2.getImageData(0, 0, big.width, big.height).data;
+  const out = new Uint8ClampedArray(d.length / 4);
+  for (let i = 0, j = 0; i < d.length; i += 4, j++) out[j] = Math.min(255, (d[i + ch] / Math.max(1, bd[i + ch])) * 255);
+  // stretch: 1st percentile → black, 99th → white
+  const hist = new Array(256).fill(0); for (const v of out) hist[v]++;
+  const n = out.length; let lo = 0, hi = 255, acc = 0;
+  for (let v = 0; v < 256; v++) { acc += hist[v]; if (acc >= n * 0.01) { lo = v; break; } }
+  acc = 0; for (let v = 255; v >= 0; v--) { acc += hist[v]; if (acc >= n * 0.01) { hi = v; break; } }
+  const span = Math.max(1, hi - lo);
+  for (let i = 0, j = 0; i < d.length; i += 4, j++) { const v = Math.max(0, Math.min(255, ((out[j] - lo) / span) * 255)); d[i] = d[i + 1] = d[i + 2] = v; d[i + 3] = 255; }
+  g.putImageData(img, 0, 0);
+  const res = document.createElement('canvas'); res.width = big.width; res.height = big.height;
+  const rg = res.getContext('2d')!; rg.filter = 'blur(1px)'; rg.drawImage(big, 0, 0);
+  return res;
+}
+/** words → lines: each word joins the row whose last word is just to its left at nearly the same height */
+function rowsFromWords(words: any[]): string {
+  const W = (words ?? []).filter((x) => String(x.text ?? '').trim() && Number(x.confidence) >= 20 && x.bbox)
+    .map((x) => ({ t: String(x.text).trim(), x: x.bbox.x0, r: x.bbox.x1, y: (x.bbox.y0 + x.bbox.y1) / 2, h: x.bbox.y1 - x.bbox.y0 }));
+  if (!W.length) return '';
+  const hs = W.map((w) => w.h).sort((a, b) => a - b); const H = hs[Math.floor(hs.length / 2)] || 20;
+  W.sort((a, b) => a.x - b.x);
+  const rows: (typeof W)[] = [];
+  for (const w of W) {
+    let best: (typeof W) | null = null, bd = Infinity;
+    for (const row of rows) {
+      const last = row[row.length - 1];
+      if (last.r > w.x + H || w.x - last.r > H * 25) continue;
+      const dy = Math.abs(last.y - w.y);
+      if (dy < H * 0.6 && dy < bd) { best = row; bd = dy; }
+    }
+    if (best) best.push(w); else rows.push([w]);
+  }
+  rows.sort((a, b) => a[0].y - b[0].y);
+  // keep the item name: drop the row number in front and cut at the first price / smudge after it
+  // (model numbers such as "Vios 14", "City 09" stay)
+  const tidy = (ts: string[]) => {
+    let i = 0; while (i < ts.length && !/[a-z]{2,}/i.test(ts[i])) i++;
+    const out: string[] = [];
+    for (const t of ts.slice(i)) { if (/\d{3,}[.,]\d*$|^[^a-z0-9]+$/i.test(t)) break; out.push(t); }   // a price (1200.00 / 1100.) or a smudge ends the name
+    return out.join(' ');
+  };
+  return rows.map((r) => tidy(r.map((w) => w.t))).filter((l) => /[a-z]{3,}/i.test(l)).join('\n');
+}
+async function readFaint(page: HTMLCanvasElement, onProgress?: (msg: string) => void, label = ''): Promise<Read> {
+  onProgress?.('The print is faint — cleaning up the picture and reading again…');
+  const r = await ocrRead(cleaned(page), '11', onProgress, label);
+  return { text: rowsFromWords(r.data.words), clear: r.clear };
 }
 
 // ---------------------------------------------------------------- Build 120: photos taken sideways --
@@ -56,14 +134,14 @@ async function ocr(image: Blob | HTMLCanvasElement, onProgress?: (msg: string) =
 // person turned it themselves — read small in all four directions; the direction with the most clear
 // words is used.
 type Turn = 0 | 90 | 180 | 270;
-function draw(src: CanvasImageSource, w: number, h: number, turn: Turn, maxSide: number): HTMLCanvasElement {
+function draw(src: CanvasImageSource, w: number, h: number, turn: Turn, maxSide: number, colour = false): HTMLCanvasElement {
   const k = Math.min(1, maxSide / Math.max(w, h));
   const sw = Math.round(w * k), sh = Math.round(h * k);
   const c = document.createElement('canvas');
   const side = turn === 90 || turn === 270;
   c.width = side ? sh : sw; c.height = side ? sw : sh;
   const g = c.getContext('2d')!;
-  g.filter = 'grayscale(1) contrast(1.15)';
+  if (!colour) g.filter = 'grayscale(1) contrast(1.15)';
   g.translate(c.width / 2, c.height / 2); g.rotate((turn * Math.PI) / 180);
   g.drawImage(src, -sw / 2, -sh / 2, sw, sh);
   return c;
@@ -85,8 +163,15 @@ async function upright(src: CanvasImageSource, w: number, h: number, onProgress?
 }
 async function readPicture(src: CanvasImageSource, w: number, h: number, turn: Turn | 'auto', onProgress?: (msg: string) => void, label = 'the picture') {
   const t = turn === 'auto' ? await upright(src, w, h, onProgress) : turn;
-  const text = await ocr(draw(src, w, h, t, 2600), onProgress, label);
-  return { text, turn: t };
+  const page = draw(src, w, h, t, 2600);
+  let best: Read & { faint?: boolean } = await ocr(page, onProgress, label);
+  // mostly noise (few clear words for the amount of text): try the cleaned-up read and keep the better one
+  const tokens = best.text.split(/\s+/).filter(Boolean).length;
+  if (best.clear < 25 || best.clear < tokens * 0.4) {
+    const faint = await readFaint(draw(src, w, h, t, 2000, true), onProgress, label);
+    if (faint.clear > best.clear) best = { ...faint, faint: true };
+  }
+  return { text: best.text, turn: t, faint: !!best.faint };
 }
 
 /** text of one PDF page, line by line (items grouped by their height on the page) */
@@ -102,7 +187,8 @@ async function pageText(page: any): Promise<string> {
 }
 
 /** Reads a picture or PDF into text. `turn`: 'auto' finds which way is up; a number forces that turn (clockwise). */
-export async function readFileTextTurned(file: File, onProgress?: (msg: string) => void, turn: Turn | 'auto' = 'auto'): Promise<{ text: string; turn: Turn | null }> {
+/** `faint`: the print was faint and only item names could be read — quantities are not on the text. */
+export async function readFileTextTurned(file: File, onProgress?: (msg: string) => void, turn: Turn | 'auto' = 'auto'): Promise<{ text: string; turn: Turn | null; faint?: boolean }> {
   const name = file.name.toLowerCase();
   if (file.type.startsWith('image/') || /\.(jpe?g|png|webp)$/.test(name)) {
     onProgress?.('Loading the text reader…');
@@ -115,7 +201,7 @@ export async function readFileTextTurned(file: File, onProgress?: (msg: string) 
     const doc = await pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
     const n = Math.min(doc.numPages, MAX_PAGES);
     const parts: string[] = [];
-    let used: Turn | null = null;
+    let used: Turn | null = null; let faint = false;
     for (let p = 1; p <= n; p++) {
       const page = await doc.getPage(p);
       let t = await pageText(page);
@@ -126,12 +212,12 @@ export async function readFileTextTurned(file: File, onProgress?: (msg: string) 
         canvas.width = vp.width; canvas.height = vp.height;
         await page.render({ canvasContext: canvas.getContext('2d')!, viewport: vp }).promise;
         const r = await readPicture(canvas, canvas.width, canvas.height, used ?? turn, onProgress, `page ${p}`);   // later pages keep page 1's direction
-        t = r.text; used = r.turn;
+        t = r.text; used = r.turn; faint = faint || r.faint;
       }
       parts.push(t);
     }
     if (doc.numPages > MAX_PAGES) parts.push(`(only the first ${MAX_PAGES} pages were read)`);
-    return { text: parts.join('\n'), turn: used };
+    return { text: parts.join('\n'), turn: used, faint };
   }
   throw new Error('Choose a JPG, PNG or PDF file.');
 }
