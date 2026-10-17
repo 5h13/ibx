@@ -3,6 +3,7 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { parseTheme, themeCss, headerBackground } from '@/core/theme/brandTheme';
 import { viberIntl, type ShopStore } from './data';
+import { MessengerLink } from './MessengerLink';
 
 export function ShopShell({ store, children, back }: { store: ShopStore; children: ReactNode; back?: string }) {
   const theme = parseTheme(store.theme);
@@ -25,7 +26,7 @@ export function ShopShell({ store, children, back }: { store: ShopStore; childre
               {store.tagline && <span className="block truncate text-xs opacity-80">{store.tagline}</span>}</span>
           </Link>
           <div className="flex flex-none gap-1.5">
-            {store.messenger_url && <a href={store.messenger_url} target="_blank" rel="noopener noreferrer" className="rounded-lg border border-white/30 px-2.5 py-1.5 text-xs font-semibold">Messenger</a>}
+            {store.messenger_url && <MessengerLink url={store.messenger_url} className="rounded-lg border border-white/30 px-2.5 py-1.5 text-xs font-semibold">Messenger</MessengerLink>}
             {viber && <a href={`viber://chat?number=${encodeURIComponent(viber)}`} className="rounded-lg border border-white/30 px-2.5 py-1.5 text-xs font-semibold">Viber</a>}
           </div>
         </div>

@@ -43,6 +43,21 @@ export async function loadCatalog(slug: string, f: { q?: string; category?: stri
   return { rows: rows.map((r) => ({ ...r, photo_url: r.photo_path ? urls.get(r.photo_path) ?? null : null })), total: Number(rows[0]?.total_count ?? 0), page };
 }
 
+/** Build 136b: the front page — each category with its first products and its full count. */
+export async function loadGroups(slug: string, per = 8) {
+  const rows = (await rpc<{ category: string; item_id: string; item_name: string; brand: string | null; unit: string | null; photo_path: string | null; price: number | null; category_count: number }[]>(
+    'shop_catalog_by_category', { p_slug: slug, p_per: per })) ?? [];
+  const urls = await signPhotos(rows.map((r) => r.photo_path ?? ''));
+  const groups: { category: string; count: number; rows: ShopRow[] }[] = [];
+  for (const r of rows) {
+    let g = groups[groups.length - 1];
+    if (!g || g.category !== r.category) { g = { category: r.category, count: Number(r.category_count), rows: [] }; groups.push(g); }
+    g.rows.push({ item_id: r.item_id, item_name: r.item_name, category: r.category, generic_item: null, brand: r.brand, unit: r.unit, photo_path: r.photo_path,
+      price: r.price, total_count: Number(r.category_count), photo_url: r.photo_path ? urls.get(r.photo_path) ?? null : null });
+  }
+  return groups;
+}
+
 export async function loadItem(slug: string, id: string) {
   if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
   const item = await rpc<ShopItem>('shop_item', { p_slug: slug, p_item: id });
@@ -60,4 +75,13 @@ export function viberIntl(n: string | null | undefined) {
   if (d.startsWith('63')) return `+${d}`;
   if (d.startsWith('0')) return `+63${d.slice(1)}`;
   return `+${d}`;
+}
+
+/** The site's own address (for link-preview images and links), from the request. */
+export async function siteOrigin() {
+  const { headers } = await import('next/headers');
+  const h = await headers();
+  const host = h.get('x-forwarded-host') ?? h.get('host') ?? '5h13.vercel.app';
+  const proto = h.get('x-forwarded-proto') ?? (host.startsWith('localhost') ? 'http' : 'https');
+  return `${proto}://${host}`;
 }

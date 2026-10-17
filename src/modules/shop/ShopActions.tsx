@@ -1,6 +1,7 @@
 'use client';
 // Build 136 — on an item page: ask the store about the item (Messenger / Viber / text / call) and share the link.
 import { useEffect, useState } from 'react';
+import { MessengerLink } from './MessengerLink';
 
 export function ShopActions({ name, price, messenger, viber, phone }: { name: string; price: string | null; messenger: string | null; viber: string | null; phone: string | null }) {
   const [copied, setCopied] = useState(false);
@@ -8,7 +9,6 @@ export function ShopActions({ name, price, messenger, viber, phone }: { name: st
   useEffect(() => setUrl(window.location.href), []);
   const ask = `Hi! I'd like to ask about: ${name}${price ? ` (${price})` : ''}. Is it available?${url ? `\n${url}` : ''}`;
   const tel = phone ? phone.replace(/[^\d+]/g, '') : null;
-  const mLink = messenger ? (/^https:\/\/m\.me\//i.test(messenger) ? `${messenger}${messenger.includes('?') ? '&' : '?'}text=${encodeURIComponent(ask)}` : messenger) : null;
   const share = async () => {
     try {
       if (navigator.share) { await navigator.share({ title: name, text: price ? `${name} — ${price}` : name, url: window.location.href }); return; }
@@ -20,7 +20,7 @@ export function ShopActions({ name, price, messenger, viber, phone }: { name: st
     <div className="space-y-2">
       <div className="text-xs font-semibold text-slate-500">Ask about this item</div>
       <div className="grid grid-cols-2 gap-2">
-        {mLink && <a href={mLink} target="_blank" rel="noopener noreferrer" className={`${btn} bg-[#0866ff] text-white`}>Messenger</a>}
+        {messenger && <MessengerLink url={messenger} text={ask} className={`${btn} bg-[#0866ff] text-white`}>Messenger</MessengerLink>}
         {viber && <a href={`viber://chat?number=${encodeURIComponent(viber)}&draft=${encodeURIComponent(ask)}`} className={`${btn} bg-[#7360f2] text-white`}>Viber</a>}
         {tel && <a href={`sms:${tel}?&body=${encodeURIComponent(ask)}`} className={`${btn} border bg-white`}>Text</a>}
         {tel && <a href={`tel:${tel}`} className={`${btn} border bg-white`}>Call</a>}

@@ -2,7 +2,7 @@
 import { notFound } from 'next/navigation';
 import { ShopShell } from '@/modules/shop/ShopShell';
 import { ShopActions } from '@/modules/shop/ShopActions';
-import { loadItem, loadStore, pesoShop, viberIntl } from '@/modules/shop/data';
+import { loadItem, loadStore, pesoShop, siteOrigin, viberIntl } from '@/modules/shop/data';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,7 +11,17 @@ export async function generateMetadata(props: { params: Promise<{ store: string;
   const [s, it] = await Promise.all([loadStore(store), loadItem(store, id)]);
   if (!s || !it) return { title: 'Shop' };
   const price = pesoShop(it.price);
-  return { title: `${it.name} — ${s.name}`, description: [it.brand, it.category, price].filter(Boolean).join(' · ') };
+  const origin = await siteOrigin();
+  const title = `${it.name} — ${s.name}`;
+  const description = [price, it.brand, it.category].filter(Boolean).join(' · ') || s.name;
+  // Build 136b: the link preview (Messenger, Viber, Facebook) shows the product photo, not the app logo
+  const image = { url: `${origin}/shop/${store}/item/${id}/photo`, alt: it.name };
+  return {
+    title, description,
+    icons: s.logo_url ? { icon: s.logo_url } : undefined,
+    openGraph: { type: 'website', title, description, siteName: s.name, url: `${origin}/shop/${store}/item/${id}`, images: [image] },
+    twitter: { card: 'summary_large_image', title, description, images: [image.url] },
+  };
 }
 
 export default async function ShopItemPage(props: { params: Promise<{ store: string; id: string }> }) {
