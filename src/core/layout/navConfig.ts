@@ -106,6 +106,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { label: 'Supplier Quotes', href: '/finance/procurement/supplier-quotes', fn: 'sales.price_review' },
       { label: 'Price Review', href: '/sales/price-review', show: canReviewPrices, fn: 'sales.price_review' },
       { label: 'Monthly Sales', href: '/sales/monthly-sales', fn: 'sales.reports' },
+      { label: 'Online Shop', href: '/sales/online-shop', show: isAdminTier },   // Build 136
       { label: 'Agent Commissions', href: '/sales/agent-commissions', fn: 'sales.reports' },
       { label: 'Back Office Commission', href: '/sales/back-office-commission', fn: 'sales.reports' },
       { label: 'Commission Operations & Reporting', href: '/sales/commission-report', fn: 'sales.reports' },

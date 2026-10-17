@@ -27,6 +27,10 @@ export async function proxy(request: NextRequest) {
     const { data: { user } } = await supabase.auth.getUser();
 
     // Allow login page always
+    // Build 136: the public online shops (/shop, /shop/<store>) are open to everyone
+    if (request.nextUrl.pathname === '/shop' || request.nextUrl.pathname.startsWith('/shop/')) {
+      return response;
+    }
     if (request.nextUrl.pathname === '/login' || request.nextUrl.pathname.startsWith('/auth/')) {
       return response; // /auth/accept: invitation / reset links, before the user has a session
     }
