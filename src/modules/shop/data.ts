@@ -2,9 +2,11 @@
 // Photos stay private in storage; the page gets short-lived links to them.
 import { createClient } from '@/core/auth/supabaseServer';
 import { createAdminClient } from '@/core/auth/supabaseAdmin';
+export { pesoShop, viberIntl, shortDay } from './format';
 
 export type ShopStore = { slug: string; code: string; name: string; logo_url: string | null; theme: unknown; phone: string | null; email: string | null; address: string | null;
-  messenger_url: string | null; viber_number: string | null; tagline: string | null };
+  messenger_url: string | null; viber_number: string | null; tagline: string | null;
+  facebook_url?: string | null; layout?: 'A' | 'B' | 'C' };
 export type ShopRow = { item_id: string; item_name: string; category: string | null; generic_item: string | null; brand: string | null; unit: string | null;
   photo_path: string | null; price: number | null; available?: boolean | null; total_count: number; photo_url?: string | null };
 export type ShopItem = { id: string; name: string; category: string | null; generic_item: string | null; brand: string | null; unit: string | null;
@@ -66,16 +68,7 @@ export async function loadItem(slug: string, id: string) {
   return { ...item, photo_urls: (item.photos ?? []).map((p) => urls.get(p)).filter((x): x is string => !!x) };
 }
 
-export const pesoShop = (n: number | null | undefined) => (n == null ? null : `₱${Number(n).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
 
-/** +63 form for Viber links. */
-export function viberIntl(n: string | null | undefined) {
-  if (!n) return null;
-  const d = n.replace(/[^\d]/g, '');
-  if (d.startsWith('63')) return `+${d}`;
-  if (d.startsWith('0')) return `+63${d.slice(1)}`;
-  return `+${d}`;
-}
 
 /** The site's own address (for link-preview images and links), from the request. */
 export async function siteOrigin() {
@@ -85,3 +78,22 @@ export async function siteOrigin() {
   const proto = h.get('x-forwarded-proto') ?? (host.startsWith('localhost') ? 'http' : 'https');
   return `${proto}://${host}`;
 }
+
+// ------------------------------------------------------------ Build 137: front page --
+export type ShopCard = { item_id: string; item_name: string; category: string | null; brand: string | null; unit: string | null;
+  photo_path: string | null; price: number | null; available: boolean | null; photo_url?: string | null };
+export type ShopHome = {
+  promo: { id: string; title: string; body: string | null; ends_on: string | null; link_category: string | null; item: ShopCard | null } | null;
+  announcements: { id: string; title: string; body: string | null; date: string }[];
+  featured: ShopCard | null;
+  slideshow: { title: string; category: string | null; item: string | null; brand: string | null; items: ShopCard[] } | null;
+};
+
+export async function loadHome(slug: string): Promise<ShopHome> {
+  const h = (await rpc<ShopHome>('shop_home', { p_slug: slug })) ?? { promo: null, announcements: [], featured: null, slideshow: null };
+  const cards: ShopCard[] = [h.promo?.item, h.featured, ...(h.slideshow?.items ?? [])].filter((c): c is ShopCard => !!c);
+  const urls = await signPhotos(cards.map((c) => c.photo_path ?? ''));
+  for (const c of cards) c.photo_url = c.photo_path ? urls.get(c.photo_path) ?? null : null;
+  return { promo: h.promo ?? null, announcements: h.announcements ?? [], featured: h.featured ?? null, slideshow: h.slideshow && h.slideshow.items?.length ? h.slideshow : null };
+}
+

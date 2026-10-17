@@ -53,6 +53,7 @@ export default async function ShopItemPage(props: { params: Promise<{ store: str
             )}
             <div className="mt-2 text-2xl font-extrabold text-slate-900">{price ?? <span className="text-lg text-slate-500">Ask for price</span>}{price && it.unit ? <span className="text-sm font-normal text-slate-500"> / {it.unit}</span> : null}</div>
           </div>
+          <a href={`/shop/${slug}/quote?item=${encodeURIComponent(it.name)}`} className="flex min-h-[48px] items-center justify-center rounded-xl bg-amber-400 text-sm font-bold text-amber-950">Request a quotation for this item</a>
           <ShopActions name={it.name} price={price} messenger={store.messenger_url} viber={viberIntl(store.viber_number)} phone={store.phone} available={it.available} />
           {it.specification && <section className="rounded-2xl bg-white p-4 shadow-sm"><h2 className="mb-1 text-sm font-bold">Specification</h2><p className="whitespace-pre-line text-sm text-slate-700">{it.specification}</p></section>}
           {it.description && <section className="rounded-2xl bg-white p-4 shadow-sm"><h2 className="mb-1 text-sm font-bold">Description</h2><p className="whitespace-pre-line text-sm text-slate-700">{it.description}</p></section>}

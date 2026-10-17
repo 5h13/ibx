@@ -29,13 +29,13 @@ export function messengerLinks(url: string, text?: string) {
   return { phone, page };
 }
 
-export function MessengerLink({ url, text, className, children, onCopied }: { url: string; text?: string; className?: string; children: React.ReactNode; onCopied?: () => void }) {
+export function MessengerLink({ url, text, className, children, onCopied, guard }: { url: string; text?: string; className?: string; children: React.ReactNode; onCopied?: () => void; guard?: () => boolean }) {
   const [phone, setPhone] = useState(true);
   useEffect(() => setPhone(isPhone()), []);
   const l = messengerLinks(url, text);
   return (
     <a href={phone ? l.phone : l.page} target="_blank" rel="noopener noreferrer" className={className}
-      onClick={() => { if (text && copyNow(text)) onCopied?.(); }}>
+      onClick={(e) => { if (guard && !guard()) { e.preventDefault(); return; } if (text && copyNow(text)) onCopied?.(); }}>
       {children}
     </a>
   );
