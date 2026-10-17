@@ -6,7 +6,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { setAgentStoreAction } from './agentActions';
 import type { AgentStore } from './agentContext';
 
-export const peso = (v: unknown) => (v == null || v === '' ? '—' : `₱${Number(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+export { peso } from './format';
 export const qty = (v: unknown) => (v == null ? '—' : Number(v).toLocaleString(undefined, { maximumFractionDigits: 3 }));
 export const manilaToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila' }).format(new Date());
 

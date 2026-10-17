@@ -3,7 +3,8 @@ import Link from 'next/link';
 import { AgentShell } from '@/modules/agent/AgentShell';
 import { createClient } from '@/core/auth/supabaseServer';
 import { getAgentContext } from '@/modules/agent/agentContext';
-import { Pill, peso } from '@/modules/agent/AgentHeader';
+import { Pill } from '@/modules/agent/AgentHeader';
+import { peso } from '@/modules/agent/format';
 
 export const dynamic = 'force-dynamic';
 const LABEL: Record<string, string> = { prepared: 'waiting for approval', reviewed: 'reviewed — waiting for approval', approved: 'approved — print it', sent: 'sent to client', accepted: 'accepted', draft: 'returned to draft', superseded: 'superseded' };
