@@ -10,10 +10,11 @@ import { errorText } from '@/core/errors/appError';
 import { useState, useTransition } from 'react';
 import { useDialog } from '@/core/ui/Dialog';
 import { updateBusinessBrandingAction } from './actions';
+import { AddStoreButton, CopyPricingButton, ReadinessChips, type Readiness, type StoreRef } from './StoreSetup';
 import { THEME_FIELDS, THEME_PRESETS, parseTheme, headerBackground, onAccentHex, type BrandTheme } from '@/core/theme/brandTheme';
 
 type Branding = { primary_color?: string; logo_url?: string; tagline?: string; theme?: unknown };
-type Business = { id: string; code: string; legal_name: string; trade_name: string | null; branding: Branding | null; address?: string | null; phone?: string | null; email?: string | null };
+type Business = { id: string; code: string; legal_name: string; trade_name: string | null; branding: Branding | null; address?: string | null; phone?: string | null; email?: string | null; is_active?: boolean };
 
 const DEFAULT_THEME: BrandTheme = THEME_PRESETS.sky.theme;
 
@@ -54,7 +55,8 @@ function Preview({ t, name, tagline, logo }: { t: BrandTheme; name: string; tagl
   );
 }
 
-export default function BusinessBrandingManagement({ businesses }: { businesses: Business[] }) {
+export default function BusinessBrandingManagement({ businesses, readiness = {} }: { businesses: Business[]; readiness?: Record<string, Readiness | null> }) {
+  const refs: StoreRef[] = businesses.filter((b) => b.is_active !== false).map((b) => ({ id: b.id, code: b.code, name: b.trade_name || b.legal_name }));
   const dialog = useDialog();
   const [editing, setEditing] = useState<Business | null>(null);
   const [busy, startTransition] = useTransition();
@@ -84,15 +86,18 @@ export default function BusinessBrandingManagement({ businesses }: { businesses:
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Business Branding</h1>
-        <p className="text-sm text-slate-500">Logo, tagline, contact details (printed on DRs and quotations) and colour theme for each store. The theme colours the whole app for everyone in that business (and for the Super Admin while acting as it).</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+       <div className="min-w-0 flex-1">
+        <h1 className="text-2xl font-semibold">Businesses</h1>
+        <p className="text-sm text-slate-500">Add a store, copy pricing between stores, and set each store&apos;s logo, tagline, contact details (printed on DRs and quotations) and colour theme for each store. The theme colours the whole app for everyone in that business (and for the Super Admin while acting as it).</p>
+       </div>
+       <AddStoreButton stores={refs} />
       </div>
 
       <div className="overflow-x-auto rounded bg-white shadow-sm">
         <table className="min-w-full text-sm">
           <thead className="bg-slate-50">
-            <tr>{['Business', 'Logo', 'Theme', 'Tagline', 'Contact', 'Actions'].map((h) => <th key={h} className="px-4 py-3 text-left font-medium">{h}</th>)}</tr>
+            <tr>{['Business', 'Ready to sell', 'Logo', 'Theme', 'Tagline', 'Contact', 'Actions'].map((h) => <th key={h} className="px-4 py-3 text-left font-medium">{h}</th>)}</tr>
           </thead>
           <tbody>
             {businesses.map((b) => {
@@ -100,6 +105,7 @@ export default function BusinessBrandingManagement({ businesses }: { businesses:
               return (
                 <tr key={b.id} className="border-t">
                   <td className="px-4 py-3"><div className="font-medium">{b.trade_name || b.legal_name}</div><div className="text-xs text-slate-500">{b.code}</div></td>
+                  <td className="px-4 py-3"><ReadinessChips r={readiness[b.id] ?? null} /></td>
                   <td className="px-4 py-3">
                     {b.branding?.logo_url
                       // eslint-disable-next-line @next/next/no-img-element
@@ -123,7 +129,8 @@ export default function BusinessBrandingManagement({ businesses }: { businesses:
                       </div>
                     ) : <span className="text-slate-400">Not set</span>}
                   </td>
-                  <td className="px-4 py-3"><button onClick={() => openEditor(b)} className="rounded border px-2 py-1 text-xs">Edit</button></td>
+                  <td className="px-4 py-3"><div className="flex flex-wrap gap-1.5"><button onClick={() => openEditor(b)} className="rounded border px-2 py-1 text-xs">Edit</button>
+                    <CopyPricingButton target={{ id: b.id, code: b.code, name: b.trade_name || b.legal_name }} stores={refs} /></div></td>
                 </tr>
               );
             })}

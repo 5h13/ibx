@@ -126,3 +126,35 @@ export async function updateBusinessBrandingAction(formData: FormData) {
   // this via AuthedShell, so revalidate broadly rather than one path.
   revalidatePath('/', 'layout');
 }
+
+// Build 138 — Add store and Copy pricing (database functions business_add / business_copy_pricing,
+// migration 20270140; both refuse anyone but the Super Admin).
+export async function addBusinessAction(formData: FormData): Promise<{ id: string; code: string }> {
+  await requireSuperAdmin();
+  const contact = readContact(formData);
+  const code = String(formData.get('code') ?? '').trim().toUpperCase();
+  const p = {
+    code,
+    legal_name: String(formData.get('legal_name') ?? '').trim(),
+    trade_name: String(formData.get('trade_name') ?? '').trim(),
+    vat_registered: String(formData.get('vat_registered') ?? '') === 'true',
+    address: contact.address ?? '',
+    phone: contact.phone ?? '',
+    email: contact.email ?? '',
+    copy_pricing_from: String(formData.get('copy_pricing_from') ?? '').trim(),
+  };
+  const db = createClient();
+  const { data, error } = await db.rpc('business_add', { p });
+  if (error) throw appError(error.message);
+  revalidatePath('/', 'layout');
+  return { id: String(data), code };
+}
+
+export async function copyPricingAction(fromId: string, toId: string, overwrite: boolean): Promise<{ categories: number; items: number }> {
+  await requireSuperAdmin();
+  const db = createClient();
+  const { data, error } = await db.rpc('business_copy_pricing', { p_from: fromId, p_to: toId, p_overwrite: overwrite });
+  if (error) throw appError(error.message);
+  revalidatePath('/admin/businesses');
+  return { categories: Number((data as any)?.categories ?? 0), items: Number((data as any)?.items ?? 0) };
+}
