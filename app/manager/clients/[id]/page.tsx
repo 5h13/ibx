@@ -1,6 +1,7 @@
 // Build 127 — Sales Manager app: one client's purchases, what they buy, what they owe.
 import Link from 'next/link';
 import { displayName } from '@/core/auth/loginEmail';
+import { pesoText, smsHref, telHref } from '@/shared/contact';
 import { ManagerShell, managerProfile, storeBrand } from '@/modules/manager/ManagerShell';
 import { loadClient } from '@/modules/manager/actions';
 import { PromiseButton, ShareStatementButton } from '@/modules/manager/ClientActions';
@@ -26,7 +27,14 @@ export default async function ManagerClient(props: { params: Promise<{ id: strin
         <Tile label="Owes" value={peso(ar.owed)} note={Number(ar.overdue) > 0 ? `${peso(ar.overdue)} overdue` : 'nothing overdue'} tone={Number(ar.overdue) > 0 ? 'down' : undefined} />
       </div>
       <div className="grid grid-cols-3 gap-2">
-        {c.phone ? <a href={`tel:${c.phone}`} className="flex min-h-[44px] items-center justify-center rounded-xl border bg-white text-sm font-bold">Call</a> : <span className="flex min-h-[44px] items-center justify-center rounded-xl border bg-white text-sm text-slate-400">No phone</span>}
+        {c.phone ? (
+          <div className="grid grid-cols-2 overflow-hidden rounded-xl border bg-white">
+            <a href={telHref(c.phone)} className="flex min-h-[44px] items-center justify-center text-sm font-bold">Call</a>
+            <a href={smsHref(c.phone, Number(ar.owed) > 0
+              ? `Good day${c.contact ? ` ${c.contact}` : ''}! This is ${displayName(profile.user)} of ${brand?.name ?? 'the store'}. A friendly reminder: your balance with us is ${pesoText(ar.owed)}${Number(ar.overdue) > 0 ? `, of which ${pesoText(ar.overdue)} is overdue` : ''}. Thank you!`
+              : `Good day${c.contact ? ` ${c.contact}` : ''}! This is ${displayName(profile.user)} of ${brand?.name ?? 'the store'}. Anything you need for your next jobs? We're happy to send you a quotation.`)} className="flex min-h-[44px] items-center justify-center border-l text-sm font-bold">Text</a>
+          </div>
+        ) : <span className="flex min-h-[44px] items-center justify-center rounded-xl border bg-white text-sm text-slate-400">No phone</span>}
         <ShareStatementButton className="min-h-[44px] rounded-xl border bg-white text-sm font-bold" data={{ store: brand, client: { name: c.name, contact: c.contact }, invoices: c.invoices ?? [], owed: Number(ar.owed || 0), overdue: Number(ar.overdue || 0), preparedBy: displayName(profile.user) }} />
         <PromiseButton customerId={c.id} suggested={Number(ar.overdue || ar.owed || 0)} />
       </div>

@@ -5,6 +5,7 @@ import { loadPerson } from '@/modules/manager/actions';
 import { PersonTarget } from '@/modules/manager/PersonTarget';
 import { Bar, Card, Tile, peso, pct, shortDate } from '@/modules/manager/ui';
 import { monthFrom } from '@/modules/manager/month';
+import { smsHref, telHref } from '@/shared/contact';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,6 +35,12 @@ export default async function ManagerPerson(props: { searchParams?: Promise<{ a?
         {next ? <Link href={`${base}&m=${next}`} className="flex min-h-[44px] items-center px-3 text-sm font-bold" aria-label="Next month">Next ›</Link> : <span className="px-3 text-sm text-slate-300">Next ›</span>}
       </div>
 
+      {p.phone && (
+        <div className="grid grid-cols-2 gap-2">
+          <a href={telHref(p.phone)} className="flex min-h-[44px] items-center justify-center rounded-xl border bg-white text-sm font-bold">Call {p.name.split(/\s+/)[0]}</a>
+          <a href={smsHref(p.phone, target ? `Hi! Checking in on your target this month: ₱${Math.round(total).toLocaleString('en-PH')} of ₱${Math.round(target).toLocaleString('en-PH')} so far. Anything you need from me?` : 'Hi! ')} className="flex min-h-[44px] items-center justify-center rounded-xl border bg-white text-sm font-bold">Text</a>
+        </div>
+      )}
       <Card action={<PersonTarget year={year} month={month} agent={agent} user={user} current={p.target_set ? target : null} suggested={p.default == null ? null : Number(p.default)} who={p.name} />} title="This month">
         <div className="text-3xl font-extrabold tabular-nums">{peso(total)}</div>
         <div className="text-xs text-slate-600">
@@ -94,7 +101,7 @@ export default async function ManagerPerson(props: { searchParams?: Promise<{ a?
             {p.quiet.map((c: any) => (
               <div key={c.id} className="flex items-center justify-between gap-2 py-2 text-sm">
                 <Link href={`/manager/clients/${c.id}`} className="min-w-0 truncate font-bold underline decoration-slate-300">{c.name}</Link>
-                <span className="flex items-center gap-2 text-xs text-slate-600">last {shortDate(c.last)}{c.phone && <a href={`tel:${c.phone}`} className="rounded-lg border px-2 py-1 font-bold">Call</a>}</span>
+                <span className="flex items-center gap-2 text-xs text-slate-600">last {shortDate(c.last)}{c.phone && <a href={telHref(c.phone)} className="rounded-lg border px-2 py-1 font-bold">Call</a>}{c.phone && <a href={smsHref(c.phone, `Good day! It's been a while since your last order — anything you need for your next jobs? We're happy to send you a quotation.`)} className="rounded-lg border px-2 py-1 font-bold">Text</a>}</span>
               </div>
             ))}
           </div>

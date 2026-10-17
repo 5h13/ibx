@@ -2,6 +2,7 @@
 // Build 91 — the agent's clients in one store: usual price tier, open balance,
 // and links to the catalogue / order, payment report and statement.
 import Link from 'next/link';
+import { smsHref, telHref } from '@/shared/contact';
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { errorText } from '@/core/errors/appError';
@@ -61,7 +62,7 @@ export function AgentClients({ businessId, clients, tiers }: { businessId: strin
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
                 <div className="font-medium leading-snug">{c.legal_name}</div>
-                <div className="text-xs text-slate-500">{c.customer_code}{c.phone ? <> · <a className="underline" href={`tel:${c.phone}`}>{c.phone}</a></> : ''}</div>
+                <div className="text-xs text-slate-500">{c.customer_code}{c.phone ? <> · <a className="underline" href={telHref(c.phone)}>{c.phone}</a> · <a className="underline" href={smsHref(c.phone)}>Text</a></> : ''}</div>
                 {c.address && <div className="truncate text-xs text-slate-500">{c.address}</div>}
               </div>
               <div className="flex-none text-right">

@@ -3,6 +3,7 @@
 // open quotes and orders, recent sales. Each store's figures are separate (the store picked at the top).
 import Link from 'next/link';
 import { peso } from './format';
+import { smsHref, telHref } from '@/shared/contact';
 
 const w = (n: unknown) => `₱${Math.round(Number(n || 0)).toLocaleString('en-PH')}`;   // whole pesos for the summary figures
 
@@ -91,7 +92,7 @@ export function AgentHome({ h, b }: { h: any; b: string }) {
             {h.quiet.map((c: any) => (
               <div key={c.id} className="flex items-center justify-between gap-2 py-1.5 text-sm">
                 <span className="min-w-0 truncate">{c.name} <span className="text-[11px] text-slate-500">· last {d(c.last)}</span></span>
-                {c.phone && <a href={`tel:${c.phone}`} className="rounded-lg border px-2.5 py-1 text-xs font-bold">Call</a>}
+                {c.phone && <span className="flex flex-none gap-1.5"><a href={telHref(c.phone)} className="rounded-lg border px-2.5 py-1 text-xs font-bold">Call</a><a href={smsHref(c.phone, `Good day! It's been a while — anything you need for your next jobs? I'm happy to send you a quotation.`)} className="rounded-lg border px-2.5 py-1 text-xs font-bold">Text</a></span>}
               </div>
             ))}
           </div>

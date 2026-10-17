@@ -9,6 +9,7 @@ import { useRouter } from 'next/navigation';
 import { errorText } from '@/core/errors/appError';
 import { setTargetAction } from './actions';
 import { Bar, peso } from './ui';
+import { smsHref, telHref } from '@/shared/contact';
 
 type Person = {
   kind: string; agent_id: string | null; user_id: string | null; name: string; phone: string | null; total: number; sales: number; clients: number; last: string | null;
@@ -83,7 +84,8 @@ export function TeamTargets({ people, year, month, storeTarget, storeTotal, dayS
                 <span className="flex h-10 w-10 flex-none items-center justify-center rounded-full bg-slate-200 text-sm font-extrabold text-slate-800">{p.name.split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase()}</span>
                 <div className="min-w-0 flex-1"><div className="truncate font-extrabold underline decoration-slate-300 underline-offset-2">{p.name} ›</div><div className="text-xs text-slate-600">{p.kind}{p.last ? ` · last sale ${new Date(`${p.last}T00:00:00Z`).toLocaleDateString('en-PH', { timeZone: 'UTC', day: 'numeric', month: 'short' })}` : ''}</div></div>
               </Link>
-              {p.phone && <a href={`tel:${p.phone}`} aria-label={`Call ${p.name}`} className="flex h-11 w-11 items-center justify-center rounded-xl border"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M5 4h4l2 5-3 2a11 11 0 0 0 5 5l2-3 5 2v4a2 2 0 0 1-2 2A17 17 0 0 1 3 6a2 2 0 0 1 2-2z" /></svg></a>}
+              {p.phone && <a href={telHref(p.phone)} aria-label={`Call ${p.name}`} className="flex h-11 w-11 items-center justify-center rounded-xl border"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M5 4h4l2 5-3 2a11 11 0 0 0 5 5l2-3 5 2v4a2 2 0 0 1-2 2A17 17 0 0 1 3 6a2 2 0 0 1 2-2z" /></svg></a>}
+              {p.phone && <a href={smsHref(p.phone, `Hi ${p.name.split(/\s+/).slice(-1)[0]}! `)} aria-label={`Text ${p.name}`} className="flex h-11 w-11 items-center justify-center rounded-xl border"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M4 5h16v11H8l-4 4z" /></svg></a>}
             </div>
             <div className="flex justify-between text-sm"><b className="tabular-nums">{peso(p.total)}</b><span className="text-slate-600">{p.target ? `of ${peso(p.target)} · ${share}%` : 'no target'}</span></div>
             {p.target ? <Bar value={Number(p.total)} max={Number(p.target)} mark={dayShare} /> : null}

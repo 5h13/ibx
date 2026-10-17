@@ -1,6 +1,6 @@
 // app/sales/monthly-sales/page.tsx
 // Build 130: a month picker — any month can be shown (sales entries and counter sales, including the
-// loaded sales history). New sales entries still go to the current month.
+// loaded sales history). New sales entries still go to the current month. Build 135: loads on choosing (no Show).
 import { requireSection } from '@/core/auth/requireSection';
 import { listSalesEntries } from '@/shared/sales/service';
 import { SalesTable } from '@/shared/sales/SalesTable';
@@ -9,6 +9,7 @@ import { getCurrentMonthId, getMonthId } from '@/core/utils/currentMonth';
 import { AuthedShell } from '@/core/layout/AuthedShell';
 import { ActionBar, PopupAction } from '@/core/ui/PopupAction';
 import { CounterSalesMonth } from '@/modules/sales/storefront/CounterSalesMonth';
+import { MonthPicker } from '@/core/ui/MonthPicker';
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
@@ -31,13 +32,10 @@ export default async function MonthlySalesPage(props: { searchParams?: Promise<{
   return (
     <AuthedShell profile={profile}>
       <h2 className="text-lg font-semibold mb-4">Monthly Sales — {MONTHS[month - 1]} {year}</h2>
-      <form className="flex flex-wrap items-center gap-2 mb-4 text-sm" action="/sales/monthly-sales">
-        <label className="text-slate-600" htmlFor="month">Month</label>
-        <input id="month" name="month" type="month" defaultValue={shown} max={`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`}
-          className="min-w-0 border rounded px-2 py-2 sm:py-1" />
-        <button className="rounded bg-slate-800 text-white px-4 py-2 sm:px-3 sm:py-1">Show</button>
+      <div className="flex flex-wrap items-center gap-2 mb-4 text-sm">
+        <MonthPicker action="/sales/monthly-sales" value={shown} max={`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`} className="flex items-center gap-2" />
         {!isCurrent && <a href="/sales/monthly-sales" className="text-slate-500 underline">This month</a>}
-      </form>
+      </div>
       {isCurrent && (
         <ActionBar className="mb-4">
           <PopupAction label="+ New sales entry" title="New sales entry">

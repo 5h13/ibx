@@ -6,13 +6,34 @@ import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { errorText } from '@/core/errors/appError';
 import { attentionSetAction } from './actions';
+import { smsHref, telHref } from '@/shared/contact';
 
 type Item = { key: string; level: 'red' | 'amber' | 'info'; group: string; title: string; detail: string | null; url: string | null; phone: string | null };
 const TABS: [string, string][] = [['all', 'All'], ['approvals', 'Approvals'], ['team', 'Team'], ['clients', 'Clients'], ['pipeline', 'Pipeline']];
 const TONE = { red: 'border-l-red-600 bg-red-50', amber: 'border-l-amber-500 bg-amber-50', info: 'border-l-slate-400 bg-slate-50' };
 const DOT = { red: 'Urgent', amber: 'Watch', info: 'Follow up' };
 
-export function AttentionList({ items, snoozed, limit = 8 }: { items: Item[]; snoozed: number; limit?: number }) {
+// a short ready message for the Text button (edited on the phone before sending)
+function textFor(i: Item, me: string, store: string): string {
+  const kind = i.key.split(':')[0];
+  const parts = (i.detail ?? '').split(' — ')[0].split(' · ');
+  const hello = `Good day! This is ${me} of ${store}.`;
+  const agent = (re: RegExp) => (re.exec(i.title)?.[1] ?? '').trim();
+  switch (kind) {
+    case 'behind': return `Hi ${agent(/^(.*) is behind pace/)}! Checking in on your target this month: ${i.detail}. Anything you need from me to catch up?`;
+    case 'nosale': return `Hi ${agent(/^(.*): no sale/)}! I noticed no sales from you for a while (${(i.detail ?? '').toLowerCase()}). How are your clients doing? Anything I can help with?`;
+    case 'missed': return `Hi ${agent(/^(.*) missed the target/)}! Let's talk about your target (${i.detail}). When are you free?`;
+    case 'promise': return `${hello} A friendly reminder about your payment (${parts.slice(1).join(' · ')}). Thank you!`;
+    case 'order': return `${hello} A friendly reminder about your account balance — kindly settle the overdue invoices so we can process your new order. Thank you!`;
+    case 'quiet': return `${hello} It's been a while — anything you need for your next jobs? We're happy to send you a quotation.`;
+    case 'followup': return `${hello} Following up on our quotation ${parts[0]}. Any questions or changes needed?`;
+    case 'expiry': return `${hello} Our quotation ${parts[1] ?? ''} is about to expire. Shall we go ahead with your order?`;
+    case 'undelivered': return `${hello} An update on your order ${parts[1] ?? ''}: we are preparing it and will confirm the delivery date shortly.`;
+    default: return '';
+  }
+}
+
+export function AttentionList({ items, snoozed, limit = 8, me = '', store = '' }: { items: Item[]; snoozed: number; limit?: number; me?: string; store?: string }) {
   const router = useRouter();
   const [tab, setTab] = useState('all');
   const [all, setAll] = useState(false);
@@ -51,7 +72,8 @@ export function AttentionList({ items, snoozed, limit = 8 }: { items: Item[]; sn
             </div>
             <div className="mt-2 flex flex-wrap gap-2">
               {i.url && <Link href={i.url} className="min-h-[36px] rounded-lg bg-[rgb(var(--btn))] px-3 py-2 text-xs font-bold text-[rgb(var(--on-btn))]">Open</Link>}
-              {i.phone && <a href={`tel:${i.phone}`} className="min-h-[36px] rounded-lg border bg-white px-3 py-2 text-xs font-bold">Call</a>}
+              {i.phone && <a href={telHref(i.phone)} className="min-h-[36px] rounded-lg border bg-white px-3 py-2 text-xs font-bold">Call</a>}
+              {i.phone && <a href={smsHref(i.phone, textFor(i, me, store))} className="min-h-[36px] rounded-lg border bg-white px-3 py-2 text-xs font-bold">Text</a>}
               <button type="button" disabled={pending} onClick={() => act(i.key, 'done')} className="min-h-[36px] rounded-lg border bg-white px-3 py-2 text-xs font-bold">Done</button>
               <button type="button" disabled={pending} onClick={() => act(i.key, 'snoozed')} className="min-h-[36px] rounded-lg border bg-white px-3 py-2 text-xs">Snooze 3 days</button>
             </div>

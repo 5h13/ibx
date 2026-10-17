@@ -2,6 +2,7 @@
 // (which still loads the figures) and fitted to phones: smaller amounts, quarters and stores as cards, month picker
 // on its own row. The computer layout is unchanged.
 import type { ReactNode } from 'react';
+import { MonthPicker } from '@/core/ui/MonthPicker';
 
 // Build 73 (SF-28): the Dashboard has three layers.
 //   1. Today at the counter — running Storefront sales, read live from the
@@ -107,13 +108,10 @@ export function DashboardView({ today, month, quarters, yearTotal, yearByStore, 
       </Layer>
 
       <Layer n={2} title={`${MONTHS[mMonth - 1]} ${mYear} — Finance approved`} note="From posted journals: counter closings, invoices, bills and other entries Finance has approved and posted.">
-        <form className="flex flex-wrap items-center gap-2 mb-3 text-sm" action="/dashboard">
-          <label className="w-full text-slate-600 sm:w-auto" htmlFor="month">Month</label>
-          <input id="month" name="month" type="month" defaultValue={shownMonth} className="min-w-0 flex-1 border rounded px-2 py-2 sm:flex-none sm:py-1" />
-          <input type="hidden" name="year" value={year} />
-          <button className="rounded bg-slate-800 text-white px-4 py-2 sm:px-3 sm:py-1">Show</button>
+        <div className="flex flex-wrap items-center gap-2 mb-3 text-sm">
+          <MonthPicker action="/dashboard" value={shownMonth} max={thisMonth} hidden={{ year }} className="flex flex-1 flex-wrap items-center gap-2 sm:flex-none" />
           {shownMonth !== thisMonth && <a href={`/dashboard?year=${year}`} className="text-slate-500 underline">This month</a>}
-        </form>
+        </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-4">
           <Card label="Sales" value={peso(m.sales)} />
           <Card label="Expenses" value={peso(m.expenses)} hint="Includes cost of goods sold" />

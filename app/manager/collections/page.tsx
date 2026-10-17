@@ -1,6 +1,7 @@
 // Build 127 — Sales Manager app: Collections — what clients owe, overdue first, with promises.
 import Link from 'next/link';
 import { displayName } from '@/core/auth/loginEmail';
+import { pesoText, smsHref, telHref } from '@/shared/contact';
 import { ManagerShell, managerProfile, storeBrand } from '@/modules/manager/ManagerShell';
 import { loadCollections } from '@/modules/manager/actions';
 import { PromiseButton, ShareStatementButton } from '@/modules/manager/ClientActions';
@@ -23,7 +24,12 @@ export default async function ManagerCollections() {
           {Number(x.overdue) > 0 ? <div className="text-xs font-bold text-red-700">{peso(x.overdue)} · {x.days} day{x.days === 1 ? '' : 's'} late</div> : <div className="text-xs text-slate-500">not due yet</div>}</div>
       </div>
       <div className="grid grid-cols-3 gap-2">
-        {x.phone ? <a href={`tel:${x.phone}`} className="flex min-h-[44px] items-center justify-center rounded-xl border text-sm font-bold">Call</a> : <span className="flex min-h-[44px] items-center justify-center rounded-xl border text-sm text-slate-400">No phone</span>}
+        {x.phone ? (
+          <div className="grid grid-cols-2 overflow-hidden rounded-xl border">
+            <a href={telHref(x.phone)} className="flex min-h-[44px] items-center justify-center text-sm font-bold">Call</a>
+            <a href={smsHref(x.phone, `Good day${x.contact ? ` ${x.contact}` : ''}! This is ${displayName(profile.user)} of ${brand?.name ?? 'the store'}. A friendly reminder: your balance with us is ${pesoText(x.owed)}${Number(x.overdue) > 0 ? `, of which ${pesoText(x.overdue)} is overdue` : ''}. Thank you!`)} className="flex min-h-[44px] items-center justify-center border-l text-sm font-bold">Text</a>
+          </div>
+        ) : <span className="flex min-h-[44px] items-center justify-center rounded-xl border text-sm text-slate-400">No phone</span>}
         <ShareStatementButton data={{ store: brand, client: { name: x.name, contact: x.contact }, invoices: x.open_invoices ?? [], owed: Number(x.owed), overdue: Number(x.overdue || 0), preparedBy: displayName(profile.user) }} />
         <PromiseButton customerId={x.id} suggested={Number(x.overdue || x.owed)} />
       </div>
