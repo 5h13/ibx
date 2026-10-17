@@ -11,7 +11,7 @@ const NAV = [
   { href: '/manager/collections', label: 'Collect', d: 'M3 6h18v12H3zM12 14.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z' },
 ];
 
-export function ManagerNav({ approvals }: { approvals: number }) {
+export function ManagerNav({ approvals, attention = 0 }: { approvals: number; attention?: number }) {
   const path = usePathname();
   const on = (h: string) => (h === '/manager' ? path === '/manager' : path.startsWith(h) || (h === '/manager/approvals' && path.startsWith('/manager/quotes')) || (h === '/manager/sales' && path.startsWith('/manager/clients')));
   return (
@@ -22,6 +22,7 @@ export function ManagerNav({ approvals }: { approvals: number }) {
             className={`relative flex min-h-[56px] flex-col items-center justify-center gap-0.5 text-[11px] ${on(n.href) ? 'font-bold text-[rgb(var(--btn))]' : 'text-slate-500'}`}>
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d={n.d} /></svg>
             {n.label}
+            {n.href === '/manager' && attention > 0 && <span className="absolute left-1/2 top-1.5 ml-2 rounded-full bg-amber-500 px-1.5 text-[10px] font-bold text-white" aria-label={`${attention} need attention`}>{attention}</span>}
             {n.href === '/manager/approvals' && approvals > 0 && <span className="absolute left-1/2 top-1.5 ml-2 rounded-full bg-red-600 px-1.5 text-[10px] font-bold text-white">{approvals}</span>}
           </Link>
         ))}

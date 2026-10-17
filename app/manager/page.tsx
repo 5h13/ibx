@@ -1,21 +1,29 @@
 // Build 127 — Sales Manager app: Today.
 import Link from 'next/link';
 import { ManagerShell, managerProfile } from '@/modules/manager/ManagerShell';
-import { loadToday } from '@/modules/manager/actions';
+import { loadAttention, loadToday, runAttentionScan } from '@/modules/manager/actions';
+import { AttentionList } from '@/modules/manager/AttentionList';
 import { Card, Tile, peso, KIND_LABEL } from '@/modules/manager/ui';
 
 export const dynamic = 'force-dynamic';
 
 export default async function ManagerToday() {
   const profile = await managerProfile();
-  const t: any = profile.user.business_id ? await loadToday() : null;
+  if (profile.user.business_id) await runAttentionScan();   // Build 133: send any new urgent alerts for this store
+  const [t, att]: [any, any] = profile.user.business_id ? await Promise.all([loadToday(), loadAttention()]) : [null, null];
   const a = t?.approvals ?? {};
   const total = ['quotes', 'orders', 'prices', 'cancels', 'closings'].reduce((s, k) => s + Number(a[k] ?? 0), 0);
   const vsAvg = t && Number(t.same_day_avg) > 0 ? Math.round(((Number(t.sales_today) - Number(t.same_day_avg)) / Number(t.same_day_avg)) * 100) : null;
   const mtdPct = t?.target ? Math.round((Number(t.mtd) / Number(t.target)) * 100) : null;
   const dayLabel = new Date().toLocaleDateString('en-PH', { timeZone: 'Asia/Manila', weekday: 'short', day: 'numeric', month: 'short' });
   return (
-    <ManagerShell profile={profile} title="Today" counts={total}>
+    <ManagerShell profile={profile} title="Today" counts={total} attention={att ? Number(att.counts?.red ?? 0) + Number(att.counts?.amber ?? 0) : 0}>
+      {att && (
+        <Card title={<span>Needs attention{Number(att.counts?.red ?? 0) > 0 && <span className="ml-2 rounded-full bg-red-600 px-2 py-0.5 text-xs text-white">{att.counts.red} urgent</span>}</span>}
+          action={<Link href="/manager/settings" className="text-xs font-bold text-[rgb(var(--btn))] underline">Settings</Link>}>
+          <AttentionList items={att.items ?? []} snoozed={Number(att.snoozed ?? 0)} />
+        </Card>
+      )}
       {t && (
         <>
           <div className="grid grid-cols-3 gap-2">

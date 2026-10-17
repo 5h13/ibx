@@ -31,6 +31,7 @@ export function AgentStoreSwitch({ stores, store }: { stores: AgentStore[]; stor
 }
 
 const ICON: Record<string, string> = {
+  home: 'M3 11l9-7 9 7M5 10v10h5v-6h4v6h5V10',
   catalog: 'M4 6h16M4 12h16M4 18h10', clients: 'M16 14a4 4 0 10-8 0M12 10a3 3 0 100-6 3 3 0 000 6zM4 20a8 8 0 0116 0',
   orders: 'M6 4h12l1 4H5l1-4zM5 8h14v11a1 1 0 01-1 1H6a1 1 0 01-1-1V8zm4 4h6', payments: 'M3 7h18v10H3zM3 10h18M7 14h3',
   more: 'M5 12h.01M12 12h.01M19 12h.01',
@@ -39,8 +40,9 @@ const Icon = ({ d }: { d: string }) => (
   <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d={d} /></svg>
 );
 const MAIN = [
+  { href: '/agent', label: 'Home', icon: 'home' },
   { href: '/agent/catalog', label: 'Catalogue', icon: 'catalog' },
-  { href: '/agent', label: 'Clients', icon: 'clients' },
+  { href: '/agent/clients', label: 'Clients', icon: 'clients' },
   { href: '/agent/orders', label: 'Orders', icon: 'orders' },
   { href: '/agent/payments', label: 'Payments', icon: 'payments' },
 ];
@@ -73,7 +75,7 @@ export function AgentNav({ variant }: { variant: 'tabs' | 'bottom' }) {
           {MORE.map((n) => <Link key={n.href} href={n.href} className={`block border-b px-4 py-3 text-base last:border-0 ${active(n.href) ? 'font-semibold' : ''}`}>{n.label}</Link>)}
         </div>
       )}
-      <nav className="fixed inset-x-0 bottom-0 z-50 grid grid-cols-5 border-t bg-white pb-[env(safe-area-inset-bottom)] md:hidden">
+      <nav className="fixed inset-x-0 bottom-0 z-50 grid grid-cols-6 border-t bg-white pb-[env(safe-area-inset-bottom)] md:hidden">
         {MAIN.map((n) => (
           <Link key={n.href} href={n.href} className={`flex flex-col items-center gap-0.5 py-2 text-[11px] ${active(n.href) ? 'font-semibold text-slate-900' : 'text-slate-500'}`}>
             <Icon d={ICON[n.icon]} />{n.label}

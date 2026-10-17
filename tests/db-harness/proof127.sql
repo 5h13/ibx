@@ -27,15 +27,15 @@ select proof.ok((select count(*) from jsonb_array_elements(public.manager_team(p
 
 -- targets
 select proof.ok((public.manager_month(proof.get('y')::int, proof.get('m')::int)->>'target') is null, 'no target set yet');
-select public.manager_set_target(proof.get('y')::int, proof.get('m')::int, null, '00000000-0000-0000-0000-000000000013', 50000);
+select public.manager_set_target(proof.get('y')::int, proof.get('m')::int, null, '00000000-0000-0000-0000-000000000013', 50000, 'Proof note');
 select proof.ok((public.manager_month(proof.get('y')::int, proof.get('m')::int)->>'target')::numeric = 50000, 'without a store target, the people''s targets add up to it');
-select public.manager_set_target(proof.get('y')::int, proof.get('m')::int, null, null, 120000);
-select public.manager_set_target(proof.get('y')::int, proof.get('m')::int, null, null, 150000);
+select public.manager_set_target(proof.get('y')::int, proof.get('m')::int, null, null, 120000, null);
+select public.manager_set_target(proof.get('y')::int, proof.get('m')::int, null, null, 150000, null);
 select proof.ok((public.manager_month(proof.get('y')::int, proof.get('m')::int)->>'target')::numeric = 150000, 'a store target set twice keeps the last');
 select proof.ok((select (x->>'target')::numeric from jsonb_array_elements(public.manager_team(proof.get('y')::int, proof.get('m')::int)) x where x->>'user_id' = '00000000-0000-0000-0000-000000000013') = 50000, 'the cashier''s own target shows on Team');
-select proof.fails($$select public.manager_set_target(2026, 10, null, null, -1)$$, '₱0 or more', 'a negative target is refused');
+select proof.fails($$select public.manager_set_target(2026, 10, null, null, -1, null)$$, '₱0 or more', 'a negative target is refused');
 select proof.as_user('00000000-0000-0000-0000-000000000013');
-select proof.fails($$select public.manager_set_target(2026, 10, null, null, 1)$$, 'sets targets', 'a cashier cannot set targets');
+select proof.fails($$select public.manager_set_target(2026, 10, null, null, 1, null)$$, 'sets targets', 'a cashier cannot set targets');
 
 -- approvals: a quotation with a line below the floor, and an overdue invoice
 select proof.as_owner();

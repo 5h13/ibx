@@ -34,6 +34,10 @@ export async function loadQuote(id: string) { await manager(); return rpc('manag
 export async function loadMonth(year: number, month: number) { await manager(); return rpc('manager_month', { p_year: year, p_month: month }); }
 export async function loadTeam(year: number, month: number) { await manager(); return rpc<any[]>('manager_team', { p_year: year, p_month: month }); }
 export async function loadClient(id: string) { await manager(); return rpc('manager_client', { p_customer: id }); }
+export async function loadPerson(agent: string | null, user: string | null, year: number, month: number) { await manager(); return rpc('manager_person', { p_agent: agent, p_user: user, p_year: year, p_month: month }); }
+export async function loadAttention() { await manager(); return rpc('manager_attention'); }
+/** Build 133: send any new urgent alerts / the morning summary for this store (also done by the background job). */
+export async function runAttentionScan() { try { await manager(); await rpc('manager_attention_scan'); } catch { /* never blocks the screen */ } }
 export async function loadCollections() { await manager(); return rpc('manager_collections'); }
 
 // --------------------------------------------------------------- decisions --
@@ -100,10 +104,11 @@ export async function returnItemAction(kind: Kind, id: string, reason: string) {
   return { ok: true };
 }
 
-export async function setTargetAction(input: { year: number; month: number; agent_id?: string | null; user_id?: string | null; amount: number }) {
+export async function setTargetAction(input: { year: number; month: number; agent_id?: string | null; user_id?: string | null; amount: number; note?: string }) {
   await manager();
-  await rpc('manager_set_target', { p_year: input.year, p_month: input.month, p_agent: input.agent_id ?? null, p_user: input.user_id ?? null, p_amount: input.amount });
+  await rpc('manager_set_target', { p_year: input.year, p_month: input.month, p_agent: input.agent_id ?? null, p_user: input.user_id ?? null, p_amount: input.amount, p_note: input.note ?? null });
   refresh();
+  revalidatePath('/manager/team/person'); revalidatePath('/agent');
   return { ok: true };
 }
 
@@ -112,5 +117,20 @@ export async function logPromiseAction(input: { customer_id: string; date: strin
   await rpc('manager_log_promise', { p_customer: input.customer_id, p_date: input.date, p_amount: input.amount, p_note: input.note ?? null });
   refresh();
   revalidatePath(`/manager/clients/${input.customer_id}`);
+  return { ok: true };
+}
+
+// Build 133 — Needs attention: Done / Snooze / reopen an item, and the store's thresholds.
+export async function attentionSetAction(key: string, status: 'done' | 'snoozed' | 'open', days = 3) {
+  await manager();
+  await rpc('manager_attention_set', { p_key: key, p_status: status, p_days: days });
+  revalidatePath('/manager');
+  return { ok: true };
+}
+
+export async function saveAttentionSettingsAction(settings: Record<string, number>) {
+  await manager();
+  await rpc('manager_attention_settings_save', { p: settings });
+  revalidatePath('/manager'); revalidatePath('/manager/settings');
   return { ok: true };
 }

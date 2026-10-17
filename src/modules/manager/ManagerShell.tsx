@@ -11,6 +11,8 @@ import { canUseManagerApp } from './access';
 import { parseTheme, themeCss, headerBackground } from '@/core/theme/brandTheme';
 import { CalculatorButton } from '@/core/ui/Calculator';
 import { ManagerNav } from './ManagerNav';
+import { NotificationBell } from '@/shared/notifications/NotificationBell';
+import { listMyNotificationsAction } from '@/shared/notifications/service';
 
 export async function managerProfile() {
   const profile = await getSessionProfile();
@@ -20,8 +22,15 @@ export async function managerProfile() {
   return profile;
 }
 
-export async function ManagerShell({ profile, title, sub, back, children, counts }: { profile: SessionProfile; title: string; sub?: string; back?: string; children: ReactNode; counts?: number }) {
+export async function ManagerShell({ profile, title, sub, back, children, counts, attention }: { profile: SessionProfile; title: string; sub?: string; back?: string; children: ReactNode; counts?: number; attention?: number }) {
   const db = createClient();
+  // Build 133: the notification bell (urgent alerts, morning summary) and the "Needs attention" count on Today
+  const notifications = await listMyNotificationsAction().catch(() => []);
+  let attn = attention;
+  if (attn == null && profile.user.business_id) {
+    const { data } = await db.rpc('manager_attention');
+    attn = data ? Number((data as any).counts?.red ?? 0) + Number((data as any).counts?.amber ?? 0) : 0;
+  }
   const { data: biz } = profile.user.business_id
     ? await db.from('businesses').select('code,legal_name,trade_name,branding').eq('id', profile.user.business_id).maybeSingle()
     : { data: null };
@@ -53,13 +62,14 @@ export async function ManagerShell({ profile, title, sub, back, children, counts
             <div className="truncate text-xs opacity-80">{sub ?? `${store ?? 'Choose a store in "Acting as"'} · Sales Manager`}</div>
           </div>
           <CalculatorButton compact />
+          <NotificationBell notifications={notifications as any} compact />
           <Link href="/dashboard" className="rounded-lg border border-white/30 px-2.5 py-1.5 text-xs font-semibold" title="Open the office app">Office</Link>
         </div>
       </header>
       <main className="mx-auto max-w-3xl space-y-3 px-3 py-3 md:px-6">
         {profile.user.business_id ? children : <div className="rounded-xl border bg-white p-6 text-slate-600">Choose a store in &quot;Acting as&quot; (office app) to work in the Sales Manager app.</div>}
       </main>
-      <ManagerNav approvals={counts ?? 0} />
+      <ManagerNav approvals={counts ?? 0} attention={attn ?? 0} />
     </div>
   );
 }

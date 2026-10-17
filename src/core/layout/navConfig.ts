@@ -19,7 +19,8 @@ export const NAV_GROUPS: NavGroup[] = [
     code: 'agent',
     label: 'Agent',
     items: [
-      { label: 'My Clients', href: '/agent', show: isAgent },
+      { label: 'Home', href: '/agent', show: isAgent },
+      { label: 'My Clients', href: '/agent/clients', show: isAgent },
       { label: 'Catalogue & Pricing', href: '/agent/catalog', show: isAgent },
       { label: 'Orders', href: '/agent/orders', show: isAgent },
       { label: 'Quotations', href: '/agent/quotations', show: isAgent },
