@@ -46,9 +46,14 @@ export default async function ShopItemPage(props: { params: Promise<{ store: str
           <div>
             <div className="text-xs text-slate-500">{[it.category, it.generic_item, it.brand].filter(Boolean).join(' · ')}</div>
             <h1 className="text-xl font-extrabold leading-tight text-slate-900">{it.name}</h1>
+            {it.available != null && (
+              <div className={`mt-2 inline-block rounded-full px-3 py-1 text-xs font-bold ${it.available ? 'bg-emerald-600 text-white' : 'bg-amber-100 text-amber-900'}`}>
+                {it.available ? 'Available — in stock' : 'By order — message us for the lead time'}
+              </div>
+            )}
             <div className="mt-2 text-2xl font-extrabold text-slate-900">{price ?? <span className="text-lg text-slate-500">Ask for price</span>}{price && it.unit ? <span className="text-sm font-normal text-slate-500"> / {it.unit}</span> : null}</div>
           </div>
-          <ShopActions name={it.name} price={price} messenger={store.messenger_url} viber={viberIntl(store.viber_number)} phone={store.phone} />
+          <ShopActions name={it.name} price={price} messenger={store.messenger_url} viber={viberIntl(store.viber_number)} phone={store.phone} available={it.available} />
           {it.specification && <section className="rounded-2xl bg-white p-4 shadow-sm"><h2 className="mb-1 text-sm font-bold">Specification</h2><p className="whitespace-pre-line text-sm text-slate-700">{it.specification}</p></section>}
           {it.description && <section className="rounded-2xl bg-white p-4 shadow-sm"><h2 className="mb-1 text-sm font-bold">Description</h2><p className="whitespace-pre-line text-sm text-slate-700">{it.description}</p></section>}
         </div>

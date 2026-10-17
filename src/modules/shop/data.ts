@@ -6,9 +6,9 @@ import { createAdminClient } from '@/core/auth/supabaseAdmin';
 export type ShopStore = { slug: string; code: string; name: string; logo_url: string | null; theme: unknown; phone: string | null; email: string | null; address: string | null;
   messenger_url: string | null; viber_number: string | null; tagline: string | null };
 export type ShopRow = { item_id: string; item_name: string; category: string | null; generic_item: string | null; brand: string | null; unit: string | null;
-  photo_path: string | null; price: number | null; total_count: number; photo_url?: string | null };
+  photo_path: string | null; price: number | null; available?: boolean | null; total_count: number; photo_url?: string | null };
 export type ShopItem = { id: string; name: string; category: string | null; generic_item: string | null; brand: string | null; unit: string | null;
-  description: string | null; specification: string | null; item_type: string | null; photos: string[]; price: number | null; photo_urls?: string[] };
+  description: string | null; specification: string | null; item_type: string | null; photos: string[]; price: number | null; available?: boolean | null; photo_urls?: string[] };
 
 export const PAGE_SIZE = 24;
 
@@ -45,7 +45,7 @@ export async function loadCatalog(slug: string, f: { q?: string; category?: stri
 
 /** Build 136b: the front page — each category with its first products and its full count. */
 export async function loadGroups(slug: string, per = 8) {
-  const rows = (await rpc<{ category: string; item_id: string; item_name: string; brand: string | null; unit: string | null; photo_path: string | null; price: number | null; category_count: number }[]>(
+  const rows = (await rpc<{ category: string; item_id: string; item_name: string; brand: string | null; unit: string | null; photo_path: string | null; price: number | null; available: boolean | null; category_count: number }[]>(
     'shop_catalog_by_category', { p_slug: slug, p_per: per })) ?? [];
   const urls = await signPhotos(rows.map((r) => r.photo_path ?? ''));
   const groups: { category: string; count: number; rows: ShopRow[] }[] = [];
@@ -53,7 +53,7 @@ export async function loadGroups(slug: string, per = 8) {
     let g = groups[groups.length - 1];
     if (!g || g.category !== r.category) { g = { category: r.category, count: Number(r.category_count), rows: [] }; groups.push(g); }
     g.rows.push({ item_id: r.item_id, item_name: r.item_name, category: r.category, generic_item: null, brand: r.brand, unit: r.unit, photo_path: r.photo_path,
-      price: r.price, total_count: Number(r.category_count), photo_url: r.photo_path ? urls.get(r.photo_path) ?? null : null });
+      price: r.price, available: r.available, total_count: Number(r.category_count), photo_url: r.photo_path ? urls.get(r.photo_path) ?? null : null });
   }
   return groups;
 }

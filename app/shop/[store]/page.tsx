@@ -47,7 +47,8 @@ export default async function StoreShop(props: { params: Promise<{ store: string
   const card = (r: ShopRow) => (
     <li key={r.item_id}>
       <Link href={`/shop/${slug}/item/${r.item_id}`} className="flex h-full flex-col overflow-hidden rounded-2xl bg-white shadow-sm">
-        <div className="aspect-square bg-slate-100">
+        <div className="relative aspect-square bg-slate-100">
+          {r.available != null && <span className={`absolute left-2 top-2 z-10 rounded-full px-2 py-0.5 text-[10px] font-bold ${r.available ? 'bg-emerald-600 text-white' : 'bg-amber-100 text-amber-900'}`}>{r.available ? 'Available' : 'By order'}</span>}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           {r.photo_url ? <img src={r.photo_url} alt={r.item_name} loading="lazy" className="h-full w-full object-contain" /> : null}
         </div>
