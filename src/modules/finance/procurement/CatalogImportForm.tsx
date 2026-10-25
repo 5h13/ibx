@@ -68,7 +68,7 @@ export function CatalogImportForm({ pending, run, onDone }: { pending: boolean; 
       </fieldset>
       <fieldset className="rounded border p-3 text-sm">
         <legend className="px-1 text-xs font-medium text-slate-700">Full-catalog upload (Build 76)</legend>
-        <p className="text-xs text-slate-500">Download the catalog first (Export CSV): it carries each item&apos;s <b>Item Code</b>. Rows with a code update that item, even if you renamed it; rows without a code become new items. The file overwrites names, category, item, brand, description, SPECIFICATION, supplier, Supplier Cost and prices. Photos are added per item in the app.</p>
+        <p className="text-xs text-slate-500">Download the catalog first (Export CSV): it carries each item&apos;s <b>Item Code</b>. Rows with a code update that item, even if you renamed it; rows without a code become new items. The file overwrites names, category, item, brand, description, SPEC 1 … SPEC 10 (one <b>Label: Value</b> per cell, e.g. <i>Voltage: 12V</i>), supplier, Supplier Cost and prices. Photos are added per item in the app.</p>
         <div className="mt-2 grid gap-2 sm:grid-cols-2">
           <label className="block text-xs">Opening stock location (for the OPENING STOCK column)
             <select className="input mt-1" name="opening_location_id" defaultValue={locations.length === 1 ? locations[0].id : ''}>

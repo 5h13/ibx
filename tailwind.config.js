@@ -11,6 +11,8 @@ module.exports = {
   ],
   theme: {
     extend: {
+      // Build 141: the Studio's "brand" colour = the store's button colour
+      colors: { brand: { DEFAULT: 'rgb(var(--btn) / <alpha-value>)', dark: 'rgb(var(--btn) / <alpha-value>)', soft: 'rgb(var(--btn) / 0.12)' } },
       backgroundColor: {
         white: v('bg-surface'),
         slate: { 50: v('bg-subtle'), 100: v('bg-subtle2'), 200: v('bg-subtle3'), 700: v('bg-strong3'), 800: v('bg-strong2'), 900: v('bg-strong') },

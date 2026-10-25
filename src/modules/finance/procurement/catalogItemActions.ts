@@ -14,7 +14,7 @@ import { createClient } from '@/core/auth/supabaseServer';
 import { getSessionProfile } from '@/core/auth/getSessionProfile';
 import { isAdminTier, type SessionProfile } from '@/core/auth/types';
 import { hasFunction } from '@/core/auth/functions';
-import { CATALOG_PHOTO_BUCKET, normalizeCatalogHeader } from './catalogColumns';
+import { CATALOG_PHOTO_BUCKET, SPEC_COLUMNS, normalizeCatalogHeader, specFromCells } from './catalogColumns';
 import { looksLikeXlsx, readXlsxRows } from './xlsxReader';
 
 type Db = ReturnType<typeof createClient>;
@@ -282,7 +282,17 @@ async function planCatalogImport(p: SessionProfile, db: Db, fd: FormData) {
     if (error) throw appError(error.message);
     for (const x of (data ?? []) as any[]) idByCode.set(String(x.item_code).toUpperCase(), x.id);
   }
-  const specRaw = (r: string[]) => { const i = headers.indexOf('specification'); return i >= 0 ? String(r[i] ?? '').trim() : ''; };
+  // Build 141: SPEC 1 … SPEC 10 ("Label: Value" per cell), or the older single SPECIFICATION column
+  const specIdx = SPEC_COLUMNS.map((_, i) => headers.indexOf(`spec_${i + 1}`)).filter((i) => i >= 0);
+  const hasSpec = specIdx.length > 0 || headers.includes('specification');
+  const specRaw = (r: string[], line: string) => {
+    if (specIdx.length) {
+      const { text, bad } = specFromCells(specIdx.map((i) => String(r[i] ?? '')));
+      for (const b of bad.slice(0, 3)) errors.push(`${line}: SPEC ${b.col} "${b.value.slice(0, 40)}" — write it as Label: Value, e.g. Voltage: 12V`);
+      return text;
+    }
+    const i = headers.indexOf('specification'); return i >= 0 ? String(r[i] ?? '').trim() : '';
+  };
   const hasOpening = headers.includes('opening_stock');
   const openingLocation = String(fd.get('opening_location_id') ?? '').trim();
   const codeSeen = new Set<string>();
@@ -330,7 +340,7 @@ async function planCatalogImport(p: SessionProfile, db: Db, fd: FormData) {
     seen.set(key, whole);
     if (!cat || !unit) continue;
     prepared.push({ line: n + 1, item_name: name, category: cat.name, category_id: cat.id, unit, generic_item: col(r, 'generic_item') || null, brand: col(r, 'brand') || null, description: col(r, 'description') || null, default_supplier_id: supplier?.id ?? null, standard_cost: cost ?? 0, supplier_item_code: col(r, 'supplier_item_code') || null, addon, store, markup,
-      item_code: code || null, item_id: codeId, specification: specRaw(r) || null, opening_qty: openingQty, opening_cost: openingCost, stock_type: stockType });
+      item_code: code || null, item_id: codeId, specification: specRaw(r, line) || null, opening_qty: openingQty, opening_cost: openingCost, stock_type: stockType });
   }
   const openingRows = prepared.filter((x) => x.opening_qty !== null);
   if (openingRows.length && !openingLocation) errors.push('The file has OPENING STOCK values: choose the store location the opening stock is counted at.');
@@ -402,7 +412,7 @@ async function planCatalogImport(p: SessionProfile, db: Db, fd: FormData) {
   }
   const existing = prepared.filter((x) => idByKey.has(keyOf(x)));
   const fresh = prepared.filter((x) => !idByKey.has(keyOf(x)));
-  return { file, headers, targets, prepared, existing, fresh, idByKey, lookup, pricingRows, doPricing, dryRun, errors, identicalDuplicates, openingRows, openingLocation, deactivateMissing };
+  return { file, headers, hasSpec, targets, prepared, existing, fresh, idByKey, lookup, pricingRows, doPricing, dryRun, errors, identicalDuplicates, openingRows, openingLocation, deactivateMissing };
 }
 
 function importFailure(errors: string[]) {
@@ -463,7 +473,7 @@ export async function previewCatalogImportAction(fd: FormData): Promise<CatalogI
 
 export async function importCatalogCsvAction(fd: FormData) {
   const p = await financeUser(); const db = createClient();
-  const { file, headers, targets, prepared, existing, fresh, idByKey, lookup, pricingRows, doPricing, errors, identicalDuplicates, openingRows, openingLocation, deactivateMissing } = await planCatalogImport(p, db, fd);
+  const { file, headers, hasSpec, targets, prepared, existing, fresh, idByKey, lookup, pricingRows, doPricing, errors, identicalDuplicates, openingRows, openingLocation, deactivateMissing } = await planCatalogImport(p, db, fd);
   if (errors.length) throw importFailure(errors);
 
   // Build 83d: deactivate the items missing from the file first, so a row may take the name of an item being retired
@@ -481,7 +491,7 @@ export async function importCatalogCsvAction(fd: FormData) {
   for (const part of chunk(existing, 300)) {
     const { data, error } = await db.rpc('catalog_import_update_items', { p_rows: part.map((x) => ({
       id: idByKey.get(keyOf(x)), item_name: x.item_name, category: x.category, unit: x.unit, generic_item: x.generic_item ?? '', brand: x.brand ?? '',
-      description: x.description ?? '', ...(headers.includes('specification') ? { specification: x.specification ?? '' } : {}),
+      description: x.description ?? '', ...(hasSpec ? { specification: x.specification ?? '' } : {}),
       ...(x.default_supplier_id ? { default_supplier_id: x.default_supplier_id } : {}), ...(x.stock_type ? { stock_type: x.stock_type } : {}), reactivate: Boolean(x.item_id),
     })) });
     if (error) throw appError(error.code === '23505' ? `Two items would end up with the same name, category and unit (${error.message}). Merge them in the file first.` : error.message);

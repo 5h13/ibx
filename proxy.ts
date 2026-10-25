@@ -64,5 +64,5 @@ async function route(request: NextRequest): Promise<NextResponse> {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|brand/|icons/|fonts/|manifest.webmanifest|sw.js|offline.html|ocr/).*)'], // Build 119: /ocr = the on-device text reader files // /brand: public logo files (login page); Build 95: app install files
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|brand/|icons/|fonts/|manifest.webmanifest|sw.js|offline.html|ocr/|ai/).*)'], // Build 119: /ocr = the on-device text reader files // Build 141: /ai = the photo touch-up's background remover (about 16 MB) // /brand: public logo files (login page); Build 95: app install files
 };

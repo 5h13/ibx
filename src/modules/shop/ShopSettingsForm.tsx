@@ -57,7 +57,8 @@ function HeaderPreview({ h, tagline, bannerUrl, focus }: { h: ShopHeaderInfo; ta
   );
 }
 export type ShopPost = { id: string; kind: 'announcement' | 'promo'; title: string; body: string | null; starts_on: string | null; ends_on: string | null;
-  item_id: string | null; item_name?: string | null; link_category: string | null; active: boolean };
+  item_id: string | null; item_name?: string | null; link_category: string | null; active: boolean;
+  /** Build 141: a picture made in the Studio */ image_url?: string | null };
 
 const LAYOUTS: { key: 'A' | 'B' | 'C'; name: string; text: string }[] = [
   { key: 'A', name: 'A · Classic storefront', text: 'Branded header with search, Request for quotation and Like us; promo card, slideshow with arrows, featured product, announcements, products by category.' },
@@ -291,7 +292,9 @@ function PostsManager({ posts, categories }: { posts: ShopPost[]; categories: st
         {posts.map((p) => (
           <li key={p.id} className="flex items-center gap-3 py-2 text-sm">
             <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${p.kind === 'promo' ? 'bg-amber-100 text-amber-900' : 'bg-slate-100 text-slate-700'}`}>{p.kind === 'promo' ? 'Promo' : 'News'}</span>
-            <span className="min-w-0 flex-1"><span className="block truncate font-medium">{p.title}</span><span className="text-xs text-slate-500">{status(p)}{p.ends_on ? ` · until ${p.ends_on}` : ''}</span></span>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            {p.image_url && <a href={p.image_url} target="_blank" rel="noopener noreferrer"><img src={p.image_url} alt="" className="h-12 w-12 flex-none rounded border object-cover" /></a>}
+            <span className="min-w-0 flex-1"><span className="block truncate font-medium">{p.title}</span><span className="text-xs text-slate-500">{p.image_url ? 'Picture from the Studio · ' : ''}{status(p)}{p.ends_on ? ` · until ${p.ends_on}` : ''}</span></span>
             <button type="button" className="text-xs underline" onClick={() => setEdit({ ...p, body: p.body ?? '', starts_on: p.starts_on ?? '', ends_on: p.ends_on ?? '', link_category: p.link_category ?? '' })}>Edit</button>
             <button type="button" className="text-xs text-red-700 underline" onClick={() => remove(p)}>Remove</button>
           </li>

@@ -91,7 +91,7 @@ export function CatalogItemForm({
         <L l="ITEM" hint="Generic item, e.g. AC FILTER DRIER"><input className="input" name="generic_item" defaultValue={item?.generic_item ?? ''} /></L>
         <L l="BRAND"><input className="input" name="brand" defaultValue={item?.brand ?? ''} /></L>
         <div className="md:col-span-3"><L l="DESCRIPTION"><input className="input" name="description" defaultValue={item?.description ?? ''} /></L></div>
-        <div className="md:col-span-4"><L l="SPECIFICATION" hint="One per line, e.g. Capacity: 1.5 HP / Voltage: 220 V / Refrigerant: R32 — shown on the product page">
+        <div className="md:col-span-4"><L l="SPECIFICATION" hint="One per line, written Label: Value — e.g. Capacity: 1.5 HP, Voltage: 220 V, Refrigerant: R32. Shown on the product page and used by the Studio (specs cards). The import file has these as SPEC 1 … SPEC 10.">
           <textarea className="input min-h-[90px]" name="specification" defaultValue={item?.specification ?? ''} /></L></div>
         <div className="md:col-span-4">
           <L l="Product Photos (up to 3)" hint="JPG, PNG or WebP, up to 5 MB each; the first is the main photo">

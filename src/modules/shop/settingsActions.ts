@@ -47,7 +47,10 @@ export async function saveShopPostAction(post: Record<string, string | boolean |
 
 export async function deleteShopPostAction(id: string) {
   await admin();
+  // Build 141: a Studio picture is removed with its post
+  const { data: post } = await createClient().from('shop_posts').select('image_path').eq('id', id).maybeSingle();
   await rpc('shop_post_delete', { p_id: id });
+  if ((post as any)?.image_path) await createAdminClient().storage.from('business-logos').remove([String((post as any).image_path)]);
   refresh();
   return { ok: true };
 }

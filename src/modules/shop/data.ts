@@ -94,8 +94,9 @@ export async function siteOrigin() {
 export type ShopCard = { item_id: string; item_name: string; category: string | null; brand: string | null; unit: string | null;
   photo_path: string | null; price: number | null; available: boolean | null; photo_url?: string | null };
 export type ShopHome = {
-  promo: { id: string; title: string; body: string | null; ends_on: string | null; link_category: string | null; item: ShopCard | null } | null;
-  announcements: { id: string; title: string; body: string | null; date: string }[];
+  // Build 141: a promotion or announcement can be a picture made in the Studio
+  promo: { id: string; title: string; body: string | null; ends_on: string | null; link_category: string | null; item: ShopCard | null; image_path?: string | null; image_url?: string | null } | null;
+  announcements: { id: string; title: string; body: string | null; date: string; image_path?: string | null; image_url?: string | null }[];
   featured: ShopCard | null;
   slideshow: { title: string; category: string | null; item: string | null; brand: string | null; items: ShopCard[] } | null;
 };
@@ -105,6 +106,8 @@ export async function loadHome(slug: string): Promise<ShopHome> {
   const cards: ShopCard[] = [h.promo?.item, h.featured, ...(h.slideshow?.items ?? [])].filter((c): c is ShopCard => !!c);
   const urls = await signPhotos(cards.map((c) => c.photo_path ?? ''));
   for (const c of cards) c.photo_url = c.photo_path ? urls.get(c.photo_path) ?? null : null;
-  return { promo: h.promo ?? null, announcements: h.announcements ?? [], featured: h.featured ?? null, slideshow: h.slideshow && h.slideshow.items?.length ? h.slideshow : null };
+  const promo = h.promo ? { ...h.promo, image_url: bannerUrl(h.promo.image_path) } : null;
+  const announcements = (h.announcements ?? []).map((a) => ({ ...a, image_url: bannerUrl(a.image_path) }));
+  return { promo, announcements, featured: h.featured ?? null, slideshow: h.slideshow && h.slideshow.items?.length ? h.slideshow : null };
 }
 

@@ -7,7 +7,7 @@ import { createClient } from '@/core/auth/supabaseServer';
 import { getSessionProfile } from '@/core/auth/getSessionProfile';
 import { isAdminTier } from '@/core/auth/types';
 import { readCatalogFilters, applyCatalogFilters } from '@/modules/finance/procurement/catalogFilters';
-import { CATALOG_COLUMNS, CATALOG_UPLOAD_EXTRA } from '@/modules/finance/procurement/catalogColumns';
+import { CATALOG_COLUMNS, CATALOG_UPLOAD_EXTRA, specCells } from '@/modules/finance/procurement/catalogColumns';
 import { buildXlsx, type Cell } from '@/shared/export/xlsx';
 // CAT-07 (Build 77): ?format=xlsx gives the same columns as an Excel workbook
 // (numbers as numeric cells), which the catalog import also accepts.
@@ -36,7 +36,8 @@ export async function GET(req: Request) {
         priced && x.addon_percent != null ? Number(Number(x.addon_percent).toFixed(4)) : '',  // Add on as a % (the import reads a percentage)
         priced && x.item_type !== 'service' ? m(x.acquisition_cost) : '',
         priced ? m(x.store_price) : '', priced && x.markup_percent != null ? Number(Number(x.markup_percent).toFixed(2)) : '',
-        x.item_code, x.unit, x.specification ?? '', '', '', x.stock_type === 'order_only' ? 'Order only' : 'Stock', x.item_type === 'service' ? 'Service' : 'Product', x.active ? 'Active' : 'Inactive',
+        x.item_code, x.unit, ...specCells(x.specification), '', '',   // Build 141: SPEC 1 … SPEC 10
+        x.stock_type === 'order_only' ? 'Order only' : 'Stock', x.item_type === 'service' ? 'Service' : 'Product', x.active ? 'Active' : 'Inactive',
       ]);
     }
     if (!data || data.length < 1000) break;

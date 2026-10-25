@@ -90,8 +90,9 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: 'Campaigns & Leads', href: '/marketing' },
       // Build 122: the owner's design tools, inside the app
-      { label: 'Specs Card', href: '/marketing/specs-card' },
-      { label: 'Banner Studio', href: '/marketing/banner-studio' },
+      { label: 'Studio', href: '/marketing/studio' },   // Build 141: phone-first Studio (replaces the two below)
+      { label: 'Specs Card (old)', href: '/marketing/specs-card' },
+      { label: 'Banner Studio (old)', href: '/marketing/banner-studio' },
       { label: 'Expenses', href: '/marketing/expenses' },
     ],
   },
@@ -108,6 +109,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { label: 'Monthly Sales', href: '/sales/monthly-sales', fn: 'sales.reports' },
       { label: 'Online Shop', href: '/sales/online-shop', show: isAdminTier },   // Build 136
       { label: 'Shop Inbox', href: '/sales/shop-inbox', show: (p) => hasSectionAccess(p, 'sales') },   // Build 139
+      { label: 'Studio', href: '/marketing/studio', show: (p) => hasSectionAccess(p, 'sales') },   // Build 141
       { label: 'Agent Commissions', href: '/sales/agent-commissions', fn: 'sales.reports' },
       { label: 'Back Office Commission', href: '/sales/back-office-commission', fn: 'sales.reports' },
       { label: 'Commission Operations & Reporting', href: '/sales/commission-report', fn: 'sales.reports' },

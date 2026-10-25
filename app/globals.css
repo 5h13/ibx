@@ -84,3 +84,15 @@ body { background: rgb(var(--bg-subtle)); }
     border: 1px solid rgb(var(--bd-input)); border-radius: 0.5rem; padding: 0.4rem 0.75rem; text-decoration: none; margin: 0 !important;
   }
 }
+
+/* Build 141 — Studio and photo touch-up (from 5h13Shops): their fields and buttons, only inside .studio-ui.
+   "brand" follows the store's button colour (--btn). */
+.studio-ui .field { display:block; width:100%; min-height:48px; border:1px solid #d5dad4; border-radius:12px; background:#fff; padding:10px 14px; font-size:16px; color:#16202a; }
+.studio-ui .field:focus { outline:2px solid rgb(var(--btn)); outline-offset:0; border-color:rgb(var(--btn)); }
+.studio-ui textarea.field { min-height:96px; }
+.studio-ui .lbl { display:block; font-size:14px; font-weight:700; color:#16202a; margin-bottom:6px; }
+.studio-ui .btn-primary { display:inline-flex; align-items:center; justify-content:center; gap:8px; min-height:52px; border-radius:14px; background:rgb(var(--btn)); color:rgb(var(--on-btn)); font-weight:800; font-size:16px; padding:0 20px; }
+.studio-ui .btn-primary:hover { filter:brightness(.92); }
+.studio-ui .btn-primary:disabled, .studio-ui .btn-ghost:disabled { opacity:.5; }
+.studio-ui .btn-ghost { display:inline-flex; align-items:center; justify-content:center; gap:8px; min-height:48px; border-radius:14px; background:#fff; border:1px solid #d5dad4; color:#16202a; font-weight:700; font-size:15px; padding:0 16px; }
+.studio-ui .card { background:#fff; border:1px solid #e3e6e2; border-radius:20px; }

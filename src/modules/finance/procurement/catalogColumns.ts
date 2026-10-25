@@ -39,4 +39,34 @@ export const CATALOG_TABLE_COLUMNS = CATALOG_COLUMNS.filter((c) => !(CATALOG_TAB
  * name still updates the same item), unit, specification and the opening
  * stock (LOG-46) with an optional unit cost (default: Supplier Cost). */
 // Build 79 (CAT-38): STOCK TYPE = Stock / Order only (blank: Stock for a new item, unchanged for an existing one).
-export const CATALOG_UPLOAD_EXTRA = ['Item Code', 'Unit', 'SPECIFICATION', 'OPENING STOCK', 'OPENING UNIT COST', 'STOCK TYPE'] as const;
+// Build 141 (owner, 2026-10-25): the specification is SPEC 1 … SPEC 10, one "Label: Value" per cell (what the Studio,
+// the shop and the search filters read). Older files with one SPECIFICATION column still import.
+export const SPEC_COLUMN_COUNT = 10;
+export const SPEC_COLUMNS = Array.from({ length: SPEC_COLUMN_COUNT }, (_, i) => `SPEC ${i + 1}`);
+export const CATALOG_UPLOAD_EXTRA = ['Item Code', 'Unit', ...SPEC_COLUMNS, 'OPENING STOCK', 'OPENING UNIT COST', 'STOCK TYPE'] as const;
+
+/** The item's specification (one line per spec) → the SPEC 1 … SPEC 10 cells; lines past the 10th stay together in
+ * SPEC 10 (one per line in the cell), so nothing is lost when the file is imported again. */
+export function specCells(specification: string | null | undefined): string[] {
+  const lines = String(specification ?? '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const out = lines.slice(0, SPEC_COLUMN_COUNT - 1);
+  const rest = lines.slice(SPEC_COLUMN_COUNT - 1);
+  if (rest.length) out.push(rest.join('\n'));
+  while (out.length < SPEC_COLUMN_COUNT) out.push('');
+  return out;
+}
+
+/** SPEC 1 … SPEC n cells → the item's specification (one line per spec), and the cells not written as "Label: Value". */
+export function specFromCells(cells: string[]): { text: string; bad: { col: number; value: string }[] } {
+  const lines: string[] = []; const bad: { col: number; value: string }[] = [];
+  cells.forEach((cell, i) => {
+    for (const raw of String(cell ?? '').split(/\r?\n/)) {
+      const l = raw.trim().replace(/\s+/g, ' ');
+      if (!l) continue;
+      const k = l.indexOf(':');
+      if (k <= 0 || !l.slice(k + 1).trim()) { bad.push({ col: i + 1, value: l }); continue; }
+      lines.push(`${l.slice(0, k).trim()}: ${l.slice(k + 1).trim()}`);
+    }
+  });
+  return { text: lines.join('\n'), bad };
+}

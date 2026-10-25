@@ -105,7 +105,18 @@ function FeaturedCard({ slug, f, big = false, label = 'Featured product' }: { sl
   );
 }
 
+// Build 141: a promotion made in the Studio is one picture (tap → its item or category)
+function PromoImage({ slug, p }: { slug: string; p: NonNullable<ShopHome['promo']> }) {
+  const href = p.link_category ? catHref(slug, p.link_category) : p.item ? `/shop/${slug}/item/${p.item.item_id}` : null;
+  // eslint-disable-next-line @next/next/no-img-element
+  const img = <img src={p.image_url!} alt={p.title} className="block h-auto w-full" />;
+  return <section aria-label="Promotion" className="overflow-hidden rounded-2xl bg-white shadow-sm" data-testid="promo-image">{href ? <Link href={href}>{img}</Link> : img}</section>;
+}
+// eslint-disable-next-line @next/next/no-img-element
+const PicAnnouncement = ({ a }: { a: ShopHome['announcements'][number] }) => <article className="overflow-hidden rounded-2xl bg-white shadow-sm"><img src={a.image_url!} alt={a.title} className="block h-auto w-full" data-testid="announcement-image" /></article>;
+
 function PromoCard({ slug, p }: { slug: string; p: NonNullable<ShopHome['promo']> }) {
+  if (p.image_url) return <PromoImage slug={slug} p={p} />;
   return (
     <section aria-label="Promotion" className="flex gap-3 rounded-2xl border border-amber-300 bg-amber-50 p-4">
       <div className="flex min-w-0 flex-1 flex-col gap-1.5">
@@ -121,6 +132,7 @@ function PromoCard({ slug, p }: { slug: string; p: NonNullable<ShopHome['promo']
 }
 
 function PromoBanner({ slug, p }: { slug: string; p: NonNullable<ShopHome['promo']> }) {
+  if (p.image_url) return <PromoImage slug={slug} p={p} />;
   return (
     <section aria-label="Promotion" className="relative h-56 overflow-hidden rounded-2xl bg-slate-200">
       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -143,6 +155,7 @@ function Announcements({ list, variant }: { list: ShopHome['announcements']; var
       <section aria-label="Announcements" className="space-y-3">
         <h2 className={H2}>News from the store</h2>
         {list.map((a) => {
+          if (a.image_url) return <PicAnnouncement key={a.id} a={a} />;
           const d = shortDay(a.date).split(' ');
           return (
             <article key={a.id} className="flex gap-3">
@@ -158,7 +171,7 @@ function Announcements({ list, variant }: { list: ShopHome['announcements']; var
     return (
       <section aria-label="Announcements" className="space-y-2.5 rounded-2xl bg-white p-3.5 shadow-sm">
         <h2 className={H2}>Announcements</h2>
-        {list.map((a, k) => (
+        {list.map((a, k) => a.image_url ? <PicAnnouncement key={a.id} a={a} /> : (
           <article key={a.id} className="flex gap-2.5"><span className={`mt-2 h-2 w-2 flex-none rounded-full ${k === 0 ? 'bg-[rgb(var(--btn))]' : 'bg-slate-300'}`} />
             <div><div className="text-sm font-semibold text-slate-900">{a.title}</div><div className="whitespace-pre-line text-[13px] text-slate-600">{shortDay(a.date)}{a.body ? ` · ${a.body}` : ''}</div></div></article>
         ))}
@@ -168,7 +181,7 @@ function Announcements({ list, variant }: { list: ShopHome['announcements']; var
   return (
     <section aria-label="Announcements" className="space-y-2.5">
       <h2 className={H2}>Announcements</h2>
-      {list.map((a) => (
+      {list.map((a) => a.image_url ? <PicAnnouncement key={a.id} a={a} /> : (
         <article key={a.id} className="space-y-1 rounded-2xl bg-white px-3.5 py-3 shadow-sm">
           <div className="text-xs text-slate-500">{shortDay(a.date)}</div>
           <div className="font-semibold text-slate-900">{a.title}</div>
@@ -235,15 +248,16 @@ function HomeB({ store, home, groups }: { store: ShopStore; home: ShopHome; grou
 function HomeC({ store, home, groups }: { store: ShopStore; home: ShopHome; groups: Groups }) {
   const slug = store.slug;
   const slides: Slide[] = [
-    ...(home.promo ? [{ key: `p-${home.promo.id}`, kind: 'promo' as const, title: home.promo.title, body: home.promo.body, note: home.promo.ends_on ? `until ${shortDay(home.promo.ends_on)}` : null,
+    ...(home.promo && !home.promo.image_url ? [{ key: `p-${home.promo.id}`, kind: 'promo' as const, title: home.promo.title, body: home.promo.body, note: home.promo.ends_on ? `until ${shortDay(home.promo.ends_on)}` : null,
       href: home.promo.link_category ? catHref(slug, home.promo.link_category) : home.promo.item ? `/shop/${slug}/item/${home.promo.item.item_id}` : null, photo_url: home.promo.item?.photo_url ?? null }] : []),
-    ...home.announcements.slice(0, 4).map((a) => ({ key: `a-${a.id}`, kind: 'announcement' as const, title: a.title, body: a.body, note: shortDay(a.date), href: null })),
+    ...home.announcements.slice(0, 4).map((a) => ({ key: `a-${a.id}`, kind: 'announcement' as const, title: a.title, body: a.body, note: shortDay(a.date), href: null, image_url: a.image_url ?? null })),
   ];
   const viber = viberIntl(store.viber_number);
   const tel = store.phone ? store.phone.replace(/[^\d+]/g, '') : null;
   const tile = 'flex flex-col items-center gap-1.5 rounded-xl bg-white px-1 py-2.5 text-center text-xs font-semibold text-slate-900 shadow-sm';
   return (
     <div className="space-y-5">
+      {home.promo?.image_url && <PromoImage slug={slug} p={home.promo} />}
       <BannerCarousel slides={slides} />
       <nav aria-label="Contact the store" className="grid grid-cols-4 gap-2">
         <Link href={`/shop/${slug}/quote`} className={tile}><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-100 text-amber-900"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M6 3h9l4 4v14H6zM9 12h7M9 16h7" /></svg></span>Get a quote</Link>

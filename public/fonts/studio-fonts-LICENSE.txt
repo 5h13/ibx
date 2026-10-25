@@ -1,0 +1,4 @@
+Fonts used by the Studio (Build 11). All are licensed under the SIL Open Font License, Version 1.1
+(https://openfontlicense.org), taken from the @fontsource packages (Google Fonts):
+Plus Jakarta Sans (Tokotype), Barlow Condensed (Jeremy Tribby), Oswald (The Oswald Project Authors),
+Saira Condensed (Omnibus-Type), Archivo (Omnibus-Type), Roboto Condensed (Google).

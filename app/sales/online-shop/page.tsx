@@ -20,7 +20,7 @@ export default async function OnlineShopSettings() {
   const [{ data }, { data: posts }, { data: filters }] = b
     ? await Promise.all([
         db.from('shop_settings').select('*').eq('business_id', b).maybeSingle(),
-        db.from('shop_posts').select('id,kind,title,body,starts_on,ends_on,item_id,link_category,active').eq('business_id', b).order('created_at', { ascending: false }).limit(60),
+        db.from('shop_posts').select('id,kind,title,body,starts_on,ends_on,item_id,link_category,active,image_path').eq('business_id', b).order('created_at', { ascending: false }).limit(60),
         db.rpc('shop_admin_filters', { p_category: null, p_item: null, p_brand: null }),
       ])
     : [{ data: null }, { data: [] }, { data: null }];
@@ -35,12 +35,12 @@ export default async function OnlineShopSettings() {
   return (
     <AuthedShell profile={profile}>
       <h2 className="mb-1 text-lg font-semibold">Online Shop</h2>
-      <p className="mb-4 text-sm text-slate-600">This store&apos;s public shop: anyone can browse it without logging in, message you about an item or send a request for quotation.</p>
+      <p className="mb-4 text-sm text-slate-600">Make pictures for the shop and Facebook in <a href="/marketing/studio" className="underline">Studio</a>; requests from buyers arrive in <a href="/sales/shop-inbox" className="underline">Shop Inbox</a>. This store&apos;s public shop: anyone can browse it without logging in, message you about an item or send a request for quotation.</p>
       {!b && <p className="rounded border bg-white p-4 text-sm text-slate-600">Choose a store in &quot;Acting as&quot; first.</p>}
       {b && !s && <p className="rounded border bg-white p-4 text-sm text-slate-600">The online shop is not set up for this store yet (deploy the latest database update).</p>}
       {s && (
         <ShopSettingsForm s={{ ...s, layout: (s.layout ?? 'A') as 'A' | 'B' | 'C' }} superAdmin={isSuperAdmin(profile)}
-          posts={((posts ?? []) as ShopPost[]).map((p) => ({ ...p, item_name: p.item_id ? name.get(p.item_id) ?? null : null }))}
+          posts={((posts ?? []) as (ShopPost & { image_path?: string | null })[]).map((p) => ({ ...p, item_name: p.item_id ? name.get(p.item_id) ?? null : null, image_url: bannerUrl(p.image_path) }))}
           featuredName={s.featured_item_id ? name.get(s.featured_item_id) ?? null : null}
           categories={((filters as any)?.categories ?? []) as string[]} header={header} />
       )}

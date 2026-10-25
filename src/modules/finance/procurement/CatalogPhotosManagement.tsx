@@ -1,7 +1,11 @@
 'use client';
 // Build 90 — Catalog Photos screen: search the catalog, see each item's three
 // photo slots, add / replace / remove a photo, or upload many at once.
+// Build 141 — Touch up (from 5h13Shops Build 12): a new photo opens the photo editor first (background removed on
+// the phone, studio backdrop, size and turn, square 1080 × 1080), or "Use the photo as it is"; a saved photo can be
+// touched up too. No store logo is stamped (catalog photos are shared by every store).
 import { useState } from 'react';
+import { PhotoEditor } from '@/modules/studio/PhotoEditor';
 import { useRouter } from 'next/navigation';
 import { errorText } from '@/core/errors/appError';
 import { useDialog } from '@/core/ui/Dialog';
@@ -19,6 +23,7 @@ export function CatalogPhotosManagement({ items, categories, filters, page, page
   const dialog = useDialog();
   const [busy, setBusy] = useState('');
   const [message, setMessage] = useState('');
+  const [editing, setEditing] = useState<{ item: Item; slot: number; source: File | string } | null>(null);
   const link = (p: number) => `?${new URLSearchParams({ ...(filters.q ? { q: filters.q } : {}), ...(filters.category ? { category: filters.category } : {}), ...(filters.missing ? { missing: '1' } : {}), page: String(p) })}`;
 
   async function put(item: Item, slot: number, file: File | undefined) {
@@ -44,6 +49,12 @@ export function CatalogPhotosManagement({ items, categories, filters, page, page
 
   return (
     <div className="space-y-5">
+      {editing && (
+        <PhotoEditor source={editing.source} title={`${editing.item.item_code} · photo ${editing.slot}`}
+          onCancel={() => setEditing(null)}
+          onAsIs={typeof editing.source === 'string' ? undefined : () => { const e = editing; setEditing(null); put(e.item, e.slot, e.source as File); }}
+          onDone={(f) => { const e = editing; setEditing(null); put(e.item, e.slot, f); }} />
+      )}
       <div>
         <h2 className="text-xl font-semibold">Catalog Photos</h2>
         <p className="mt-1 text-sm text-slate-500">Up to three photos per item. Photo 1 is the main photo shown in Product Search. Large photos are shrunk before upload.</p>
@@ -86,8 +97,9 @@ export function CatalogPhotosManagement({ items, categories, filters, page, page
                         <div className="flex gap-2 text-xs">
                           <label className={`cursor-pointer text-blue-700 underline ${busy ? 'pointer-events-none opacity-50' : ''}`}>
                             {working ? 'Saving…' : url ? 'Replace' : 'Add'}
-                            <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" disabled={!!busy} onChange={(e) => { put(it, slot, e.target.files?.[0]); e.target.value = ''; }} />
+                            <input type="file" accept="image/*" className="hidden" disabled={!!busy} onChange={(e) => { const f = e.target.files?.[0]; if (f) setEditing({ item: it, slot, source: f }); e.target.value = ''; }} />
                           </label>
+                          {url && <button type="button" className="text-blue-700 underline disabled:opacity-50" disabled={!!busy} onClick={() => setEditing({ item: it, slot, source: url })}>Touch up</button>}
                           {url && <button type="button" className="text-red-700 underline disabled:opacity-50" disabled={!!busy} onClick={() => remove(it, slot)}>Remove</button>}
                         </div>
                       </div>
