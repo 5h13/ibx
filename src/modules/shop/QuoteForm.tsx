@@ -2,12 +2,16 @@
 // Build 137 — Request for quotation: the visitor lists the parts and quantities and their details; the request is
 // written out as one message and sent to the store by Messenger, Viber or text (copied for pasting where the app
 // does not fill it in). Nothing is stored in the system.
+// Build 139 (from 5h13Shops Build 10): "Send request to the store" saves it for the store's Inbox, with a request
+// number and a status page; sending it yourself (Messenger / Viber / WhatsApp / text) stays underneath.
 import { useEffect, useState } from 'react';
 import { MessengerLink, copyNow } from './MessengerLink';
+import { SendPanel } from './SendPanel';
+import { waLink } from './contact';
 
 type Line = { what: string; qty: string };
 
-export function QuoteForm({ storeName, messenger, viber, phone, firstItem }: { storeName: string; messenger: string | null; viber: string | null; phone: string | null; firstItem?: string }) {
+export function QuoteForm({ slug, whatsapp, storeName, messenger, viber, phone, firstItem }: { slug: string; whatsapp: string | null; storeName: string; messenger: string | null; viber: string | null; phone: string | null; firstItem?: string }) {
   const [lines, setLines] = useState<Line[]>([{ what: firstItem ?? '', qty: '1' }, { what: '', qty: '' }]);
   const [name, setName] = useState('');
   const [mobile, setMobile] = useState('');
@@ -61,9 +65,13 @@ export function QuoteForm({ storeName, messenger, viber, phone, firstItem }: { s
         <label className="block text-sm"><span className="font-medium">Notes</span><textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} placeholder="Car model and year, unit brand, how soon you need it…" className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" /></label>
         {tried && (!name.trim() || !mobile.trim()) && <p className="text-xs text-red-700">Enter your name and mobile number so we can send you the quotation.</p>}
       </section>
+      <SendPanel slug={slug} kind="quote" title={filled[0]?.what.trim().slice(0, 120) || 'Request for quotation'} message={text} name={name} mobile={mobile}
+        problem={!filled.length ? 'Add at least one part.' : !name.trim() || !mobile.trim() ? 'Enter your name and mobile number so we can send you the quotation.' : ''}
+        onTry={() => { setTried(true); remember(); }} contacts={{ messenger, whatsapp }} />
       <section className="space-y-2.5">
-        <h2 className="font-bold text-slate-900">Send your request to {storeName}</h2>
+        <h2 className="font-bold text-slate-900">Or send it yourself to {storeName}</h2>
         <div className="grid grid-cols-2 gap-2">
+          {whatsapp && <a href={waLink(whatsapp, text)} target="_blank" rel="noopener noreferrer" onClick={(e) => { if (!prep(e)) return; }} className={`${btn} bg-[#25d366] text-white`}>WhatsApp</a>}
           {messenger && <MessengerLink url={messenger} guard={() => prep()} className={`${btn} bg-[#0866ff] text-white`}>Messenger</MessengerLink>}
           {viber && <a href={`viber://chat?number=${encodeURIComponent(viber)}&draft=${encodeURIComponent(text)}`} onClick={(e) => prep(e)} className={`${btn} bg-[#7360f2] text-white`}>Viber</a>}
           {tel && <a href={`sms:${tel}?&body=${encodeURIComponent(text)}`} onClick={(e) => prep(e)} className={`${btn} border bg-white`}>Text message</a>}

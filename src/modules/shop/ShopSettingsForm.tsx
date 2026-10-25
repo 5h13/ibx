@@ -2,10 +2,13 @@
 // Build 136 — online shop settings form.
 // Build 137 — layout A / B / C, Facebook page, front-page sections on / off, featured product, slideshow
 // (Category / Item / Brand, any part blank), announcements and promotions.
+// Build 139 — Shop header (from 5h13Shops Build 3): live preview with the store's logo, colours and name (from
+// System → Businesses), a banner photo and "keep in view"; WhatsApp number; staff preview while the shop is off.
 import { useEffect, useState, useTransition } from 'react';
+import { parseTheme, headerBackground } from '@/core/theme/brandTheme';
 import { useRouter } from 'next/navigation';
 import { errorText } from '@/core/errors/appError';
-import { deleteShopPostAction, saveShopPostAction, saveShopSettingsAction, shopFiltersAction } from './settingsActions';
+import { deleteShopPostAction, removeShopBannerAction, saveShopPostAction, saveShopSettingsAction, shopFiltersAction, uploadShopBannerAction } from './settingsActions';
 import { ItemPicker, type Picked } from './ItemPicker';
 import { useDialog } from '@/core/ui/Dialog';
 
@@ -13,7 +16,46 @@ export type ShopSettingsRow = {
   business_id: string; slug: string; enabled: boolean; messenger_url: string | null; viber_number: string | null; tagline: string | null;
   facebook_url: string | null; layout: 'A' | 'B' | 'C'; show_announcements: boolean; show_promo: boolean; show_featured: boolean; show_slideshow: boolean;
   featured_item_id: string | null; slideshow_category: string | null; slideshow_item: string | null; slideshow_brand: string | null; slideshow_title: string | null;
+  whatsapp_number?: string | null; banner_path?: string | null; banner_focus?: 'top' | 'center' | 'bottom';
 };
+export type ShopHeaderInfo = { name: string; logo_url: string | null; theme: unknown; banner_url: string | null };
+
+const FOCUS = { top: 'center top', center: 'center center', bottom: 'center bottom' } as const;
+
+/** A banner photo is made smaller on the phone / computer before it is sent (long side 1600 px, JPEG). */
+async function shrinkBanner(file: File): Promise<File> {
+  if (file.size <= 1_200_000 && file.type !== 'image/heic') return file;
+  try {
+    const bmp = await createImageBitmap(file);
+    const scale = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
+    const c = document.createElement('canvas');
+    c.width = Math.round(bmp.width * scale); c.height = Math.round(bmp.height * scale);
+    c.getContext('2d')!.drawImage(bmp, 0, 0, c.width, c.height);
+    const blob: Blob | null = await new Promise((r) => c.toBlob(r, 'image/jpeg', 0.85));
+    return blob ? new File([blob], 'banner.jpg', { type: 'image/jpeg' }) : file;
+  } catch { return file; }
+}
+
+function HeaderPreview({ h, tagline, bannerUrl, focus }: { h: ShopHeaderInfo; tagline: string; bannerUrl: string | null; focus: 'top' | 'center' | 'bottom' }) {
+  const theme = parseTheme(h.theme);
+  const bg = headerBackground(theme) ?? 'linear-gradient(90deg, #0b3d6b, #0f4c81)';
+  const fg = bannerUrl ? '#ffffff' : (theme as any)?.headerText ?? '#ffffff';
+  const initials = h.name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
+  return (
+    <div aria-label="Header preview" className="relative overflow-hidden rounded-xl" style={{ background: bg, color: fg }}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      {bannerUrl && <img src={bannerUrl} alt="" className="absolute inset-0 h-full w-full object-cover" style={{ objectPosition: FOCUS[focus] }} />}
+      {bannerUrl && <div className="absolute inset-0 bg-gradient-to-b from-black/25 to-black/65" />}
+      <div className={`relative flex items-center gap-3 px-4 ${bannerUrl ? 'pb-4 pt-16' : 'py-4'}`}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        {h.logo_url ? <img src={h.logo_url} alt="" className="h-12 w-12 flex-none rounded-full bg-white object-contain" />
+          : <span className="flex h-12 w-12 flex-none items-center justify-center rounded-full border-2 border-white/70 bg-slate-700 text-[17px] font-extrabold text-white">{initials}</span>}
+        <span className="min-w-0"><span className="block truncate text-lg font-extrabold">{h.name}</span>{tagline && <span className="block truncate text-xs opacity-90">{tagline}</span>}</span>
+      </div>
+      <span className="absolute right-2 top-2 rounded-full bg-black/40 px-2 py-0.5 text-[11px] font-semibold text-white">Preview</span>
+    </div>
+  );
+}
 export type ShopPost = { id: string; kind: 'announcement' | 'promo'; title: string; body: string | null; starts_on: string | null; ends_on: string | null;
   item_id: string | null; item_name?: string | null; link_category: string | null; active: boolean };
 
@@ -27,9 +69,24 @@ const Card = ({ title, children }: { title: string; children: React.ReactNode })
   <section className="space-y-3 rounded-lg border bg-white p-4"><h3 className="font-semibold">{title}</h3>{children}</section>
 );
 
-export function ShopSettingsForm({ s, superAdmin, posts, featuredName, categories }: { s: ShopSettingsRow; superAdmin: boolean; posts: ShopPost[]; featuredName: string | null; categories: string[] }) {
+export function ShopSettingsForm({ s, superAdmin, posts, featuredName, categories, header }: { s: ShopSettingsRow; superAdmin: boolean; posts: ShopPost[]; featuredName: string | null; categories: string[]; header: ShopHeaderInfo }) {
   const router = useRouter();
-  const [f, setF] = useState({ messenger_url: s.messenger_url ?? '', viber_number: s.viber_number ?? '', facebook_url: s.facebook_url ?? '', tagline: s.tagline ?? '' });
+  const [f, setF] = useState({ messenger_url: s.messenger_url ?? '', viber_number: s.viber_number ?? '', whatsapp_number: s.whatsapp_number ?? '', facebook_url: s.facebook_url ?? '', tagline: s.tagline ?? '' });
+  const [bannerBusy, setBannerBusy] = useState('');
+  async function banner(file: File | undefined) {
+    if (!file) return;
+    setBannerBusy('Saving the banner…'); setMsg(null);
+    try { const fd = new FormData(); fd.set('file', await shrinkBanner(file)); await uploadShopBannerAction(s.business_id, fd); setMsg({ ok: true, text: 'Banner saved — it shows on every page of the shop.' }); router.refresh(); }
+    catch (e) { setMsg({ ok: false, text: errorText(e) }); }
+    setBannerBusy('');
+  }
+  async function dropBanner() {
+    setBannerBusy('Removing the banner…'); setMsg(null);
+    try { await removeShopBannerAction(s.business_id); setMsg({ ok: true, text: 'Banner removed.' }); router.refresh(); }
+    catch (e) { setMsg({ ok: false, text: errorText(e) }); }
+    setBannerBusy('');
+  }
+  const focus = s.banner_focus ?? 'center';
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [pending, start] = useTransition();
   const run = (data: Record<string, string | boolean | null>, done: string) => start(async () => {
@@ -62,6 +119,35 @@ export function ShopSettingsForm({ s, superAdmin, posts, featuredName, categorie
               className={`rounded px-4 py-2 text-sm font-semibold ${s.enabled ? 'border' : 'bg-slate-800 text-white'}`}>{s.enabled ? 'Turn the shop off' : 'Open the shop to the public'}</button>
           : <p className="text-xs text-slate-500">The Super Admin opens or closes the shop.</p>}
         <p className="text-xs text-slate-500">The shop shows active catalog items that have at least one photo, at this store&apos;s prices, marked Available or By order. Stock quantities, costs and suppliers are never shown.</p>
+        {!s.enabled && <p className="rounded bg-amber-50 px-3 py-2 text-xs text-amber-900">While the shop is off, you and the store&apos;s sales staff can still open it (signed in) to check it: it shows a <b>Preview</b> strip. The public sees nothing until it is opened.</p>}
+      </Card>
+
+      <Card title="Shop header">
+        <HeaderPreview h={header} tagline={f.tagline} bannerUrl={header.banner_url} focus={focus} />
+        <p className="text-xs text-slate-500">The logo, colours and store name come from System → Businesses{superAdmin ? '' : ' (the Super Admin changes them)'}. The tagline is under Contacts below.</p>
+        <div className="space-y-2">
+          <div className="text-sm font-medium">Banner photo (optional)</div>
+          <p className="text-xs text-slate-500">A wide photo behind the store&apos;s name on every shop page — your store front, your counter or best sellers. Best about 1600 × 600 pixels. Avoid photos with words on them: the store name sits on top.</p>
+          <div className="flex flex-wrap gap-2">
+            <label className={`cursor-pointer rounded border px-3 py-2 text-sm font-semibold ${bannerBusy ? 'opacity-50' : ''}`}>{header.banner_url ? 'Change banner' : 'Upload banner'}
+              <input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" disabled={!!bannerBusy} onChange={(e) => { banner(e.target.files?.[0]); e.target.value = ''; }} /></label>
+            {header.banner_url && <button type="button" disabled={!!bannerBusy} onClick={dropBanner} className="rounded border px-3 py-2 text-sm font-semibold text-red-700">Remove banner</button>}
+            {bannerBusy && <span className="self-center text-sm text-slate-600">{bannerBusy}</span>}
+          </div>
+        </div>
+        {header.banner_url && (
+          <fieldset className="min-w-0">
+            <legend className="text-sm font-medium">Keep in view</legend>
+            <div className="mt-1 grid grid-cols-3 gap-2">
+              {(['top', 'center', 'bottom'] as const).map((k) => (
+                <label key={k} className={`flex min-h-[44px] cursor-pointer items-center justify-center rounded-lg border text-sm font-semibold ${focus === k ? 'border-slate-800 ring-2 ring-slate-800' : ''}`}>
+                  <input type="radio" name="banner_focus" className="sr-only" checked={focus === k} disabled={pending} onChange={() => run({ banner_focus: k }, 'Saved.')} />{k === 'top' ? 'Top' : k === 'center' ? 'Middle' : 'Bottom'}
+                </label>
+              ))}
+            </div>
+            <span className="text-xs text-slate-500">Which part of the photo stays visible when it is cropped.</span>
+          </fieldset>
+        )}
       </Card>
 
       <Card title="Layout">
@@ -80,6 +166,7 @@ export function ShopSettingsForm({ s, superAdmin, posts, featuredName, categorie
         <h3 className="font-semibold">Contacts and tagline</h3>
         {field('messenger_url', 'Messenger link', 'Your Facebook page’s Messenger link, e.g. https://m.me/Pili.Aire', 'https://m.me/…')}
         {field('viber_number', 'Viber number', 'The mobile number customers message on Viber', '0917 123 4567')}
+        {field('whatsapp_number', 'WhatsApp number', 'With WhatsApp, the buyer’s message is filled in for them (Messenger and Viber can’t do that)', '0917 123 4567')}
         {field('facebook_url', 'Facebook page', 'For "Like us on Facebook", e.g. https://www.facebook.com/Pili.Aire/', 'https://www.facebook.com/…')}
         {field('tagline', 'Tagline', 'One line under the store name (up to 120 characters)', 'Your Trusted Aircon and Refrigeration Parts Supplier')}
         <p className="text-xs text-slate-500">The store&apos;s phone, email and address come from System → Businesses.</p>

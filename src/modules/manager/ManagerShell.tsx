@@ -31,6 +31,8 @@ export async function ManagerShell({ profile, title, sub, back, children, counts
     const { data } = await db.rpc('manager_attention');
     attn = data ? Number((data as any).counts?.red ?? 0) + Number((data as any).counts?.amber ?? 0) : 0;
   }
+  // Build 139: new requests from the online shop (Inbox tab badge)
+  const { data: inboxCount } = profile.user.business_id ? await db.rpc('shop_inbox_count') : { data: 0 };
   const { data: biz } = profile.user.business_id
     ? await db.from('businesses').select('code,legal_name,trade_name,branding').eq('id', profile.user.business_id).maybeSingle()
     : { data: null };
@@ -69,7 +71,7 @@ export async function ManagerShell({ profile, title, sub, back, children, counts
       <main className="mx-auto max-w-3xl space-y-3 px-3 py-3 md:px-6">
         {profile.user.business_id ? children : <div className="rounded-xl border bg-white p-6 text-slate-600">Choose a store in &quot;Acting as&quot; (office app) to work in the Sales Manager app.</div>}
       </main>
-      <ManagerNav approvals={counts ?? 0} attention={attn ?? 0} />
+      <ManagerNav approvals={counts ?? 0} attention={attn ?? 0} inbox={Number(inboxCount ?? 0)} />
     </div>
   );
 }

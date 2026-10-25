@@ -1,11 +1,13 @@
 // Build 136 — Sales → Online Shop: the store's public catalog settings.
 // Build 137 — layout, Facebook page, front-page sections, featured product, slideshow, announcements / promotions.
+// Build 139 — Shop header (preview, banner photo), WhatsApp.
 import { redirect } from 'next/navigation';
 import { getSessionProfile } from '@/core/auth/getSessionProfile';
 import { createClient } from '@/core/auth/supabaseServer';
 import { AuthedShell } from '@/core/layout/AuthedShell';
 import { isAdminTier, isSuperAdmin } from '@/core/auth/types';
 import { ShopSettingsForm, type ShopPost, type ShopSettingsRow } from '@/modules/shop/ShopSettingsForm';
+import { bannerUrl } from '@/modules/shop/data';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,6 +28,10 @@ export default async function OnlineShopSettings() {
   const ids = Array.from(new Set([s?.featured_item_id, ...((posts ?? []) as any[]).map((p) => p.item_id)].filter(Boolean))) as string[];
   const { data: items } = ids.length ? await db.from('finance_procurement_items').select('id,item_name').in('id', ids) : { data: [] };
   const name = new Map(((items ?? []) as any[]).map((i) => [i.id, i.item_name as string]));
+  // Build 139: the header preview shows the store's logo, colours and name (System → Businesses) and the banner
+  const { data: biz } = b ? await db.from('businesses').select('legal_name,trade_name,branding').eq('id', b).maybeSingle() : { data: null };
+  const header = { name: ((biz as any)?.trade_name || (biz as any)?.legal_name || '') as string, logo_url: ((biz as any)?.branding?.logo_url ?? null) as string | null,
+    theme: (biz as any)?.branding?.theme ?? null, banner_url: bannerUrl(s?.banner_path) };
   return (
     <AuthedShell profile={profile}>
       <h2 className="mb-1 text-lg font-semibold">Online Shop</h2>
@@ -36,7 +42,7 @@ export default async function OnlineShopSettings() {
         <ShopSettingsForm s={{ ...s, layout: (s.layout ?? 'A') as 'A' | 'B' | 'C' }} superAdmin={isSuperAdmin(profile)}
           posts={((posts ?? []) as ShopPost[]).map((p) => ({ ...p, item_name: p.item_id ? name.get(p.item_id) ?? null : null }))}
           featuredName={s.featured_item_id ? name.get(s.featured_item_id) ?? null : null}
-          categories={((filters as any)?.categories ?? []) as string[]} />
+          categories={((filters as any)?.categories ?? []) as string[]} header={header} />
       )}
     </AuthedShell>
   );

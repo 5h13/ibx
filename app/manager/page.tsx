@@ -5,13 +5,19 @@ import { displayName } from '@/core/auth/loginEmail';
 import { loadAttention, loadToday, runAttentionScan } from '@/modules/manager/actions';
 import { AttentionList } from '@/modules/manager/AttentionList';
 import { Card, Tile, peso, KIND_LABEL } from '@/modules/manager/ui';
+import { createClient } from '@/core/auth/supabaseServer';
+
+async function loadInboxCount() {   // Build 139
+  const { data } = await createClient().rpc('shop_inbox_count');
+  return Number(data ?? 0);
+}
 
 export const dynamic = 'force-dynamic';
 
 export default async function ManagerToday() {
   const profile = await managerProfile();
   if (profile.user.business_id) await runAttentionScan();   // Build 133: send any new urgent alerts for this store
-  const [t, att, brand]: [any, any, any] = profile.user.business_id ? await Promise.all([loadToday(), loadAttention(), storeBrand(profile)]) : [null, null, null];
+  const [t, att, brand, inbox]: [any, any, any, any] = profile.user.business_id ? await Promise.all([loadToday(), loadAttention(), storeBrand(profile), loadInboxCount()]) : [null, null, null, 0];
   const a = t?.approvals ?? {};
   const total = ['quotes', 'orders', 'prices', 'cancels', 'closings'].reduce((s, k) => s + Number(a[k] ?? 0), 0);
   const vsAvg = t && Number(t.same_day_avg) > 0 ? Math.round(((Number(t.sales_today) - Number(t.same_day_avg)) / Number(t.same_day_avg)) * 100) : null;
@@ -19,6 +25,13 @@ export default async function ManagerToday() {
   const dayLabel = new Date().toLocaleDateString('en-PH', { timeZone: 'Asia/Manila', weekday: 'short', day: 'numeric', month: 'short' });
   return (
     <ManagerShell profile={profile} title="Today" counts={total} attention={att ? Number(att.counts?.red ?? 0) + Number(att.counts?.amber ?? 0) : 0}>
+      {Number(inbox) > 0 && (
+        <Link href="/manager/inbox" className="flex min-h-[56px] items-center gap-3 rounded-xl border-2 border-red-200 bg-white px-4 py-3 shadow-sm">
+          <span className="rounded-full bg-red-600 px-2.5 py-1 text-sm font-bold text-white">{inbox}</span>
+          <span className="flex-1"><b className="block">Shop Inbox</b><span className="text-sm text-slate-600">{inbox} new request{Number(inbox) === 1 ? '' : 's'} from the online shop</span></span>
+          <span aria-hidden="true" className="text-xl text-slate-400">›</span>
+        </Link>
+      )}
       {att && (
         <Card title={<span>Needs attention{Number(att.counts?.red ?? 0) > 0 && <span className="ml-2 rounded-full bg-red-600 px-2 py-0.5 text-xs text-white">{att.counts.red} urgent</span>}</span>}
           action={<Link href="/manager/settings" className="text-xs font-bold text-[rgb(var(--btn))] underline">Settings</Link>}>

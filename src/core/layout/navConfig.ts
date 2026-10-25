@@ -1,5 +1,5 @@
 // Sidebar menu definition, shared by the Sidebar and 5H13 Shortcuts (Build 82).
-import { hasSectionWorkflowRole, isAdminTier, isAgent, type SessionProfile } from '@/core/auth/types';
+import { hasSectionAccess, hasSectionWorkflowRole, isAdminTier, isAgent, type SessionProfile } from '@/core/auth/types';
 
 import { hasAnyFunction } from '@/core/auth/functions';
 
@@ -107,6 +107,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { label: 'Price Review', href: '/sales/price-review', show: canReviewPrices, fn: 'sales.price_review' },
       { label: 'Monthly Sales', href: '/sales/monthly-sales', fn: 'sales.reports' },
       { label: 'Online Shop', href: '/sales/online-shop', show: isAdminTier },   // Build 136
+      { label: 'Shop Inbox', href: '/sales/shop-inbox', show: (p) => hasSectionAccess(p, 'sales') },   // Build 139
       { label: 'Agent Commissions', href: '/sales/agent-commissions', fn: 'sales.reports' },
       { label: 'Back Office Commission', href: '/sales/back-office-commission', fn: 'sales.reports' },
       { label: 'Commission Operations & Reporting', href: '/sales/commission-report', fn: 'sales.reports' },

@@ -6,10 +6,13 @@ export { pesoShop, viberIntl, shortDay } from './format';
 
 export type ShopStore = { slug: string; code: string; name: string; logo_url: string | null; theme: unknown; phone: string | null; email: string | null; address: string | null;
   messenger_url: string | null; viber_number: string | null; tagline: string | null;
-  facebook_url?: string | null; layout?: 'A' | 'B' | 'C' };
+  facebook_url?: string | null; layout?: 'A' | 'B' | 'C';
+  // Build 139: WhatsApp, banner photo, staff preview / Manage shop
+  whatsapp_number?: string | null; banner_path?: string | null; banner_focus?: 'top' | 'center' | 'bottom'; banner_url?: string | null;
+  preview?: boolean; manage?: boolean };
 export type ShopRow = { item_id: string; item_name: string; category: string | null; generic_item: string | null; brand: string | null; unit: string | null;
   photo_path: string | null; price: number | null; available?: boolean | null; total_count: number; photo_url?: string | null };
-export type ShopItem = { id: string; name: string; category: string | null; generic_item: string | null; brand: string | null; unit: string | null;
+export type ShopItem = { id: string; code?: string | null; name: string; category: string | null; generic_item: string | null; brand: string | null; unit: string | null;
   description: string | null; specification: string | null; item_type: string | null; photos: string[]; price: number | null; available?: boolean | null; photo_urls?: string[] };
 
 export const PAGE_SIZE = 24;
@@ -29,7 +32,15 @@ export async function signPhotos(paths: string[]): Promise<Map<string, string>> 
   return out;
 }
 
-export const loadStore = (slug: string) => rpc<ShopStore>('shop_store', { p_slug: slug });
+export const BANNER_BUCKET = 'business-logos';
+/** Build 139: the banner photo is in the store's folder of the public logo bucket. */
+export function bannerUrl(path: string | null | undefined) {
+  return path ? createAdminClient().storage.from(BANNER_BUCKET).getPublicUrl(path).data.publicUrl : null;
+}
+export async function loadStore(slug: string) {
+  const s = await rpc<ShopStore>('shop_store', { p_slug: slug });
+  return s ? { ...s, banner_url: bannerUrl(s.banner_path) } : null;
+}
 export const loadShops = async () => (await rpc<{ slug: string; name: string; logo_url: string | null; tagline: string | null }[]>('shop_list', {})) ?? [];
 export const loadFilters = async (slug: string, f: { category?: string; item?: string; brand?: string }) =>
   (await rpc<{ categories: string[]; items: string[]; brands: string[] }>('shop_filters', { p_slug: slug, p_category: f.category || null, p_item: f.item || null, p_brand: f.brand || null }))

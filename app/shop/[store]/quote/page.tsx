@@ -1,4 +1,5 @@
 // Build 137 — /shop/<store>/quote: Request for quotation (sent to the store by Messenger / Viber / text).
+// Build 139: also sent straight to the store's Inbox (request number + status page), and by WhatsApp.
 import { notFound } from 'next/navigation';
 import { ShopShell } from '@/modules/shop/ShopShell';
 import { QuoteForm } from '@/modules/shop/QuoteForm';
@@ -25,7 +26,7 @@ export default async function QuotePage(props: { params: Promise<{ store: string
           <h1 className="text-xl font-extrabold text-slate-900">Request for quotation</h1>
           <p className="text-sm text-slate-600">List the parts you need and we will send you prices and availability.</p>
         </div>
-        <QuoteForm storeName={store.name} messenger={store.messenger_url} viber={viberIntl(store.viber_number)} phone={store.phone} firstItem={sp.item?.slice(0, 120)} />
+        <QuoteForm slug={slug} whatsapp={store.whatsapp_number ?? null} storeName={store.name} messenger={store.messenger_url} viber={viberIntl(store.viber_number)} phone={store.phone} firstItem={sp.item?.slice(0, 120)} />
       </div>
     </ShopShell>
   );

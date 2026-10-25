@@ -122,6 +122,13 @@ export function isStaffMinimalView(profile: SessionProfile | null, sectionId: st
   return !profile.access.some((a) => a.section_id === sectionId);
 }
 
+/** Build 139 — any grant in the section (the shop Inbox: the store's sales people). Admin tier passes. */
+export function hasSectionAccess(profile: SessionProfile | null, sectionCode: string): boolean {
+  if (!profile) return false;
+  if (isAdminTier(profile)) return true;
+  return profile.access.some((a) => a.section_code === sectionCode);
+}
+
 /** Build 91 — a freelance agent's login (agent portal only, no department access). */
 export function isAgent(profile: SessionProfile | null): boolean {
   return profile?.user.role === 'agent';

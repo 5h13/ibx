@@ -1,4 +1,5 @@
 // Build 136 — one product in a store's public catalog: photos, price, specification; ask the store, share.
+// Build 139: item code shown and carried in every message; WhatsApp; send a question to the store's Inbox.
 import { notFound } from 'next/navigation';
 import { ShopShell } from '@/modules/shop/ShopShell';
 import { ShopActions } from '@/modules/shop/ShopActions';
@@ -46,6 +47,7 @@ export default async function ShopItemPage(props: { params: Promise<{ store: str
           <div>
             <div className="text-xs text-slate-500">{[it.category, it.generic_item, it.brand].filter(Boolean).join(' · ')}</div>
             <h1 className="text-xl font-extrabold leading-tight text-slate-900">{it.name}</h1>
+            {it.code && <div className="mt-0.5 text-xs text-slate-500">Item code: <span className="font-mono font-semibold text-slate-700">{it.code}</span></div>}
             {it.available != null && (
               <div className={`mt-2 inline-block rounded-full px-3 py-1 text-xs font-bold ${it.available ? 'bg-emerald-600 text-white' : 'bg-amber-100 text-amber-900'}`}>
                 {it.available ? 'Available — in stock' : 'By order — message us for the lead time'}
@@ -53,8 +55,9 @@ export default async function ShopItemPage(props: { params: Promise<{ store: str
             )}
             <div className="mt-2 text-2xl font-extrabold text-slate-900">{price ?? <span className="text-lg text-slate-500">Ask for price</span>}{price && it.unit ? <span className="text-sm font-normal text-slate-500"> / {it.unit}</span> : null}</div>
           </div>
-          <a href={`/shop/${slug}/quote?item=${encodeURIComponent(it.name)}`} className="flex min-h-[48px] items-center justify-center rounded-xl bg-amber-400 text-sm font-bold text-amber-950">Request a quotation for this item</a>
-          <ShopActions name={it.name} price={price} messenger={store.messenger_url} viber={viberIntl(store.viber_number)} phone={store.phone} available={it.available} />
+          <a href={`/shop/${slug}/quote?item=${encodeURIComponent(it.code ? `${it.name} [${it.code}]` : it.name)}`} className="flex min-h-[48px] items-center justify-center rounded-xl bg-amber-400 text-sm font-bold text-amber-950">Request a quotation for this item</a>
+          <ShopActions slug={slug} itemId={it.id} code={it.code ?? null} name={it.name} price={price} amount={it.price} messenger={store.messenger_url} viber={viberIntl(store.viber_number)}
+            whatsapp={store.whatsapp_number ?? null} phone={store.phone} available={it.available} />
           {it.specification && <section className="rounded-2xl bg-white p-4 shadow-sm"><h2 className="mb-1 text-sm font-bold">Specification</h2><p className="whitespace-pre-line text-sm text-slate-700">{it.specification}</p></section>}
           {it.description && <section className="rounded-2xl bg-white p-4 shadow-sm"><h2 className="mb-1 text-sm font-bold">Description</h2><p className="whitespace-pre-line text-sm text-slate-700">{it.description}</p></section>}
         </div>

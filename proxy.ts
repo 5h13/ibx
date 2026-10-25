@@ -2,7 +2,22 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
 
+// Build 139 — clickjacking guard (from 5h13Shops Build 4.1): only the public shop (/shop/...) may be shown inside
+// another website; every other page (sign-in, staff, finance, HR…) refuses to load in another site's frame.
+// SAMEORIGIN (not DENY): the app itself frames its own Banner Studio and Specs Card (/marketing-tools).
+function noFraming<T extends NextResponse>(res: T): T {
+  res.headers.set('X-Frame-Options', 'SAMEORIGIN');
+  res.headers.set('Content-Security-Policy', "frame-ancestors 'self'");
+  return res;
+}
+const isShopPath = (p: string) => p === '/shop' || p.startsWith('/shop/');
+
 export async function proxy(request: NextRequest) {
+  const res = await route(request);
+  return isShopPath(request.nextUrl.pathname) ? res : noFraming(res);
+}
+
+async function route(request: NextRequest): Promise<NextResponse> {
   let response = NextResponse.next({ request: { headers: request.headers } });
 
   try {
@@ -28,7 +43,7 @@ export async function proxy(request: NextRequest) {
 
     // Allow login page always
     // Build 136: the public online shops (/shop, /shop/<store>) are open to everyone
-    if (request.nextUrl.pathname === '/shop' || request.nextUrl.pathname.startsWith('/shop/')) {
+    if (isShopPath(request.nextUrl.pathname)) {
       return response;
     }
     if (request.nextUrl.pathname === '/login' || request.nextUrl.pathname.startsWith('/auth/')) {
