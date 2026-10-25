@@ -102,7 +102,10 @@ export function picture(ctx: C2D, img: Pic | null | undefined, x: number, y: num
 export async function loadPic(url: string | null | undefined): Promise<ImageBitmap | null> {
   if (!url) return null;
   try {
-    const res = await fetch(url, { mode: 'cors', credentials: 'omit' });
+    // ERP (Build 141b): catalog photos come from the app's own sign-in-protected address (/marketing/studio/photo),
+    // so those requests carry the sign-in; other addresses (the public store logo) are fetched without it
+    const own = url.startsWith('/') || url.startsWith(location.origin);
+    const res = await fetch(url, own ? { credentials: 'same-origin' } : { mode: 'cors', credentials: 'omit' });
     if (!res.ok) return null;
     return await createImageBitmap(await res.blob());
   } catch { return null; }
